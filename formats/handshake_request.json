@@ -1,0 +1,28 @@
+{
+    "Name" : "handshake",
+    "Code" : 1,
+    "Request" : {
+        "Fields" : [
+            {"Name": "code", "Type" : "byte", "Value" : "1"},
+            {"Name": "major", "Type" : "short", "Value" : "1"},
+            {"Name": "minor", "Type" : "short", "Value" : "7"},
+            {"Name": "maintenance", "Type" : "short", "Value" : "0"},
+            {"Name": "clientType", "Type" : "byte", "Value" : "2"},
+            {"Name": "features", "Type" : "byte[]"},
+            {"Name": "userAttributes", "Type" : "map", "KeyType" : "string", "ValueType" : "string"},
+            {"Name": "username", "Type" : "string"},
+            {"Name": "password", "Type" : "string"}
+        ]
+    },
+    "Response" : {
+        "Fields" : [
+            {"Name": "code", "Type" : "byte"}
+        ],
+        "Optional" : [
+            {"Name": "major", "Type" : "short", "Optional" :  "true"},
+            {"Name": "minor", "Type" : "short", "Optional" :  "true"},
+            {"Name": "maintenance", "Type" : "short", "Optional" :  "true"},
+            {"Name": "message", "Type" : "string", "Optional" :  "true"}
+        ]
+    }
+}
