@@ -3,18 +3,20 @@ package serdes
 import (
 	"encoding/binary"
 	"fmt"
+	"github.com/google/uuid"
 )
 
 const (
-	dfltBufSz  int32 = 1024 * 1024
-	shortBytes       = 2
-	intBytes         = 4
-	longBytes        = 8
+	DefaultBufferSize int32 = 1024 * 1024
+	ShortBytes              = 2
+	IntBytes                = 4
+	LongBytes               = 8
 
-	STRING     byte = 9
-	BYTE_ARRAY byte = 12
-	MAP        byte = 25
-	NULL       byte = 101
+	String    byte = 9
+	UUID      byte = 10
+	ByteArray byte = 12
+	MAP       byte = 25
+	Null      byte = 101
 )
 
 type IgniteBuffer struct {
@@ -30,44 +32,70 @@ func (buf *IgniteBuffer) WriteByte(v byte) {
 	buf.incrementIndex(1)
 }
 
-func (buf *IgniteBuffer) writeBytes(v []byte) {
-	length := len(v)
-	copy(buf.buf[buf.idx:(buf.idx+length)], v)
+func (buf *IgniteBuffer) writeBytes(v *[]byte) {
+	length := len(*v)
+	copy(buf.buf[buf.idx:(buf.idx+length)], *v)
 	buf.incrementIndex(length)
 }
 
 func (buf *IgniteBuffer) WriteInt(v int) {
-	binary.LittleEndian.PutUint32(buf.buf[buf.idx:(buf.idx+intBytes)], uint32(v))
-	buf.incrementIndex(intBytes)
+	binary.LittleEndian.PutUint32(buf.buf[buf.idx:(buf.idx+IntBytes)], uint32(v))
+	buf.incrementIndex(IntBytes)
 }
 
 func (buf *IgniteBuffer) WriteInt16(v int16) {
-	binary.LittleEndian.PutUint16(buf.buf[buf.idx:(buf.idx+shortBytes)], uint16(v))
-	buf.incrementIndex(shortBytes)
+	binary.LittleEndian.PutUint16(buf.buf[buf.idx:(buf.idx+ShortBytes)], uint16(v))
+	buf.incrementIndex(ShortBytes)
 }
 
 func (buf *IgniteBuffer) WriteInt32(v int32) {
-	binary.LittleEndian.PutUint32(buf.buf[buf.idx:(buf.idx+intBytes)], uint32(v))
-	buf.incrementIndex(intBytes)
+	binary.LittleEndian.PutUint32(buf.buf[buf.idx:(buf.idx+IntBytes)], uint32(v))
+	buf.incrementIndex(IntBytes)
 }
 
 func (buf *IgniteBuffer) WriteInt64(v int64) {
-	binary.LittleEndian.PutUint64(buf.buf[buf.idx:(buf.idx+longBytes)], uint64(v))
-	buf.incrementIndex(longBytes)
+	binary.LittleEndian.PutUint64(buf.buf[buf.idx:(buf.idx+LongBytes)], uint64(v))
+	buf.incrementIndex(LongBytes)
 }
 
-func (buf *IgniteBuffer) WriteString(v string) {
-	bytes := []byte(v)
+func (buf *IgniteBuffer) WriteString(v *string) {
+	if v == nil {
+		buf.WriteByte(Null)
+		return
+	}
 
-	buf.WriteByte(STRING)
+	bytes := []byte(*v)
+
+	buf.WriteByte(String)
 	buf.WriteInt(len(bytes))
-	buf.writeBytes(bytes)
+	buf.writeBytes(&bytes)
 }
 
-func (buf *IgniteBuffer) WriteByteArray(v []byte) {
-	buf.WriteByte(BYTE_ARRAY)
-	buf.WriteInt(len(v))
+func (buf *IgniteBuffer) WriteByteArray(v *[]byte) {
+	if v == nil {
+		buf.WriteByte(Null)
+		return
+	}
+	buf.WriteByte(ByteArray)
+	buf.WriteInt(len(*v))
 	buf.writeBytes(v)
+}
+
+func (buf *IgniteBuffer) WriteUuid(v *uuid.UUID) {
+	if v == nil {
+		buf.WriteByte(Null)
+		return
+	}
+	buf.WriteByte(UUID)
+	bytes, err := v.MarshalBinary()
+	if err != nil {
+		panic(err)
+	}
+	buf.writeBytes(&bytes)
+}
+
+func (buf *IgniteBuffer) ReadBoolean() bool {
+	return buf.ReadByte() == byte(1)
 }
 
 func (buf *IgniteBuffer) ReadByte() byte {
@@ -81,48 +109,77 @@ func (buf *IgniteBuffer) ReadInt() int {
 }
 
 func (buf *IgniteBuffer) ReadInt16() int16 {
-	res := int16(binary.LittleEndian.Uint16(buf.buf[buf.idx:(buf.idx + shortBytes)]))
-	buf.incrementIndex(shortBytes)
+	res := int16(binary.LittleEndian.Uint16(buf.buf[buf.idx:(buf.idx + ShortBytes)]))
+	buf.incrementIndex(ShortBytes)
 	return res
 }
 
 func (buf *IgniteBuffer) ReadInt32() int32 {
-	res := int32(binary.LittleEndian.Uint32(buf.buf[buf.idx:(buf.idx + intBytes)]))
-	buf.incrementIndex(intBytes)
+	res := int32(binary.LittleEndian.Uint32(buf.buf[buf.idx:(buf.idx + IntBytes)]))
+	buf.incrementIndex(IntBytes)
 	return res
 }
 
 func (buf *IgniteBuffer) ReadInt64() int64 {
-	res := int64(binary.LittleEndian.Uint64(buf.buf[buf.idx:(buf.idx + longBytes)]))
-	buf.incrementIndex(longBytes)
+	res := int64(binary.LittleEndian.Uint64(buf.buf[buf.idx:(buf.idx + LongBytes)]))
+	buf.incrementIndex(LongBytes)
 	return res
 }
 
-func (buf *IgniteBuffer) ReadString() string {
-	if buf.ReadByte() != STRING {
-		panic("not a string")
+func (buf *IgniteBuffer) ReadString() *string {
+	tp := buf.ReadByte()
+
+	if tp == Null {
+		return nil
+	} else if tp != String {
+		panic(fmt.Sprintf("wrong type. [expecting=%d, actual=%d]", String, tp))
 	}
 
 	length := buf.ReadInt()
 	res := string(buf.buf[buf.idx:(buf.idx + length)])
 	buf.incrementIndex(length)
 
-	return res
+	return &res
 }
 
-func (buf *IgniteBuffer) ReadByteArray() interface{} {
-	if buf.ReadByte() != BYTE_ARRAY {
-		panic("not a byte array")
+func (buf *IgniteBuffer) ReadByteArray() *[]byte {
+	tp := buf.ReadByte()
+
+	if tp == Null {
+		return nil
+	} else if tp != ByteArray {
+		panic(fmt.Sprintf("wrong type. [expecting=%d, actual=%d]", ByteArray, tp))
 	}
 
 	length := buf.ReadInt()
 	res := buf.buf[buf.idx:(buf.idx + length)]
 	buf.incrementIndex(length)
-	return res
+	return &res
+}
+
+func (buf *IgniteBuffer) ReadUuid() *uuid.UUID {
+	tp := buf.ReadByte()
+
+	if tp == Null {
+		return nil
+	} else if tp != UUID {
+		panic(fmt.Sprintf("wrong type. [expecting=%d, actual=%d]", ByteArray, tp))
+	}
+
+	res, err := uuid.FromBytes(buf.buf[buf.idx:(buf.idx + 16)])
+	if err != nil {
+		panic(err)
+	}
+
+	return &res
 }
 
 func (buf *IgniteBuffer) Reset() {
-	buf.idx = 0
+	buf.Position(0)
+}
+
+func (buf *IgniteBuffer) Position(pos int) {
+	buf.idx = pos
 }
 
 func (buf *IgniteBuffer) Limit(limit int) {
@@ -136,10 +193,10 @@ func (buf *IgniteBuffer) incrementIndex(cnt int) {
 	}
 }
 
-func (buf *IgniteBuffer) HashMore() bool {
+func (buf *IgniteBuffer) HasMore() bool {
 	return buf.idx < buf.limit
 }
 
 func CreateIgniteBuffer() IgniteBuffer {
-	return IgniteBuffer{make([]byte, dfltBufSz), 0, int(dfltBufSz)}
+	return IgniteBuffer{make([]byte, DefaultBufferSize), 0, int(DefaultBufferSize)}
 }

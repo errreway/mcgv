@@ -56,9 +56,18 @@ func (ch Channel) receive(bytes int) error {
 func (ch Channel) handshake() error {
 	handshake := CreateHandshakeRequest()
 
-	ch.buf.WriteInt32(int32(handshake.Length()))
+	handshake.Features = &[]byte{1}
+
+	ch.buf.WriteInt32(-1) // Reserve space for actual length
 
 	handshake.Write(&ch.buf)
+
+	requestLen := ch.buf.idx - IntBytes
+
+	ch.buf.Reset()
+
+	ch.buf.WriteInt32(int32(requestLen))
+	ch.buf.Position(requestLen + IntBytes)
 
 	err := ch.Send()
 	if err != nil {
@@ -68,37 +77,36 @@ func (ch Channel) handshake() error {
 	ch.buf.Reset()
 
 	// Receives length + request_id + status_code
-	err = ch.receive(4 + 8 + 4)
+	err = ch.receive(IntBytes)
 	if err != nil {
 		return err
 	}
 
 	ch.buf.Reset()
 
-	respLen := ch.buf.ReadInt32()
-	reqId := ch.buf.ReadInt64()
-	errorCode := ch.buf.ReadInt32()
+	respLength := ch.buf.ReadInt32()
 
-	if errorCode != 0 {
-		return errors.New(fmt.Sprintf("erorr=%d, request_id=%d", errorCode, reqId))
-	}
-
-	ch.buf.Reset()
-
-	err = ch.receive(int(respLen))
+	err = ch.receive(int(respLength))
 	if err != nil {
 		return err
 	}
 
-	ch.buf.Reset()
+	ch.buf.Position(IntBytes)
+
+	success := ch.buf.ReadBoolean()
+
+	if !success {
+		resp := ch.buf.ReadHandshakeFailResponse()
+
+		return errors.New(fmt.Sprintf("error[code=%d,msg=%s,major=%d,minor%d,maint=%d]",
+			resp.Code, resp.Message, resp.Major, resp.Minor, resp.Maintenance))
+	}
 
 	resp := ch.buf.ReadHandshakeResponse()
 
-	if resp.Code == 0 {
-		return nil
-	}
+	fmt.Println(fmt.Sprintf("serverNodeId=%s", resp.NodeId))
 
-	return errors.New(resp.Message)
+	return nil
 }
 
 func CreateChannel(addr string) (*Channel, error) {

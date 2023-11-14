@@ -16,13 +16,17 @@
     },
     "Response" : {
         "Fields" : [
+            {"Name": "features", "Type" : "byte[]"},
+            {"Name": "nodeId", "Type" : "uuid"}
+        ]
+    },
+    "FailResponse" : {
+        "Fields" : [
+            {"Name": "major", "Type" : "short"},
+            {"Name": "minor", "Type" : "short"},
+            {"Name": "maintenance", "Type" : "short"},
+            {"Name": "message", "Type" : "string"},
             {"Name": "code", "Type" : "byte"}
-        ],
-        "Optional" : [
-            {"Name": "major", "Type" : "short", "Optional" :  "true"},
-            {"Name": "minor", "Type" : "short", "Optional" :  "true"},
-            {"Name": "maintenance", "Type" : "short", "Optional" :  "true"},
-            {"Name": "message", "Type" : "string", "Optional" :  "true"}
         ]
     }
 }

@@ -2,33 +2,29 @@
 package serdes
 
 type HandshakeRequest struct {
-    Code byte
-    Major int16
-    Minor int16
-    Maintenance int16
-    ClientType byte
-    Features []byte
-    UserAttributes map[string]string
-    Username string
-    Password string
+	Code           byte
+	Major          int16
+	Minor          int16
+	Maintenance    int16
+	ClientType     byte
+	Features       *[]byte
+	UserAttributes *map[string]string
+	Username       *string
+	Password       *string
 }
 
 func CreateHandshakeRequest() HandshakeRequest {
-    return HandshakeRequest{Code: 1, Major: 1, Minor: 7, Maintenance: 0, ClientType: 2}
+	return HandshakeRequest{Code: 1, Major: 1, Minor: 7, Maintenance: 0, ClientType: 2}
 }
 
 func (req *HandshakeRequest) Write(buf *IgniteBuffer) {
-    buf.WriteByte(req.Code)
-    buf.WriteInt16(req.Major)
-    buf.WriteInt16(req.Minor)
-    buf.WriteInt16(req.Maintenance)
-    buf.WriteByte(req.ClientType)
-    buf.WriteByteArray(req.Features)
-    buf.WriteStringString(req.UserAttributes)
-    buf.WriteString(req.Username)
-    buf.WriteString(req.Password)
-}
-
-func (req *HandshakeRequest) Length() int {
-    return 1 /*Code*/ + 2 /*Major*/ + 2 /*Minor*/ + 2 /*Maintenance*/ + 1 /*ClientType*/ + 1 + 4 + len(req.Features) + %!(EXTRA string=UserAttributes) + 1 + 4 + len(req.Username) + 1 + 4 + len(req.Password);
+	buf.WriteByte(req.Code)
+	buf.WriteInt16(req.Major)
+	buf.WriteInt16(req.Minor)
+	buf.WriteInt16(req.Maintenance)
+	buf.WriteByte(req.ClientType)
+	buf.WriteByteArray(req.Features)
+	buf.WriteStringString(req.UserAttributes)
+	buf.WriteString(req.Username)
+	buf.WriteString(req.Password)
 }

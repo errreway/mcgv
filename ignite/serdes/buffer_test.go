@@ -41,7 +41,7 @@ func TestNumbers(t *testing.T) {
 	}
 
 	buf.Reset()
-	buf.WriteByteArray(nums2)
+	buf.WriteByteArray(&nums2)
 	buf.Reset()
 
 	assert.Equal(t, nums2, buf.ReadByteArray(), "Must read same bytes as written")
@@ -52,7 +52,7 @@ func TestStrings(t *testing.T) {
 
 	str := "test"
 
-	buf.WriteString(str)
+	buf.WriteString(&str)
 	buf.Reset()
 
 	assert.Equal(t, str, buf.ReadString(), "Must read written string")
