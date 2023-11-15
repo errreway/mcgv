@@ -44,7 +44,7 @@ func TestNumbers(t *testing.T) {
 	buf.WriteByteArray(&nums2)
 	buf.Reset()
 
-	assert.Equal(t, nums2, buf.ReadByteArray(), "Must read same bytes as written")
+	assert.Equal(t, nums2, *buf.ReadByteArray(), "Must read same bytes as written")
 }
 
 func TestStrings(t *testing.T) {
@@ -55,5 +55,13 @@ func TestStrings(t *testing.T) {
 	buf.WriteString(&str)
 	buf.Reset()
 
-	assert.Equal(t, str, buf.ReadString(), "Must read written string")
+	assert.Equal(t, str, *buf.ReadString(), "Must read written string")
+}
+
+func TestNilString(t *testing.T) {
+	buf := CreateIgniteBuffer()
+
+	buf.WriteString(nil)
+	buf.Reset()
+	assert.Nil(t, buf.ReadString())
 }

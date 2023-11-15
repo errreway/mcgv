@@ -1,0 +1,13 @@
+{
+    "Name" : "cache_get_names",
+    "Code" : 1050,
+    "Request" : {
+        "Fields" : [
+        ]
+    },
+    "Response" : {
+        "Fields" : [
+            {"Name": "caches", "Type" : "string[]", "Unsafe" : true}
+        ]
+    }
+}

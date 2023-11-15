@@ -17,9 +17,16 @@ func TestCorrectAddresses(t *testing.T) {
 	assert.Error(t, err, "Addresses is empty!")
 }
 
-func TestHandshake(t *testing.T) {
+func TestCacheNames(t *testing.T) {
 	cli, err := Start(ClientConfiguration{"localhost:10800"})
 
 	assert.Nil(t, err)
 	assert.NotNil(t, cli)
+
+	names, err0 := cli.CacheNames()
+
+	assert.Nil(t, err0)
+	assert.Equal(t, 0, len(*names))
 }
+
+// TODO: implement nodeId read test.

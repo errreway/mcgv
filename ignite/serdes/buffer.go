@@ -12,11 +12,12 @@ const (
 	IntBytes                = 4
 	LongBytes               = 8
 
-	String    byte = 9
-	UUID      byte = 10
-	ByteArray byte = 12
-	MAP       byte = 25
-	Null      byte = 101
+	String      byte = 9
+	UUID        byte = 10
+	ByteArray   byte = 12
+	StringArray byte = 20
+	MAP         byte = 25
+	Null        byte = 101
 )
 
 type IgniteBuffer struct {
@@ -79,6 +80,18 @@ func (buf *IgniteBuffer) WriteByteArray(v *[]byte) {
 	buf.WriteByte(ByteArray)
 	buf.WriteInt(len(*v))
 	buf.writeBytes(v)
+}
+
+func (buf *IgniteBuffer) WriteStringArray(v *[]string) {
+	if v == nil {
+		buf.WriteByte(Null)
+		return
+	}
+	buf.WriteByte(StringArray)
+	buf.WriteInt(len(*v))
+	for _, str := range *v {
+		buf.WriteString(&str)
+	}
 }
 
 func (buf *IgniteBuffer) WriteUuid(v *uuid.UUID) {
@@ -157,6 +170,27 @@ func (buf *IgniteBuffer) ReadByteArray() *[]byte {
 	return &res
 }
 
+func (buf *IgniteBuffer) ReadStringArray() *[]string {
+	tp := buf.ReadByte()
+
+	if tp == Null {
+		return nil
+	} else if tp != StringArray {
+		panic(fmt.Sprintf("wrong type. [expecting=%d, actual=%d]", StringArray, tp))
+	}
+
+	return buf.ReadStringArrayWithoutType()
+}
+
+func (buf *IgniteBuffer) ReadStringArrayWithoutType() *[]string {
+	length := buf.ReadInt()
+	strings := make([]string, length)
+	for i := 0; i < length; i++ {
+		strings[i] = *buf.ReadString()
+	}
+	return &strings
+}
+
 func (buf *IgniteBuffer) ReadUuid() *uuid.UUID {
 	tp := buf.ReadByte()
 
@@ -176,6 +210,7 @@ func (buf *IgniteBuffer) ReadUuid() *uuid.UUID {
 
 func (buf *IgniteBuffer) Reset() {
 	buf.Position(0)
+	buf.Limit(len(buf.buf))
 }
 
 func (buf *IgniteBuffer) Position(pos int) {

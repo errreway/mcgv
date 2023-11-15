@@ -5,33 +5,44 @@ import (
 	"sbt.ru/ignite-go/ignite/ignite/serdes"
 )
 
-type IgniteClient interface {
+//go:generate go run gen_req_resp.go
+
+type Client interface {
 	Version() (string, error)
 
 	Close() error
+
+	CacheNames() (*[]string, error)
 }
 
 type ClientConfiguration struct {
 	Addresses string
 }
 
-type igniteClientImpl struct {
+type ClientImpl struct {
 	cfg ClientConfiguration
 
 	ch *serdes.Channel
 }
 
-func (cli igniteClientImpl) Version() (string, error) {
+func (cli ClientImpl) CacheNames() (*[]string, error) {
+	resp, err := cli.ch.Send(serdes.CreateCacheGetNamesRequest())
+	if err != nil {
+		return nil, err
+	}
+
+	return resp.(serdes.CacheGetNamesResponse).Caches, nil
+}
+
+func (cli ClientImpl) Version() (string, error) {
 	return "unimplemented", nil
 }
 
-func (cli igniteClientImpl) Close() error {
+func (cli ClientImpl) Close() error {
 	return cli.ch.Close()
 }
 
-//go:generate go run gen_req_resp.go
-
-func Start(cfg ClientConfiguration) (IgniteClient, error) {
+func Start(cfg ClientConfiguration) (Client, error) {
 	if len(cfg.Addresses) == 0 {
 		return nil, errors.New("addresses is empty")
 	}
@@ -42,5 +53,5 @@ func Start(cfg ClientConfiguration) (IgniteClient, error) {
 		return nil, err
 	}
 
-	return igniteClientImpl{cfg, ch}, nil
+	return ClientImpl{cfg, ch}, nil
 }
