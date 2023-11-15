@@ -80,7 +80,7 @@ func main() {
 func generateMapsSerdes(serdesDir string) {
 	fmt.Println("Generating maps serdes methods")
 
-	f, err := os.Create(filepath.Join(serdesDir, "maps_serdes.go"))
+	f, err := os.Create(filepath.Join(serdesDir, "gen_maps_serdes.go"))
 	defer f.Close()
 	if err != nil {
 		panic(err)
@@ -98,7 +98,7 @@ func generateMapsSerdes(serdesDir string) {
 	}
 	sort.Strings(types)
 
-	for _, keyType := range types {
+	for i, keyType := range types {
 		goKeyType := typeMap[keyType]
 		if strings.HasSuffix(keyType, "[]") {
 			fmt.Println(fmt.Sprintf("Skip map key [key=%s]", keyType))
@@ -108,7 +108,10 @@ func generateMapsSerdes(serdesDir string) {
 		isGoKeyTypePointer := goKeyType[0] == '*'
 		goKeyType = removePointer(goKeyType)
 
-		for _, valType := range types {
+		for j, valType := range types {
+			if j != 0 || i != 0 {
+				line("", f)
+			}
 			goValType := typeMap[valType]
 			isGoValTypePointer := goValType[0] == '*'
 			goValType = removePointer(goValType)
@@ -141,7 +144,6 @@ func generateMapsSerdes(serdesDir string) {
 			line(TAB+"}", f)
 
 			line("}", f)
-			line("", f)
 		}
 	}
 }
