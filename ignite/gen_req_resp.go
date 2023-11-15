@@ -12,6 +12,7 @@ import (
 	"golang.org/x/text/language"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -89,7 +90,16 @@ func generateMapsSerdes(serdesDir string) {
 	line("import \"github.com/google/uuid\"", f)
 	line("", f)
 
-	for keyType, goKeyType := range typeMap {
+	types := make([]string, len(typeMap))
+	i := 0
+	for k := range typeMap {
+		types[i] = k
+		i++
+	}
+	sort.Strings(types)
+
+	for _, keyType := range types {
+		goKeyType := typeMap[keyType]
 		if strings.HasSuffix(keyType, "[]") {
 			fmt.Println(fmt.Sprintf("Skip map key [key=%s]", keyType))
 			continue
@@ -98,7 +108,8 @@ func generateMapsSerdes(serdesDir string) {
 		isGoKeyTypePointer := goKeyType[0] == '*'
 		goKeyType = removePointer(goKeyType)
 
-		for valType, goValType := range typeMap {
+		for _, valType := range types {
+			goValType := typeMap[valType]
 			isGoValTypePointer := goValType[0] == '*'
 			goValType = removePointer(goValType)
 
