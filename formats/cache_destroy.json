@@ -1,0 +1,13 @@
+{
+  "Name" : "cache_destroy",
+  "Code" : 1056,
+  "Request" : {
+    "Fields" : [
+      {"Name": "cacheId", "Type" : "int"}
+    ]
+  },
+  "Response" : {
+    "Fields" : [
+    ]
+  }
+}

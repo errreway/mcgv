@@ -6,7 +6,8 @@ import (
 )
 
 const (
-	cacheName = "new-cache"
+	cacheName      = "new-cache"
+	DefaultAddress = "localhost:10800"
 )
 
 func TestCorrectAddresses(t *testing.T) {
@@ -22,7 +23,7 @@ func TestCorrectAddresses(t *testing.T) {
 }
 
 func TestCacheNames(t *testing.T) {
-	cli, err := Start(ClientConfiguration{"localhost:10800"})
+	cli, err := Start(ClientConfiguration{DefaultAddress})
 
 	assert.Nil(t, err)
 	assert.NotNil(t, cli)
@@ -41,7 +42,7 @@ func TestCacheNames(t *testing.T) {
 	assert.Equal(t, cacheName, cache.Name())
 
 	var cli0 Client
-	cli0, err = Start(ClientConfiguration{"localhost:10800"})
+	cli0, err = Start(ClientConfiguration{DefaultAddress})
 
 	assert.Nil(t, err)
 	assert.NotNil(t, cli0)
@@ -63,4 +64,26 @@ func TestCacheNames(t *testing.T) {
 	assert.Equal(t, cacheName, (*names)[0])
 }
 
-// TODO: implement nodeId read test.
+func TestDestroyCache(t *testing.T) {
+	cli, err := Start(ClientConfiguration{DefaultAddress})
+
+	assert.Nil(t, err)
+	assert.NotNil(t, cli)
+
+	toDestroy := "to-destroy"
+
+	var cache Cache
+	cache, err = cli.CreateCache(toDestroy)
+
+	assert.Nil(t, err)
+	assert.NotNil(t, cache)
+	assert.Equal(t, toDestroy, cache.Name())
+
+	err = cli.DestroyCache(toDestroy)
+
+	var names *[]string
+	names, err = cli.CacheNames()
+
+	assert.Nil(t, err)
+	assert.Equal(t, 0, len(*names))
+}

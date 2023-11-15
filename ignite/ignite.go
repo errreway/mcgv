@@ -17,6 +17,8 @@ type Client interface {
 	CreateCache(name string) (Cache, error)
 
 	GetOrCreateCache(name string) (Cache, error)
+
+	DestroyCache(name string) error
 }
 
 type ClientConfiguration struct {
@@ -78,6 +80,17 @@ func (cli ClientImpl) GetOrCreateCache(name string) (Cache, error) {
 	}
 
 	return CacheImpl{&cli, &name}, nil
+}
+
+func (cli ClientImpl) DestroyCache(name string) error {
+	_, err := cli.ch.Send(serdes.CacheDestroyRequest{CacheId: CacheId(name)})
+	if err != nil {
+		return err
+	}
+
+	delete(cli.caches, name)
+
+	return nil
 }
 
 func (cli ClientImpl) Version() (string, error) {

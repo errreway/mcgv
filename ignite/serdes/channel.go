@@ -3,25 +3,22 @@ package serdes
 import (
 	"errors"
 	"fmt"
+	"github.com/google/uuid"
 	"net"
 )
 
 type Channel struct {
-	conn net.Conn
-
-	buf IgniteBuffer
-
-	idGen int64
-
+	conn      net.Conn
+	buf       IgniteBuffer
+	idGen     int64
 	topVer    int64
 	minTopVer int32
+	serverId  *uuid.UUID
 }
 
 type IgniteRequest interface {
 	Write(buf *IgniteBuffer)
-
 	OpCode() int16
-
 	ReadResponse(buf *IgniteBuffer) interface{}
 }
 
@@ -186,7 +183,7 @@ func (ch Channel) handshake() error {
 
 	resp := handshake.ReadResponse(&ch.buf).(HandshakeResponse)
 
-	fmt.Println(fmt.Sprintf("serverNodeId=%s", resp.NodeId))
+	ch.serverId = resp.NodeId
 
 	return nil
 }
@@ -212,7 +209,7 @@ func CreateChannel(addr string) (*Channel, error) {
 		return nil, err
 	}
 
-	ch := Channel{conn, CreateIgniteBuffer(), 0, 0, 0}
+	ch := Channel{conn, CreateIgniteBuffer(), 0, 0, 0, nil}
 
 	err = ch.handshake()
 	if err != nil {
