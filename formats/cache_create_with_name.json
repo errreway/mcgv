@@ -1,0 +1,13 @@
+{
+  "Name" : "cache_create_with_name",
+  "Code" : 1051,
+  "Request" : {
+    "Fields" : [
+      {"Name": "cache", "Type" : "string"}
+    ]
+  },
+  "Response" : {
+    "Fields" : [
+    ]
+  }
+}

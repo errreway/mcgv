@@ -12,11 +12,12 @@ import (
 	"golang.org/x/text/language"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 )
 
 const (
-	TAB = "    "
+	TAB = "\t"
 )
 
 var imports = map[string]string{
@@ -225,12 +226,27 @@ func generateImports(request *Request, f *os.File) bool {
 func genStruct(request *Request, typeName string, f *os.File) {
 	line(fmt.Sprintf("type %s struct {", typeName), f)
 
+	maxNameLen := 0
 	for _, fld := range request.Fields {
-		line(fmt.Sprintf(TAB+"%s %s", exportedName(fld.Name), goType(fld.Type, &fld)), f)
+		if maxNameLen < len(fld.Name) {
+			maxNameLen = len(fld.Name)
+		}
+	}
+	for _, fld := range request.Optional {
+		if maxNameLen < len(fld.Name) {
+			maxNameLen = len(fld.Name)
+		}
+	}
+
+	fldFormat := TAB + "%-" + strconv.Itoa(maxNameLen) + "s %s"
+	fmt.Println(fldFormat)
+
+	for _, fld := range request.Fields {
+		line(fmt.Sprintf(fldFormat, exportedName(fld.Name), goType(fld.Type, &fld)), f)
 	}
 
 	for _, fld := range request.Optional {
-		line(fmt.Sprintf(TAB+"%s %s", exportedName(fld.Name), goType(fld.Type, &fld)), f)
+		line(fmt.Sprintf(fldFormat, exportedName(fld.Name), goType(fld.Type, &fld)), f)
 	}
 
 	line("}", f)

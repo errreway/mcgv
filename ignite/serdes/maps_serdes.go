@@ -3,7 +3,7 @@ package serdes
 
 import "github.com/google/uuid"
 
-func (buf *IgniteBuffer) WriteStringStringArray(m *map[string][]string) {
+func (buf *IgniteBuffer) WriteUuidString(m *map[uuid.UUID]string) {
 	if m == nil {
 		buf.WriteByte(Null)
 		return
@@ -13,112 +13,7 @@ func (buf *IgniteBuffer) WriteStringStringArray(m *map[string][]string) {
 	buf.WriteByte(1)
 
 	for key, val := range *m {
-		buf.WriteString(&key)
-		buf.WriteStringArray(&val)
-	}
-}
-
-func (buf *IgniteBuffer) WriteStringUuid(m *map[string]uuid.UUID) {
-	if m == nil {
-		buf.WriteByte(Null)
-		return
-	}
-	buf.WriteByte(MAP)
-	buf.WriteInt(len(*m))
-	buf.WriteByte(1)
-
-	for key, val := range *m {
-		buf.WriteString(&key)
-		buf.WriteUuid(&val)
-	}
-}
-
-func (buf *IgniteBuffer) WriteStringByte(m *map[string]byte) {
-	if m == nil {
-		buf.WriteByte(Null)
-		return
-	}
-	buf.WriteByte(MAP)
-	buf.WriteInt(len(*m))
-	buf.WriteByte(1)
-
-	for key, val := range *m {
-		buf.WriteString(&key)
-		buf.WriteByte(val)
-	}
-}
-
-func (buf *IgniteBuffer) WriteStringByteArray(m *map[string][]byte) {
-	if m == nil {
-		buf.WriteByte(Null)
-		return
-	}
-	buf.WriteByte(MAP)
-	buf.WriteInt(len(*m))
-	buf.WriteByte(1)
-
-	for key, val := range *m {
-		buf.WriteString(&key)
-		buf.WriteByteArray(&val)
-	}
-}
-
-func (buf *IgniteBuffer) WriteStringInt16(m *map[string]int16) {
-	if m == nil {
-		buf.WriteByte(Null)
-		return
-	}
-	buf.WriteByte(MAP)
-	buf.WriteInt(len(*m))
-	buf.WriteByte(1)
-
-	for key, val := range *m {
-		buf.WriteString(&key)
-		buf.WriteInt16(val)
-	}
-}
-
-func (buf *IgniteBuffer) WriteStringInt32(m *map[string]int32) {
-	if m == nil {
-		buf.WriteByte(Null)
-		return
-	}
-	buf.WriteByte(MAP)
-	buf.WriteInt(len(*m))
-	buf.WriteByte(1)
-
-	for key, val := range *m {
-		buf.WriteString(&key)
-		buf.WriteInt32(val)
-	}
-}
-
-func (buf *IgniteBuffer) WriteStringInt64(m *map[string]int64) {
-	if m == nil {
-		buf.WriteByte(Null)
-		return
-	}
-	buf.WriteByte(MAP)
-	buf.WriteInt(len(*m))
-	buf.WriteByte(1)
-
-	for key, val := range *m {
-		buf.WriteString(&key)
-		buf.WriteInt64(val)
-	}
-}
-
-func (buf *IgniteBuffer) WriteStringString(m *map[string]string) {
-	if m == nil {
-		buf.WriteByte(Null)
-		return
-	}
-	buf.WriteByte(MAP)
-	buf.WriteInt(len(*m))
-	buf.WriteByte(1)
-
-	for key, val := range *m {
-		buf.WriteString(&key)
+		buf.WriteUuid(&key)
 		buf.WriteString(&val)
 	}
 }
@@ -228,7 +123,7 @@ func (buf *IgniteBuffer) WriteUuidInt64(m *map[uuid.UUID]int64) {
 	}
 }
 
-func (buf *IgniteBuffer) WriteUuidString(m *map[uuid.UUID]string) {
+func (buf *IgniteBuffer) WriteByteInt32(m *map[byte]int32) {
 	if m == nil {
 		buf.WriteByte(Null)
 		return
@@ -238,8 +133,23 @@ func (buf *IgniteBuffer) WriteUuidString(m *map[uuid.UUID]string) {
 	buf.WriteByte(1)
 
 	for key, val := range *m {
-		buf.WriteUuid(&key)
-		buf.WriteString(&val)
+		buf.WriteByte(key)
+		buf.WriteInt32(val)
+	}
+}
+
+func (buf *IgniteBuffer) WriteByteInt64(m *map[byte]int64) {
+	if m == nil {
+		buf.WriteByte(Null)
+		return
+	}
+	buf.WriteByte(MAP)
+	buf.WriteInt(len(*m))
+	buf.WriteByte(1)
+
+	for key, val := range *m {
+		buf.WriteByte(key)
+		buf.WriteInt64(val)
 	}
 }
 
@@ -330,51 +240,6 @@ func (buf *IgniteBuffer) WriteByteInt16(m *map[byte]int16) {
 	for key, val := range *m {
 		buf.WriteByte(key)
 		buf.WriteInt16(val)
-	}
-}
-
-func (buf *IgniteBuffer) WriteByteInt32(m *map[byte]int32) {
-	if m == nil {
-		buf.WriteByte(Null)
-		return
-	}
-	buf.WriteByte(MAP)
-	buf.WriteInt(len(*m))
-	buf.WriteByte(1)
-
-	for key, val := range *m {
-		buf.WriteByte(key)
-		buf.WriteInt32(val)
-	}
-}
-
-func (buf *IgniteBuffer) WriteByteInt64(m *map[byte]int64) {
-	if m == nil {
-		buf.WriteByte(Null)
-		return
-	}
-	buf.WriteByte(MAP)
-	buf.WriteInt(len(*m))
-	buf.WriteByte(1)
-
-	for key, val := range *m {
-		buf.WriteByte(key)
-		buf.WriteInt64(val)
-	}
-}
-
-func (buf *IgniteBuffer) WriteInt16Byte(m *map[int16]byte) {
-	if m == nil {
-		buf.WriteByte(Null)
-		return
-	}
-	buf.WriteByte(MAP)
-	buf.WriteInt(len(*m))
-	buf.WriteByte(1)
-
-	for key, val := range *m {
-		buf.WriteInt16(key)
-		buf.WriteByte(val)
 	}
 }
 
@@ -483,7 +348,7 @@ func (buf *IgniteBuffer) WriteInt16Uuid(m *map[int16]uuid.UUID) {
 	}
 }
 
-func (buf *IgniteBuffer) WriteInt32StringArray(m *map[int32][]string) {
+func (buf *IgniteBuffer) WriteInt16Byte(m *map[int16]byte) {
 	if m == nil {
 		buf.WriteByte(Null)
 		return
@@ -493,53 +358,8 @@ func (buf *IgniteBuffer) WriteInt32StringArray(m *map[int32][]string) {
 	buf.WriteByte(1)
 
 	for key, val := range *m {
-		buf.WriteInt32(key)
-		buf.WriteStringArray(&val)
-	}
-}
-
-func (buf *IgniteBuffer) WriteInt32Uuid(m *map[int32]uuid.UUID) {
-	if m == nil {
-		buf.WriteByte(Null)
-		return
-	}
-	buf.WriteByte(MAP)
-	buf.WriteInt(len(*m))
-	buf.WriteByte(1)
-
-	for key, val := range *m {
-		buf.WriteInt32(key)
-		buf.WriteUuid(&val)
-	}
-}
-
-func (buf *IgniteBuffer) WriteInt32Byte(m *map[int32]byte) {
-	if m == nil {
-		buf.WriteByte(Null)
-		return
-	}
-	buf.WriteByte(MAP)
-	buf.WriteInt(len(*m))
-	buf.WriteByte(1)
-
-	for key, val := range *m {
-		buf.WriteInt32(key)
+		buf.WriteInt16(key)
 		buf.WriteByte(val)
-	}
-}
-
-func (buf *IgniteBuffer) WriteInt32ByteArray(m *map[int32][]byte) {
-	if m == nil {
-		buf.WriteByte(Null)
-		return
-	}
-	buf.WriteByte(MAP)
-	buf.WriteInt(len(*m))
-	buf.WriteByte(1)
-
-	for key, val := range *m {
-		buf.WriteInt32(key)
-		buf.WriteByteArray(&val)
 	}
 }
 
@@ -600,6 +420,81 @@ func (buf *IgniteBuffer) WriteInt32String(m *map[int32]string) {
 	for key, val := range *m {
 		buf.WriteInt32(key)
 		buf.WriteString(&val)
+	}
+}
+
+func (buf *IgniteBuffer) WriteInt32StringArray(m *map[int32][]string) {
+	if m == nil {
+		buf.WriteByte(Null)
+		return
+	}
+	buf.WriteByte(MAP)
+	buf.WriteInt(len(*m))
+	buf.WriteByte(1)
+
+	for key, val := range *m {
+		buf.WriteInt32(key)
+		buf.WriteStringArray(&val)
+	}
+}
+
+func (buf *IgniteBuffer) WriteInt32Uuid(m *map[int32]uuid.UUID) {
+	if m == nil {
+		buf.WriteByte(Null)
+		return
+	}
+	buf.WriteByte(MAP)
+	buf.WriteInt(len(*m))
+	buf.WriteByte(1)
+
+	for key, val := range *m {
+		buf.WriteInt32(key)
+		buf.WriteUuid(&val)
+	}
+}
+
+func (buf *IgniteBuffer) WriteInt32Byte(m *map[int32]byte) {
+	if m == nil {
+		buf.WriteByte(Null)
+		return
+	}
+	buf.WriteByte(MAP)
+	buf.WriteInt(len(*m))
+	buf.WriteByte(1)
+
+	for key, val := range *m {
+		buf.WriteInt32(key)
+		buf.WriteByte(val)
+	}
+}
+
+func (buf *IgniteBuffer) WriteInt32ByteArray(m *map[int32][]byte) {
+	if m == nil {
+		buf.WriteByte(Null)
+		return
+	}
+	buf.WriteByte(MAP)
+	buf.WriteInt(len(*m))
+	buf.WriteByte(1)
+
+	for key, val := range *m {
+		buf.WriteInt32(key)
+		buf.WriteByteArray(&val)
+	}
+}
+
+func (buf *IgniteBuffer) WriteInt64Uuid(m *map[int64]uuid.UUID) {
+	if m == nil {
+		buf.WriteByte(Null)
+		return
+	}
+	buf.WriteByte(MAP)
+	buf.WriteInt(len(*m))
+	buf.WriteByte(1)
+
+	for key, val := range *m {
+		buf.WriteInt64(key)
+		buf.WriteUuid(&val)
 	}
 }
 
@@ -708,7 +603,7 @@ func (buf *IgniteBuffer) WriteInt64StringArray(m *map[int64][]string) {
 	}
 }
 
-func (buf *IgniteBuffer) WriteInt64Uuid(m *map[int64]uuid.UUID) {
+func (buf *IgniteBuffer) WriteStringString(m *map[string]string) {
 	if m == nil {
 		buf.WriteByte(Null)
 		return
@@ -718,7 +613,112 @@ func (buf *IgniteBuffer) WriteInt64Uuid(m *map[int64]uuid.UUID) {
 	buf.WriteByte(1)
 
 	for key, val := range *m {
-		buf.WriteInt64(key)
+		buf.WriteString(&key)
+		buf.WriteString(&val)
+	}
+}
+
+func (buf *IgniteBuffer) WriteStringStringArray(m *map[string][]string) {
+	if m == nil {
+		buf.WriteByte(Null)
+		return
+	}
+	buf.WriteByte(MAP)
+	buf.WriteInt(len(*m))
+	buf.WriteByte(1)
+
+	for key, val := range *m {
+		buf.WriteString(&key)
+		buf.WriteStringArray(&val)
+	}
+}
+
+func (buf *IgniteBuffer) WriteStringUuid(m *map[string]uuid.UUID) {
+	if m == nil {
+		buf.WriteByte(Null)
+		return
+	}
+	buf.WriteByte(MAP)
+	buf.WriteInt(len(*m))
+	buf.WriteByte(1)
+
+	for key, val := range *m {
+		buf.WriteString(&key)
 		buf.WriteUuid(&val)
+	}
+}
+
+func (buf *IgniteBuffer) WriteStringByte(m *map[string]byte) {
+	if m == nil {
+		buf.WriteByte(Null)
+		return
+	}
+	buf.WriteByte(MAP)
+	buf.WriteInt(len(*m))
+	buf.WriteByte(1)
+
+	for key, val := range *m {
+		buf.WriteString(&key)
+		buf.WriteByte(val)
+	}
+}
+
+func (buf *IgniteBuffer) WriteStringByteArray(m *map[string][]byte) {
+	if m == nil {
+		buf.WriteByte(Null)
+		return
+	}
+	buf.WriteByte(MAP)
+	buf.WriteInt(len(*m))
+	buf.WriteByte(1)
+
+	for key, val := range *m {
+		buf.WriteString(&key)
+		buf.WriteByteArray(&val)
+	}
+}
+
+func (buf *IgniteBuffer) WriteStringInt16(m *map[string]int16) {
+	if m == nil {
+		buf.WriteByte(Null)
+		return
+	}
+	buf.WriteByte(MAP)
+	buf.WriteInt(len(*m))
+	buf.WriteByte(1)
+
+	for key, val := range *m {
+		buf.WriteString(&key)
+		buf.WriteInt16(val)
+	}
+}
+
+func (buf *IgniteBuffer) WriteStringInt32(m *map[string]int32) {
+	if m == nil {
+		buf.WriteByte(Null)
+		return
+	}
+	buf.WriteByte(MAP)
+	buf.WriteInt(len(*m))
+	buf.WriteByte(1)
+
+	for key, val := range *m {
+		buf.WriteString(&key)
+		buf.WriteInt32(val)
+	}
+}
+
+func (buf *IgniteBuffer) WriteStringInt64(m *map[string]int64) {
+	if m == nil {
+		buf.WriteByte(Null)
+		return
+	}
+	buf.WriteByte(MAP)
+	buf.WriteInt(len(*m))
+	buf.WriteByte(1)
+
+	for key, val := range *m {
+		buf.WriteString(&key)
+		buf.WriteInt64(val)
 	}
 }
