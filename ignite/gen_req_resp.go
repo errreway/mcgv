@@ -239,12 +239,10 @@ func genStruct(request *Request, typeName string, f *os.File) {
 	}
 
 	fldFormat := TAB + "%-" + strconv.Itoa(maxNameLen) + "s %s"
-	fmt.Println(fldFormat)
 
 	for _, fld := range request.Fields {
 		line(fmt.Sprintf(fldFormat, exportedName(fld.Name), goType(fld.Type, &fld)), f)
 	}
-
 	for _, fld := range request.Optional {
 		line(fmt.Sprintf(fldFormat, exportedName(fld.Name), goType(fld.Type, &fld)), f)
 	}
