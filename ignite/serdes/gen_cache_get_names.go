@@ -12,10 +12,6 @@ func (req CacheGetNamesRequest) OpCode() int16 {
 	return 1050
 }
 
-func CreateCacheGetNamesRequest() CacheGetNamesRequest {
-	return CacheGetNamesRequest{}
-}
-
 func (req CacheGetNamesRequest) Write(buf *IgniteBuffer) {
 }
 

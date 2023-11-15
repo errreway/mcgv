@@ -5,6 +5,10 @@ import (
 	"testing"
 )
 
+const (
+	cacheName = "new-cache"
+)
+
 func TestCorrectAddresses(t *testing.T) {
 	cli, err := Start(ClientConfiguration{})
 
@@ -23,10 +27,40 @@ func TestCacheNames(t *testing.T) {
 	assert.Nil(t, err)
 	assert.NotNil(t, cli)
 
-	names, err0 := cli.CacheNames()
+	var names *[]string
+	names, err = cli.CacheNames()
 
-	assert.Nil(t, err0)
+	assert.Nil(t, err)
 	assert.Equal(t, 0, len(*names))
+
+	var cache Cache
+	cache, err = cli.CreateCache(cacheName)
+
+	assert.Nil(t, err)
+	assert.NotNil(t, cache)
+	assert.Equal(t, cacheName, cache.Name())
+
+	var cli0 Client
+	cli0, err = Start(ClientConfiguration{"localhost:10800"})
+
+	assert.Nil(t, err)
+	assert.NotNil(t, cli0)
+
+	cache, err = cli0.CreateCache(cacheName)
+
+	assert.NotNil(t, err)
+	assert.Nil(t, cache)
+
+	cache, err = cli0.GetOrCreateCache(cacheName)
+
+	assert.Nil(t, err)
+	assert.NotNil(t, cache)
+
+	names, err = cli.CacheNames()
+
+	assert.Nil(t, err)
+	assert.Equal(t, 1, len(*names))
+	assert.Equal(t, cacheName, (*names)[0])
 }
 
 // TODO: implement nodeId read test.

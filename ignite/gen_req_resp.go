@@ -199,8 +199,9 @@ func generateRequest(format *Format, serdesDir string) {
 	line("", f)
 	genOpCode(format.Request, requestType, format.Code, f)
 	line("", f)
-	genConstructor(format.Request, requestType, f)
-	line("", f)
+	if genConstructor(format.Request, requestType, f) {
+		line("", f)
+	}
 	genWrite(format.Request, requestType, f)
 	line("", f)
 	genReadResponse(format.Response, requestType, responseType, "ReadResponse", f)
@@ -292,7 +293,16 @@ func genReadResponse(response *Request, requestType string, responseType string,
 	line("}", f)
 }
 
-func genConstructor(request *Request, typeName string, f *os.File) {
+func genConstructor(request *Request, typeName string, f *os.File) bool {
+	constructorRequired := false
+	for _, fld := range request.Fields {
+		constructorRequired = constructorRequired || fld.Value != ""
+	}
+
+	if !constructorRequired {
+		return false
+	}
+
 	line(fmt.Sprintf("func %s() %s {", constructorName(typeName), typeName), f)
 
 	var dfltVals string
@@ -308,6 +318,8 @@ func genConstructor(request *Request, typeName string, f *os.File) {
 
 	line(fmt.Sprintf(TAB+"return %s{%s}", typeName, dfltVals), f)
 	line("}", f)
+
+	return true
 }
 
 func genWrite(request *Request, typeName string, f *os.File) {

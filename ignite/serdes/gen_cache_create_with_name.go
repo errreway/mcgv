@@ -12,10 +12,6 @@ func (req CacheCreateWithNameRequest) OpCode() int16 {
 	return 1051
 }
 
-func CreateCacheCreateWithNameRequest() CacheCreateWithNameRequest {
-	return CacheCreateWithNameRequest{}
-}
-
 func (req CacheCreateWithNameRequest) Write(buf *IgniteBuffer) {
 	buf.WriteString(req.Cache)
 }

@@ -197,10 +197,18 @@ func (buf *IgniteBuffer) ReadUuid() *uuid.UUID {
 	if tp == Null {
 		return nil
 	} else if tp != UUID {
-		panic(fmt.Sprintf("wrong type. [expecting=%d, actual=%d]", ByteArray, tp))
+		panic(fmt.Sprintf("wrong type. [expecting=%d, actual=%d]", UUID, tp))
 	}
 
-	res, err := uuid.FromBytes(buf.buf[buf.idx:(buf.idx + 16)])
+	mostSigBits := buf.ReadInt64()
+	leastSigBits := buf.ReadInt64()
+
+	bytes := make([]byte, 16)
+
+	binary.BigEndian.PutUint64(bytes, uint64(mostSigBits))
+	binary.BigEndian.PutUint64(bytes[8:], uint64(leastSigBits))
+
+	res, err := uuid.FromBytes(bytes)
 	if err != nil {
 		panic(err)
 	}
