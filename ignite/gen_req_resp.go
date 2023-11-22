@@ -147,6 +147,7 @@ func generateTypes(serdesDir string) {
 	typesMap := make(map[string]Type)
 
 	for _, tp := range typesList.Types {
+		fmt.Println(fmt.Sprintf("|--> type [name=%s]", tp.Name))
 		typesMap[tp.Name] = tp
 		generateStruct(&tp, tp.Name, f)
 		customTypes[tp.Name] = tp.Name
@@ -169,11 +170,8 @@ func generateTypes(serdesDir string) {
 		})
 	}
 
-	for tp, tpPtr := range typesMap {
-		fmt.Println(fmt.Sprintf("Types[name=%s,tpPtr=%s]", tp, tpPtr))
-	}
-
 	for compType, unsafe := range arrayWriteMethodRequired {
+		fmt.Println(fmt.Sprintf("|--> array [name=%s]", compType))
 		generateWriteArray(typesMap[compType], unsafe, f)
 		generateReadArray(typesMap[compType], unsafe, f)
 	}

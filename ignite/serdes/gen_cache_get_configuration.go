@@ -11,7 +11,7 @@ type CacheGetConfigurationResponse struct {
 }
 
 func (req CacheGetConfigurationRequest) OpCode() int16 {
-	return 1056
+	return 1055
 }
 
 func (req CacheGetConfigurationRequest) Write(buf *IgniteBuffer) {

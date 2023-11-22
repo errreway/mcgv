@@ -117,6 +117,8 @@ func (buf *IgniteBuffer) ReadCacheKeyConfiguration() CacheKeyConfiguration {
 }
 
 type CacheConfiguration struct {
+	Length                        int32
+	AtomicityMode                 int32
 	Backups                       int32
 	CacheMode                     int32
 	CopyOnRead                    bool
@@ -124,8 +126,8 @@ type CacheConfiguration struct {
 	EagerTTL                      bool
 	StatisticsEnabled             bool
 	GroupName                     *string
-	Invalidate                    bool
 	DefaultLockTimeout            int64
+	MaxConcurrentAsyncOperations  int32
 	MaxQueryIterators             int32
 	Name                          *string
 	IsOnheapCacheEnabled          bool
@@ -149,6 +151,8 @@ type CacheConfiguration struct {
 }
 
 func (req CacheConfiguration) Write(buf *IgniteBuffer) {
+	buf.WriteInt32(req.Length)
+	buf.WriteInt32(req.AtomicityMode)
 	buf.WriteInt32(req.Backups)
 	buf.WriteInt32(req.CacheMode)
 	buf.WriteBool(req.CopyOnRead)
@@ -156,8 +160,8 @@ func (req CacheConfiguration) Write(buf *IgniteBuffer) {
 	buf.WriteBool(req.EagerTTL)
 	buf.WriteBool(req.StatisticsEnabled)
 	buf.WriteString(req.GroupName)
-	buf.WriteBool(req.Invalidate)
 	buf.WriteInt64(req.DefaultLockTimeout)
+	buf.WriteInt32(req.MaxConcurrentAsyncOperations)
 	buf.WriteInt32(req.MaxQueryIterators)
 	buf.WriteString(req.Name)
 	buf.WriteBool(req.IsOnheapCacheEnabled)
@@ -182,6 +186,8 @@ func (req CacheConfiguration) Write(buf *IgniteBuffer) {
 
 func (buf *IgniteBuffer) ReadCacheConfiguration() CacheConfiguration {
 	resp := CacheConfiguration{}
+	resp.Length = buf.ReadInt32()
+	resp.AtomicityMode = buf.ReadInt32()
 	resp.Backups = buf.ReadInt32()
 	resp.CacheMode = buf.ReadInt32()
 	resp.CopyOnRead = buf.ReadBool()
@@ -189,8 +195,8 @@ func (buf *IgniteBuffer) ReadCacheConfiguration() CacheConfiguration {
 	resp.EagerTTL = buf.ReadBool()
 	resp.StatisticsEnabled = buf.ReadBool()
 	resp.GroupName = buf.ReadString()
-	resp.Invalidate = buf.ReadBool()
 	resp.DefaultLockTimeout = buf.ReadInt64()
+	resp.MaxConcurrentAsyncOperations = buf.ReadInt32()
 	resp.MaxQueryIterators = buf.ReadInt32()
 	resp.Name = buf.ReadString()
 	resp.IsOnheapCacheEnabled = buf.ReadBool()

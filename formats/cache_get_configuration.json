@@ -1,6 +1,6 @@
 {
   "Name" : "cache_get_configuration",
-  "Code" : 1056,
+  "Code" : 1055,
   "Request" : {
     "Fields" : [
       {"Name": "cacheId", "Type" : "int"},

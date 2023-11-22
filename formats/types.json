@@ -48,6 +48,8 @@
     {
       "Name" : "CacheConfiguration",
       "Fields" : [
+        {"Name": "length", "Type" : "int"},
+        {"Name": "atomicityMode", "Type" : "int"},
         {"Name": "backups", "Type" : "int"},
         {"Name": "cacheMode", "Type" : "int"},
         {"Name": "copyOnRead", "Type" : "boolean"},
@@ -55,8 +57,8 @@
         {"Name": "eagerTTL", "Type" : "boolean"},
         {"Name": "statisticsEnabled", "Type" : "boolean"},
         {"Name": "groupName", "Type" : "string"},
-        {"Name": "invalidate", "Type" : "boolean"},
         {"Name": "defaultLockTimeout", "Type" : "long"},
+        {"Name": "maxConcurrentAsyncOperations", "Type" : "int"},
         {"Name": "maxQueryIterators", "Type" : "int"},
         {"Name": "name", "Type" : "string"},
         {"Name": "isOnheapCacheEnabled", "Type" : "boolean"},

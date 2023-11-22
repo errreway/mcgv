@@ -70,6 +70,8 @@ func TestDestroyCache(t *testing.T) {
 	assert.Nil(t, err)
 	assert.NotNil(t, cli)
 
+	namesBefore, err := cli.CacheNames()
+
 	toDestroy := "to-destroy"
 
 	var cache Cache
@@ -85,5 +87,22 @@ func TestDestroyCache(t *testing.T) {
 	names, err = cli.CacheNames()
 
 	assert.Nil(t, err)
-	assert.Equal(t, 0, len(*names))
+	assert.Equal(t, len(*namesBefore), len(*names))
+}
+
+func TestCacheConfig(t *testing.T) {
+	cli, err := Start(ClientConfiguration{DefaultAddress})
+
+	assert.Nil(t, err)
+	assert.NotNil(t, cli)
+
+	cfgTest := "config-test"
+
+	cache, err := cli.CreateCache(cfgTest)
+
+	ccfg, err := cache.Configuration()
+
+	assert.Nil(t, err)
+	assert.Equal(t, cfgTest, *ccfg.Name)
+	assert.Equal(t, int32(0), ccfg.Backups)
 }
