@@ -172,7 +172,7 @@ func (ch Channel) handshake() error {
 	ch.buf.Position(IntBytes)
 	ch.buf.Limit(int(respLength + IntBytes))
 
-	success := ch.buf.ReadBoolean()
+	success := ch.buf.ReadBool()
 
 	if !success {
 		resp := handshake.ReadFailResponse(&ch.buf).(HandshakeFailResponse)

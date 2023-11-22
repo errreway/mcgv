@@ -33,6 +33,14 @@ func (buf *IgniteBuffer) WriteByte(v byte) {
 	buf.incrementIndex(1)
 }
 
+func (buf *IgniteBuffer) WriteBool(v bool) {
+	if v {
+		buf.WriteByte(1)
+	} else {
+		buf.WriteByte(0)
+	}
+}
+
 func (buf *IgniteBuffer) writeBytes(v *[]byte) {
 	length := len(*v)
 	copy(buf.buf[buf.idx:(buf.idx+length)], *v)
@@ -107,7 +115,7 @@ func (buf *IgniteBuffer) WriteUuid(v *uuid.UUID) {
 	buf.writeBytes(&bytes)
 }
 
-func (buf *IgniteBuffer) ReadBoolean() bool {
+func (buf *IgniteBuffer) ReadBool() bool {
 	return buf.ReadByte() == byte(1)
 }
 

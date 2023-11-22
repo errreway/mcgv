@@ -1,0 +1,83 @@
+{
+  "Types" : [
+    {
+      "Name" : "Field",
+      "Fields": [
+        { "Name": "name", "Type": "string" },
+        { "Name": "isDescensing", "Type": "boolean" }
+      ]
+    },
+    {
+      "Name" : "QueryIndex",
+      "Fields": [
+        { "Name": "name", "Type": "string" },
+        { "Name": "type", "Type": "byte" },
+        { "Name": "inlineSize", "Type": "int" },
+        { "Name": "fields", "Type": "Field[]", "Unsafe" : true }
+      ]
+    },
+    {
+      "Name" : "QueryField",
+      "Fields": [
+        { "Name": "name", "Type": "string" },
+        { "Name": "typeName", "Type": "string" },
+        { "Name": "isKey", "Type": "boolean" },
+        { "Name": "isNotNull", "Type": "boolean" }
+      ]
+    },
+    {
+      "Name" : "QueryEntity",
+      "Fields" : [
+        {"Name": "keyTypeName", "Type" : "string"},
+        {"Name": "valueTypeName", "Type" : "string"},
+        {"Name": "tableName", "Type" : "string"},
+        {"Name": "keyFieldName", "Type" : "string"},
+        {"Name": "valueFieldName", "Type" : "string"},
+        {"Name": "queryFields", "Type" : "QueryField[]", "Unsafe" :  true},
+        {"Name": "aliases", "Type" : "map", "KeyType" : "string", "ValueType" : "string", "Unsafe" : true},
+        {"Name": "queryIndex", "Type" : "QueryIndex[]", "Unsafe" : true}
+      ]
+    },
+    {
+      "Name" : "CacheKeyConfiguration",
+      "Fields" : [
+        {"Name": "typeName", "Type" : "string"},
+        {"Name": "affinityKeyFieldName", "Type" : "string"}
+      ]
+    },
+    {
+      "Name" : "CacheConfiguration",
+      "Fields" : [
+        {"Name": "backups", "Type" : "int"},
+        {"Name": "cacheMode", "Type" : "int"},
+        {"Name": "copyOnRead", "Type" : "boolean"},
+        {"Name": "dataRegionName", "Type" : "string"},
+        {"Name": "eagerTTL", "Type" : "boolean"},
+        {"Name": "statisticsEnabled", "Type" : "boolean"},
+        {"Name": "groupName", "Type" : "string"},
+        {"Name": "invalidate", "Type" : "boolean"},
+        {"Name": "defaultLockTimeout", "Type" : "long"},
+        {"Name": "maxQueryIterators", "Type" : "int"},
+        {"Name": "name", "Type" : "string"},
+        {"Name": "isOnheapCacheEnabled", "Type" : "boolean"},
+        {"Name": "partitionLossPolicy", "Type" : "int"},
+        {"Name": "queryDetailMetricsSize", "Type" : "int"},
+        {"Name": "queryParellelism", "Type" : "int"},
+        {"Name": "readFromBackup", "Type" : "boolean"},
+        {"Name": "rebalanceBatchSize", "Type" : "int"},
+        {"Name": "rebalanceBatchesPrefetchCount", "Type" : "long"},
+        {"Name": "rebalanceDelay", "Type" : "long"},
+        {"Name": "rebalanceMode", "Type" : "int"},
+        {"Name": "rebalanceOrder", "Type" : "int"},
+        {"Name": "rebalanceThrottle", "Type" : "long"},
+        {"Name": "rebalanceTimeout", "Type" : "long"},
+        {"Name": "sqlEscapeAll", "Type" : "boolean"},
+        {"Name": "sqlIndexInlineMaxSize", "Type" : "int"},
+        {"Name": "sqlSchema", "Type" : "string"},
+        {"Name": "writeSynchronizationMode", "Type" : "int"},
+        {"Name": "cacheKeyConfigurations", "Type" : "CacheKeyConfiguration[]", "Unsafe" : true},
+        {"Name": "queryEntities", "Type" : "QueryEntity[]", "Unsafe" : true}
+      ]
+    }
+  ]
+}
