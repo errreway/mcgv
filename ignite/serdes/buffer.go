@@ -251,3 +251,19 @@ func (buf *IgniteBuffer) HasMore() bool {
 func CreateIgniteBuffer() IgniteBuffer {
 	return IgniteBuffer{make([]byte, DefaultBufferSize), 0, int(DefaultBufferSize)}
 }
+
+func WriteMapHeader(buf *IgniteBuffer, l int) {
+	buf.WriteByte(MAP)
+	buf.WriteInt(l)
+	buf.WriteByte(1) // HashMap type
+}
+
+func (buf *IgniteBuffer) EnsureMapType() bool {
+	tp := buf.ReadByte()
+	if tp == Null {
+		return false
+	} else if tp != MAP {
+		panic(fmt.Sprintf("wrong type. [expecting=%d, actual=%d]", MAP, tp))
+	}
+	return true
+}

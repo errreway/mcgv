@@ -98,7 +98,9 @@ func generateMapsSerdes(serdesDir string) {
 	}
 
 	writeHeader(f)
-	line("import \"github.com/google/uuid\"", f)
+	line("import (", f)
+	line(TAB+"\"github.com/google/uuid\"", f)
+	line(")", f)
 	line("", f)
 
 	types := sortedKeys(typeMap)
@@ -113,6 +115,7 @@ func generateMapsSerdes(serdesDir string) {
 				line("", f)
 			}
 			generateMapWrite(keyType, valType, f)
+			line("", f)
 			generateMapRead(keyType, valType, f)
 		}
 	}
@@ -322,7 +325,7 @@ func generateRead(response *Type, responseType string, signature string, f *os.F
 func generateReadArray(tp Type, isUnsafe bool, f *os.File) {
 	unsafePfx := ""
 	if isUnsafe {
-		unsafePfx = "WithoutType"
+		unsafePfx = withoutTypeSuffix
 	}
 	line(fmt.Sprintf("func (buf *IgniteBuffer) Read%sArray%s() []%s {", tp.Name, unsafePfx, tp.Name), f)
 	line(TAB+"l := int(buf.ReadInt32())", f)
@@ -376,7 +379,7 @@ func generateWrite(request *Type, typeName string, f *os.File) {
 func generateWriteArray(tp Type, unsafe bool, f *os.File) {
 	unsafePfx := ""
 	if unsafe {
-		unsafePfx = "WithoutType"
+		unsafePfx = withoutTypeSuffix
 	}
 	line(fmt.Sprintf("func (buf *IgniteBuffer) Write%sArray%s(req []%s) {", tp.Name, unsafePfx, tp.Name), f)
 	line(TAB+"l := len(req)", f)
@@ -396,16 +399,7 @@ func generateMapWrite(keyType string, valType string, f *os.File) {
 	isGoValTypePointer := goValType[0] == '*'
 	goValType = removePointer(goValType)
 
-	line(fmt.Sprintf("func (buf *IgniteBuffer) %s(m *map[%s]%s) {", mapMethodName(write, keyType, valType), goKeyType, goValType), f)
-	line(TAB+"if m == nil {", f)
-	line(TAB+TAB+"buf.WriteByte(Null)", f)
-	line(TAB+TAB+"return", f)
-	line(TAB+"}", f)
-
-	line(TAB+"buf.WriteByte(MAP)", f)
-	line(TAB+"buf.WriteInt(len(*m))", f)
-	line(TAB+"buf.WriteByte(1)", f)
-	line("", f)
+	line(fmt.Sprintf("func (buf *IgniteBuffer) %s0(m *map[%s]%s) {", mapMethodName(write, keyType, valType), goKeyType, goValType), f)
 	line(TAB+"for key, val := range *m {", f)
 
 	keyArg := "key"
@@ -422,6 +416,29 @@ func generateMapWrite(keyType string, valType string, f *os.File) {
 	line(TAB+TAB+fmt.Sprintf("buf.%s(%s)", writeMethodName(valType, nil), valArg), f)
 	line(TAB+"}", f)
 
+	line("}", f)
+	line("", f)
+
+	mName := mapMethodName(write, keyType, valType)
+
+	line(fmt.Sprintf("func (buf *IgniteBuffer) %s(m *map[%s]%s) {", mName, goKeyType, goValType), f)
+	line(TAB+"if m == nil {", f)
+	line(TAB+TAB+"buf.WriteByte(Null)", f)
+	line(TAB+TAB+"return", f)
+	line(TAB+"}", f)
+
+	line(TAB+"WriteMapHeader(buf, len(*m))", f)
+	line(TAB+fmt.Sprintf("buf.%s0(m)", mName), f)
+	line("}", f)
+	line("", f)
+
+	line(fmt.Sprintf("func (buf *IgniteBuffer) %sWithoutType(m *map[%s]%s) {", mName, goKeyType, goValType), f)
+	line(TAB+"if m == nil {", f)
+	line(TAB+TAB+"buf.WriteInt(0)", f)
+	line(TAB+TAB+"return", f)
+	line(TAB+"}", f)
+	line(TAB+"buf.WriteInt(len(*m))", f)
+	line(TAB+fmt.Sprintf("buf.%s0(m)", mName), f)
 	line("}", f)
 }
 
@@ -442,7 +459,7 @@ func generateMapRead(keyType string, valType string, f *os.File) {
 	goKeyType = removePointer(goKeyType)
 	goValType = removePointer(goValType)
 
-	line(fmt.Sprintf("func (buf *IgniteBuffer) %s() *map[%s]%s {", mapMethodName(read, keyType, valType), goKeyType, goValType), f)
+	line(fmt.Sprintf("func (buf *IgniteBuffer) %s%s() *map[%s]%s {", mapMethodName(read, keyType, valType), withoutTypeSuffix, goKeyType, goValType), f)
 	line(TAB+fmt.Sprintf("res := make(map[%s]%s)", goKeyType, goValType), f)
 	line(TAB+"l := int(buf.ReadInt32())", f)
 	line(TAB+"for i := 0; i < l; i++ {", f)
@@ -450,7 +467,20 @@ func generateMapRead(keyType string, valType string, f *os.File) {
 	line(TAB+TAB+fmt.Sprintf("res[key] = %sbuf.%s()", valPointer, methodName(read, valType)), f)
 	line(TAB+"}", f)
 	line(TAB+"return &res", f)
-
+	line("}", f)
+	line("", f)
+	line(fmt.Sprintf("func (buf *IgniteBuffer) %s() *map[%s]%s {", mapMethodName(read, keyType, valType), goKeyType, goValType), f)
+	line(TAB+"if buf.EnsureMapType() {", f)
+	line(TAB+TAB+"return nil", f)
+	line(TAB+"}", f)
+	line(TAB+fmt.Sprintf("res := make(map[%s]%s)", goKeyType, goValType), f)
+	line(TAB+"l := int(buf.ReadInt32())", f)
+	line(TAB+"buf.ReadByte()", f)
+	line(TAB+"for i := 0; i < l; i++ {", f)
+	line(TAB+TAB+fmt.Sprintf("key := %sbuf.%s()", keyPointer, methodName(read, keyType)), f)
+	line(TAB+TAB+fmt.Sprintf("res[key] = %sbuf.%s()", valPointer, methodName(read, valType)), f)
+	line(TAB+"}", f)
+	line(TAB+"return &res", f)
 	line("}", f)
 }
 
@@ -473,11 +503,13 @@ func mapMethodName(pfx string, keyType string, valType string) string {
 }
 
 func writeMethodName(tp string, fld *Field) string {
+	var res = ""
 	if fld != nil && fld.Type == "map" {
-		return mapMethodName(write, fld.KeyType, fld.ValueType)
+		res = mapMethodName(write, fld.KeyType, fld.ValueType)
+	} else {
+		res = methodName(write, tp)
 	}
 
-	res := methodName(write, tp)
 	if fld != nil && fld.Unsafe {
 		return res + withoutTypeSuffix
 	}
@@ -485,11 +517,13 @@ func writeMethodName(tp string, fld *Field) string {
 }
 
 func readMethodName(fld Field) string {
+	var res = ""
 	if fld.Type == "map" {
-		return mapMethodName(read, fld.KeyType, fld.ValueType)
+		res = mapMethodName(read, fld.KeyType, fld.ValueType)
+	} else {
+		res = methodName(read, fld.Type)
 	}
 
-	res := methodName(read, fld.Type)
 	if fld.Unsafe {
 		return res + withoutTypeSuffix
 	}

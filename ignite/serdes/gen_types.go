@@ -121,7 +121,7 @@ func (req QueryEntity) Write(buf *IgniteBuffer) {
 	buf.WriteString(req.KeyFieldName)
 	buf.WriteString(req.ValueFieldName)
 	buf.WriteQueryFieldArrayWithoutType(req.QueryFields)
-	buf.WriteStringString(req.Aliases)
+	buf.WriteStringStringWithoutType(req.Aliases)
 	buf.WriteQueryIndexArrayWithoutType(req.QueryIndex)
 }
 
@@ -133,7 +133,7 @@ func (buf *IgniteBuffer) ReadQueryEntity() QueryEntity {
 	resp.KeyFieldName = buf.ReadString()
 	resp.ValueFieldName = buf.ReadString()
 	resp.QueryFields = buf.ReadQueryFieldArrayWithoutType()
-	resp.Aliases = buf.ReadStringString()
+	resp.Aliases = buf.ReadStringStringWithoutType()
 	resp.QueryIndex = buf.ReadQueryIndexArrayWithoutType()
 	return resp
 }
