@@ -101,16 +101,8 @@ func generateMapsSerdes(serdesDir string) {
 	line("import \"github.com/google/uuid\"", f)
 	line("", f)
 
-	types := make([]string, len(typeMap))
-	i := 0
-	for k := range typeMap {
-		types[i] = k
-		i++
-	}
-	sort.Strings(types)
-
+	types := sortedKeys(typeMap)
 	for i, keyType := range types {
-
 		if isArrayType(keyType) {
 			fmt.Println(fmt.Sprintf("Skip map key [key=%s]", keyType))
 			continue
@@ -179,10 +171,15 @@ func generateTypes(serdesDir string) {
 		})
 	}
 
-	for compType, unsafe := range arrayWriteMethodRequired {
+	for i, compType := range sortedKeys(arrayWriteMethodRequired) {
+		unsafe := arrayWriteMethodRequired[compType]
 		fmt.Println(fmt.Sprintf("|--> array [name=%s]", compType))
 		generateWriteArray(typesMap[compType], unsafe, f)
+		line("", f)
 		generateReadArray(typesMap[compType], unsafe, f)
+		if i+1 < len(arrayWriteMethodRequired) {
+			line("", f)
+		}
 	}
 }
 
@@ -335,7 +332,6 @@ func generateReadArray(tp Type, isUnsafe bool, f *os.File) {
 	line(TAB+"}", f)
 	line(TAB+"return res", f)
 	line("}", f)
-	line("", f)
 }
 
 func generateConstructor(request *Type, typeName string, f *os.File) bool {
@@ -389,7 +385,6 @@ func generateWriteArray(tp Type, unsafe bool, f *os.File) {
 	line(TAB+TAB+"req[i].Write(buf)", f)
 	line(TAB+"}", f)
 	line("}", f)
-	line("", f)
 }
 
 func generateMapWrite(keyType string, valType string, f *os.File) {
@@ -592,4 +587,15 @@ func isArrayType(keyType string) bool {
 
 func arrayComponentType(tp string) string {
 	return tp[:len(tp)-len(arraySuffix)]
+}
+
+func sortedKeys[T any](m map[string]T) []string {
+	keys := make([]string, len(m))
+	i := 0
+	for k := range m {
+		keys[i] = k
+		i++
+	}
+	sort.Strings(keys)
+	return keys
 }

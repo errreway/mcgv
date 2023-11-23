@@ -220,6 +220,23 @@ func (buf *IgniteBuffer) ReadCacheConfiguration() CacheConfiguration {
 	return resp
 }
 
+func (buf *IgniteBuffer) WriteCacheKeyConfigurationArrayWithoutType(req []CacheKeyConfiguration) {
+	l := len(req)
+	buf.WriteInt32(int32(l))
+	for i := 0; i < l; i++ {
+		req[i].Write(buf)
+	}
+}
+
+func (buf *IgniteBuffer) ReadCacheKeyConfigurationArrayWithoutType() []CacheKeyConfiguration {
+	l := int(buf.ReadInt32())
+	res := make([]CacheKeyConfiguration, l)
+	for i := 0; i < l; i++ {
+		res[i] = buf.ReadCacheKeyConfiguration()
+	}
+	return res
+}
+
 func (buf *IgniteBuffer) WriteFieldArrayWithoutType(req []Field) {
 	l := len(req)
 	buf.WriteInt32(int32(l))
@@ -233,6 +250,23 @@ func (buf *IgniteBuffer) ReadFieldArrayWithoutType() []Field {
 	res := make([]Field, l)
 	for i := 0; i < l; i++ {
 		res[i] = buf.ReadField()
+	}
+	return res
+}
+
+func (buf *IgniteBuffer) WriteQueryEntityArrayWithoutType(req []QueryEntity) {
+	l := len(req)
+	buf.WriteInt32(int32(l))
+	for i := 0; i < l; i++ {
+		req[i].Write(buf)
+	}
+}
+
+func (buf *IgniteBuffer) ReadQueryEntityArrayWithoutType() []QueryEntity {
+	l := int(buf.ReadInt32())
+	res := make([]QueryEntity, l)
+	for i := 0; i < l; i++ {
+		res[i] = buf.ReadQueryEntity()
 	}
 	return res
 }
@@ -267,40 +301,6 @@ func (buf *IgniteBuffer) ReadQueryIndexArrayWithoutType() []QueryIndex {
 	res := make([]QueryIndex, l)
 	for i := 0; i < l; i++ {
 		res[i] = buf.ReadQueryIndex()
-	}
-	return res
-}
-
-func (buf *IgniteBuffer) WriteCacheKeyConfigurationArrayWithoutType(req []CacheKeyConfiguration) {
-	l := len(req)
-	buf.WriteInt32(int32(l))
-	for i := 0; i < l; i++ {
-		req[i].Write(buf)
-	}
-}
-
-func (buf *IgniteBuffer) ReadCacheKeyConfigurationArrayWithoutType() []CacheKeyConfiguration {
-	l := int(buf.ReadInt32())
-	res := make([]CacheKeyConfiguration, l)
-	for i := 0; i < l; i++ {
-		res[i] = buf.ReadCacheKeyConfiguration()
-	}
-	return res
-}
-
-func (buf *IgniteBuffer) WriteQueryEntityArrayWithoutType(req []QueryEntity) {
-	l := len(req)
-	buf.WriteInt32(int32(l))
-	for i := 0; i < l; i++ {
-		req[i].Write(buf)
-	}
-}
-
-func (buf *IgniteBuffer) ReadQueryEntityArrayWithoutType() []QueryEntity {
-	l := int(buf.ReadInt32())
-	res := make([]QueryEntity, l)
-	for i := 0; i < l; i++ {
-		res[i] = buf.ReadQueryEntity()
 	}
 	return res
 }
