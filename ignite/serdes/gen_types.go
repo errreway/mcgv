@@ -6,18 +6,6 @@ type Field struct {
 	IsDescensing bool
 }
 
-func (req Field) Write(buf *IgniteBuffer) {
-	buf.WriteString(req.Name)
-	buf.WriteBool(req.IsDescensing)
-}
-
-func (buf *IgniteBuffer) ReadField() Field {
-	resp := Field{}
-	resp.Name = buf.ReadString()
-	resp.IsDescensing = buf.ReadBool()
-	return resp
-}
-
 type QueryIndex struct {
 	Name       *string
 	Type       byte
@@ -25,43 +13,11 @@ type QueryIndex struct {
 	Fields     []Field
 }
 
-func (req QueryIndex) Write(buf *IgniteBuffer) {
-	buf.WriteString(req.Name)
-	buf.WriteByte(req.Type)
-	buf.WriteInt32(req.InlineSize)
-	buf.WriteFieldArrayWithoutType(req.Fields)
-}
-
-func (buf *IgniteBuffer) ReadQueryIndex() QueryIndex {
-	resp := QueryIndex{}
-	resp.Name = buf.ReadString()
-	resp.Type = buf.ReadByte()
-	resp.InlineSize = buf.ReadInt32()
-	resp.Fields = buf.ReadFieldArrayWithoutType()
-	return resp
-}
-
 type QueryField struct {
 	Name      *string
 	TypeName  *string
 	IsKey     bool
 	IsNotNull bool
-}
-
-func (req QueryField) Write(buf *IgniteBuffer) {
-	buf.WriteString(req.Name)
-	buf.WriteString(req.TypeName)
-	buf.WriteBool(req.IsKey)
-	buf.WriteBool(req.IsNotNull)
-}
-
-func (buf *IgniteBuffer) ReadQueryField() QueryField {
-	resp := QueryField{}
-	resp.Name = buf.ReadString()
-	resp.TypeName = buf.ReadString()
-	resp.IsKey = buf.ReadBool()
-	resp.IsNotNull = buf.ReadBool()
-	return resp
 }
 
 type QueryEntity struct {
@@ -75,45 +31,9 @@ type QueryEntity struct {
 	QueryIndex     []QueryIndex
 }
 
-func (req QueryEntity) Write(buf *IgniteBuffer) {
-	buf.WriteString(req.KeyTypeName)
-	buf.WriteString(req.ValueTypeName)
-	buf.WriteString(req.TableName)
-	buf.WriteString(req.KeyFieldName)
-	buf.WriteString(req.ValueFieldName)
-	buf.WriteQueryFieldArrayWithoutType(req.QueryFields)
-	buf.WriteStringString(req.Aliases)
-	buf.WriteQueryIndexArrayWithoutType(req.QueryIndex)
-}
-
-func (buf *IgniteBuffer) ReadQueryEntity() QueryEntity {
-	resp := QueryEntity{}
-	resp.KeyTypeName = buf.ReadString()
-	resp.ValueTypeName = buf.ReadString()
-	resp.TableName = buf.ReadString()
-	resp.KeyFieldName = buf.ReadString()
-	resp.ValueFieldName = buf.ReadString()
-	resp.QueryFields = buf.ReadQueryFieldArrayWithoutType()
-	resp.Aliases = buf.ReadStringString()
-	resp.QueryIndex = buf.ReadQueryIndexArrayWithoutType()
-	return resp
-}
-
 type CacheKeyConfiguration struct {
 	TypeName             *string
 	AffinityKeyFieldName *string
-}
-
-func (req CacheKeyConfiguration) Write(buf *IgniteBuffer) {
-	buf.WriteString(req.TypeName)
-	buf.WriteString(req.AffinityKeyFieldName)
-}
-
-func (buf *IgniteBuffer) ReadCacheKeyConfiguration() CacheKeyConfiguration {
-	resp := CacheKeyConfiguration{}
-	resp.TypeName = buf.ReadString()
-	resp.AffinityKeyFieldName = buf.ReadString()
-	return resp
 }
 
 type CacheConfiguration struct {
@@ -148,6 +68,86 @@ type CacheConfiguration struct {
 	WriteSynchronizationMode      int32
 	CacheKeyConfigurations        []CacheKeyConfiguration
 	QueryEntities                 []QueryEntity
+}
+
+func (req Field) Write(buf *IgniteBuffer) {
+	buf.WriteString(req.Name)
+	buf.WriteBool(req.IsDescensing)
+}
+
+func (buf *IgniteBuffer) ReadField() Field {
+	resp := Field{}
+	resp.Name = buf.ReadString()
+	resp.IsDescensing = buf.ReadBool()
+	return resp
+}
+
+func (req QueryIndex) Write(buf *IgniteBuffer) {
+	buf.WriteString(req.Name)
+	buf.WriteByte(req.Type)
+	buf.WriteInt32(req.InlineSize)
+	buf.WriteFieldArrayWithoutType(req.Fields)
+}
+
+func (buf *IgniteBuffer) ReadQueryIndex() QueryIndex {
+	resp := QueryIndex{}
+	resp.Name = buf.ReadString()
+	resp.Type = buf.ReadByte()
+	resp.InlineSize = buf.ReadInt32()
+	resp.Fields = buf.ReadFieldArrayWithoutType()
+	return resp
+}
+
+func (req QueryField) Write(buf *IgniteBuffer) {
+	buf.WriteString(req.Name)
+	buf.WriteString(req.TypeName)
+	buf.WriteBool(req.IsKey)
+	buf.WriteBool(req.IsNotNull)
+}
+
+func (buf *IgniteBuffer) ReadQueryField() QueryField {
+	resp := QueryField{}
+	resp.Name = buf.ReadString()
+	resp.TypeName = buf.ReadString()
+	resp.IsKey = buf.ReadBool()
+	resp.IsNotNull = buf.ReadBool()
+	return resp
+}
+
+func (req QueryEntity) Write(buf *IgniteBuffer) {
+	buf.WriteString(req.KeyTypeName)
+	buf.WriteString(req.ValueTypeName)
+	buf.WriteString(req.TableName)
+	buf.WriteString(req.KeyFieldName)
+	buf.WriteString(req.ValueFieldName)
+	buf.WriteQueryFieldArrayWithoutType(req.QueryFields)
+	buf.WriteStringString(req.Aliases)
+	buf.WriteQueryIndexArrayWithoutType(req.QueryIndex)
+}
+
+func (buf *IgniteBuffer) ReadQueryEntity() QueryEntity {
+	resp := QueryEntity{}
+	resp.KeyTypeName = buf.ReadString()
+	resp.ValueTypeName = buf.ReadString()
+	resp.TableName = buf.ReadString()
+	resp.KeyFieldName = buf.ReadString()
+	resp.ValueFieldName = buf.ReadString()
+	resp.QueryFields = buf.ReadQueryFieldArrayWithoutType()
+	resp.Aliases = buf.ReadStringString()
+	resp.QueryIndex = buf.ReadQueryIndexArrayWithoutType()
+	return resp
+}
+
+func (req CacheKeyConfiguration) Write(buf *IgniteBuffer) {
+	buf.WriteString(req.TypeName)
+	buf.WriteString(req.AffinityKeyFieldName)
+}
+
+func (buf *IgniteBuffer) ReadCacheKeyConfiguration() CacheKeyConfiguration {
+	resp := CacheKeyConfiguration{}
+	resp.TypeName = buf.ReadString()
+	resp.AffinityKeyFieldName = buf.ReadString()
+	return resp
 }
 
 func (req CacheConfiguration) Write(buf *IgniteBuffer) {
@@ -219,6 +219,7 @@ func (buf *IgniteBuffer) ReadCacheConfiguration() CacheConfiguration {
 	resp.QueryEntities = buf.ReadQueryEntityArrayWithoutType()
 	return resp
 }
+
 func (buf *IgniteBuffer) WriteFieldArrayWithoutType(req []Field) {
 	l := len(req)
 	buf.WriteInt32(int32(l))

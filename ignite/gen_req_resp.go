@@ -18,9 +18,12 @@ import (
 )
 
 const (
-	TAB         = "\t"
-	TYPES       = "types.json"
-	arraySuffix = "[]"
+	TAB               = "\t"
+	TYPES             = "types.json"
+	arraySuffix       = "[]"
+	withoutTypeSuffix = "WithoutType"
+	read              = "Read"
+	write             = "Write"
 )
 
 var imports = map[string]string{
@@ -153,9 +156,15 @@ func generateTypes(serdesDir string) {
 		customTypes[tp.Name] = tp.Name
 		customTypes[tp.Name+arraySuffix] = arraySuffix + tp.Name
 		line("", f)
+	}
+
+	for _, tp := range typesList.Types {
+		fmt.Println(fmt.Sprintf("|--> type [name=%s]", tp.Name))
 		generateWrite(&tp, tp.Name, f)
 		line("", f)
-		generateRead(&tp, tp.Name, fmt.Sprintf("func (buf *IgniteBuffer) %s() %s {", "Read"+tp.Name, tp.Name), f)
+
+		generateRead(&tp, tp.Name, fmt.Sprintf("func (buf *IgniteBuffer) %s() %s {", read+tp.Name, tp.Name), f)
+		line("", f)
 
 		forEachField(&tp, func(fld Field) {
 			if isArrayType(fld.Type) {
@@ -392,7 +401,7 @@ func generateMapWrite(keyType string, valType string, f *os.File) {
 	isGoValTypePointer := goValType[0] == '*'
 	goValType = removePointer(goValType)
 
-	line(fmt.Sprintf("func (buf *IgniteBuffer) %s(m *map[%s]%s) {", mapMethodName("Write", keyType, valType), goKeyType, goValType), f)
+	line(fmt.Sprintf("func (buf *IgniteBuffer) %s(m *map[%s]%s) {", mapMethodName(write, keyType, valType), goKeyType, goValType), f)
 	line(TAB+"if m == nil {", f)
 	line(TAB+TAB+"buf.WriteByte(Null)", f)
 	line(TAB+TAB+"return", f)
@@ -438,12 +447,12 @@ func generateMapRead(keyType string, valType string, f *os.File) {
 	goKeyType = removePointer(goKeyType)
 	goValType = removePointer(goValType)
 
-	line(fmt.Sprintf("func (buf *IgniteBuffer) %s() *map[%s]%s {", mapMethodName("Read", keyType, valType), goKeyType, goValType), f)
+	line(fmt.Sprintf("func (buf *IgniteBuffer) %s() *map[%s]%s {", mapMethodName(read, keyType, valType), goKeyType, goValType), f)
 	line(TAB+fmt.Sprintf("res := make(map[%s]%s)", goKeyType, goValType), f)
 	line(TAB+"l := int(buf.ReadInt32())", f)
 	line(TAB+"for i := 0; i < l; i++ {", f)
-	line(TAB+TAB+fmt.Sprintf("key := %sbuf.%s()", keyPointer, methodName("Read", keyType)), f)
-	line(TAB+TAB+fmt.Sprintf("res[key] = %sbuf.%s()", valPointer, methodName("Read", valType)), f)
+	line(TAB+TAB+fmt.Sprintf("key := %sbuf.%s()", keyPointer, methodName(read, keyType)), f)
+	line(TAB+TAB+fmt.Sprintf("res[key] = %sbuf.%s()", valPointer, methodName(read, valType)), f)
 	line(TAB+"}", f)
 	line(TAB+"return &res", f)
 
@@ -470,24 +479,24 @@ func mapMethodName(pfx string, keyType string, valType string) string {
 
 func writeMethodName(tp string, fld *Field) string {
 	if fld != nil && fld.Type == "map" {
-		return mapMethodName("Write", fld.KeyType, fld.ValueType)
+		return mapMethodName(write, fld.KeyType, fld.ValueType)
 	}
 
-	res := methodName("Write", tp)
+	res := methodName(write, tp)
 	if fld != nil && fld.Unsafe {
-		return res + "WithoutType"
+		return res + withoutTypeSuffix
 	}
 	return res
 }
 
 func readMethodName(fld Field) string {
 	if fld.Type == "map" {
-		return mapMethodName("Read", fld.KeyType, fld.ValueType)
+		return mapMethodName(read, fld.KeyType, fld.ValueType)
 	}
 
-	res := methodName("Read", fld.Type)
+	res := methodName(read, fld.Type)
 	if fld.Unsafe {
-		return res + "WithoutType"
+		return res + withoutTypeSuffix
 	}
 	return res
 }
