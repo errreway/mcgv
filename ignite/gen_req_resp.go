@@ -155,7 +155,7 @@ func generateTypes(serdesDir string) {
 
 	for _, tp := range typesList.Types {
 		fmt.Println(fmt.Sprintf("|--> type [name=%s]", tp.Name))
-		generateWrite(&tp, tp.Name, f)
+		generateWrite(&tp, fmt.Sprintf("func (buf *IgniteBuffer) %s(req %s) {", writeMethodName(tp.Name, nil), tp.Name), f)
 		line("", f)
 
 		generateRead(&tp, tp.Name, fmt.Sprintf("func (buf *IgniteBuffer) %s() %s {", read+tp.Name, tp.Name), f)
@@ -243,7 +243,7 @@ func generateRequest(format *Format, serdesDir string) {
 	if generateConstructor(format.Request, requestType, f) {
 		line("", f)
 	}
-	generateWrite(format.Request, requestType, f)
+	generateWrite(format.Request, fmt.Sprintf("func (req %s) Write(buf *IgniteBuffer) {", requestType), f)
 	line("", f)
 	generateRead(format.Response, responseType, fmt.Sprintf("func (req %s) ReadResponse(buf *IgniteBuffer) interface{} {", requestType), f)
 
@@ -366,8 +366,8 @@ func generateConstructor(request *Type, typeName string, f *os.File) bool {
 	return true
 }
 
-func generateWrite(request *Type, typeName string, f *os.File) {
-	line(fmt.Sprintf("func (req %s) Write(buf *IgniteBuffer) {", typeName), f)
+func generateWrite(request *Type, signamture string, f *os.File) {
+	line(signamture, f)
 
 	forEachField(request, func(fld Field) {
 		line(fmt.Sprintf(TAB+"buf.%s(req.%s)", writeMethodName(fld.Type, &fld), exportedName(fld.Name)), f)
@@ -385,7 +385,7 @@ func generateWriteArray(tp Type, unsafe bool, f *os.File) {
 	line(TAB+"l := len(req)", f)
 	line(TAB+"buf.WriteInt32(int32(l))", f)
 	line(TAB+"for i := 0; i < l; i++ {", f)
-	line(TAB+TAB+"req[i].Write(buf)", f)
+	line(TAB+TAB+fmt.Sprintf("buf.%s(req[i])", writeMethodName(tp.Name, nil)), f)
 	line(TAB+"}", f)
 	line("}", f)
 }

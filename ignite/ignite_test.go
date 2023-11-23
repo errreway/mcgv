@@ -2,6 +2,7 @@ package ignite
 
 import (
 	"github.com/stretchr/testify/assert"
+	"sbt.ru/ignite-go/ignite/ignite/serdes"
 	"testing"
 )
 
@@ -82,6 +83,7 @@ func TestDestroyCache(t *testing.T) {
 	assert.Equal(t, toDestroy, cache.Name())
 
 	err = cli.DestroyCache(toDestroy)
+	assert.Nil(t, err)
 
 	var names *[]string
 	names, err = cli.CacheNames()
@@ -100,9 +102,35 @@ func TestCacheConfig(t *testing.T) {
 
 	cache, err := cli.CreateCache(cfgTest)
 
-	ccfg, err := cache.Configuration()
+	readCcfg, err := cache.Configuration()
 
 	assert.Nil(t, err)
-	assert.Equal(t, cfgTest, *ccfg.Name)
-	assert.Equal(t, int32(0), ccfg.Backups)
+	assert.Equal(t, cfgTest, *readCcfg.Name)
+	assert.Equal(t, int32(0), readCcfg.Backups)
+
+	err = cli.DestroyCache(cfgTest)
+	assert.Nil(t, err)
+
+	ccfg := serdes.CacheConfiguration{}
+
+	ccfg.Name = &cfgTest
+	ccfg.Backups = 1
+	ccfg.AtomicityMode = 1
+
+	grpTest := "my-group"
+
+	ccfg.GroupName = &grpTest
+
+	cache, err = cli.CreateCacheWithConfiguration(ccfg)
+
+	assert.Nil(t, err)
+
+	readCcfg, err = cache.Configuration()
+
+	assert.Equal(t, cfgTest, *readCcfg.Name)
+	assert.Equal(t, int32(1), readCcfg.Backups)
+	assert.Equal(t, int32(1), readCcfg.AtomicityMode)
+	assert.Equal(t, grpTest, readCcfg.Name)
+
+	//TODO: Fix CacheConfiguration Write - ClientCacheConfigurationSerializer
 }

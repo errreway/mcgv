@@ -70,7 +70,7 @@ type CacheConfiguration struct {
 	QueryEntities                 []QueryEntity
 }
 
-func (req Field) Write(buf *IgniteBuffer) {
+func (buf *IgniteBuffer) WriteField(req Field) {
 	buf.WriteString(req.Name)
 	buf.WriteBool(req.IsDescensing)
 }
@@ -82,7 +82,7 @@ func (buf *IgniteBuffer) ReadField() Field {
 	return resp
 }
 
-func (req QueryIndex) Write(buf *IgniteBuffer) {
+func (buf *IgniteBuffer) WriteQueryIndex(req QueryIndex) {
 	buf.WriteString(req.Name)
 	buf.WriteByte(req.Type)
 	buf.WriteInt32(req.InlineSize)
@@ -98,7 +98,7 @@ func (buf *IgniteBuffer) ReadQueryIndex() QueryIndex {
 	return resp
 }
 
-func (req QueryField) Write(buf *IgniteBuffer) {
+func (buf *IgniteBuffer) WriteQueryField(req QueryField) {
 	buf.WriteString(req.Name)
 	buf.WriteString(req.TypeName)
 	buf.WriteBool(req.IsKey)
@@ -114,7 +114,7 @@ func (buf *IgniteBuffer) ReadQueryField() QueryField {
 	return resp
 }
 
-func (req QueryEntity) Write(buf *IgniteBuffer) {
+func (buf *IgniteBuffer) WriteQueryEntity(req QueryEntity) {
 	buf.WriteString(req.KeyTypeName)
 	buf.WriteString(req.ValueTypeName)
 	buf.WriteString(req.TableName)
@@ -138,7 +138,7 @@ func (buf *IgniteBuffer) ReadQueryEntity() QueryEntity {
 	return resp
 }
 
-func (req CacheKeyConfiguration) Write(buf *IgniteBuffer) {
+func (buf *IgniteBuffer) WriteCacheKeyConfiguration(req CacheKeyConfiguration) {
 	buf.WriteString(req.TypeName)
 	buf.WriteString(req.AffinityKeyFieldName)
 }
@@ -150,7 +150,7 @@ func (buf *IgniteBuffer) ReadCacheKeyConfiguration() CacheKeyConfiguration {
 	return resp
 }
 
-func (req CacheConfiguration) Write(buf *IgniteBuffer) {
+func (buf *IgniteBuffer) WriteCacheConfiguration(req CacheConfiguration) {
 	buf.WriteInt32(req.Length)
 	buf.WriteInt32(req.AtomicityMode)
 	buf.WriteInt32(req.Backups)
@@ -224,7 +224,7 @@ func (buf *IgniteBuffer) WriteCacheKeyConfigurationArrayWithoutType(req []CacheK
 	l := len(req)
 	buf.WriteInt32(int32(l))
 	for i := 0; i < l; i++ {
-		req[i].Write(buf)
+		buf.WriteCacheKeyConfiguration(req[i])
 	}
 }
 
@@ -241,7 +241,7 @@ func (buf *IgniteBuffer) WriteFieldArrayWithoutType(req []Field) {
 	l := len(req)
 	buf.WriteInt32(int32(l))
 	for i := 0; i < l; i++ {
-		req[i].Write(buf)
+		buf.WriteField(req[i])
 	}
 }
 
@@ -258,7 +258,7 @@ func (buf *IgniteBuffer) WriteQueryEntityArrayWithoutType(req []QueryEntity) {
 	l := len(req)
 	buf.WriteInt32(int32(l))
 	for i := 0; i < l; i++ {
-		req[i].Write(buf)
+		buf.WriteQueryEntity(req[i])
 	}
 }
 
@@ -275,7 +275,7 @@ func (buf *IgniteBuffer) WriteQueryFieldArrayWithoutType(req []QueryField) {
 	l := len(req)
 	buf.WriteInt32(int32(l))
 	for i := 0; i < l; i++ {
-		req[i].Write(buf)
+		buf.WriteQueryField(req[i])
 	}
 }
 
@@ -292,7 +292,7 @@ func (buf *IgniteBuffer) WriteQueryIndexArrayWithoutType(req []QueryIndex) {
 	l := len(req)
 	buf.WriteInt32(int32(l))
 	for i := 0; i < l; i++ {
-		req[i].Write(buf)
+		buf.WriteQueryIndex(req[i])
 	}
 }
 

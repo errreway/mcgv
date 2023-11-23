@@ -16,6 +16,8 @@ type Client interface {
 
 	CreateCache(name string) (Cache, error)
 
+	CreateCacheWithConfiguration(ccfg serdes.CacheConfiguration) (Cache, error)
+
 	GetOrCreateCache(name string) (Cache, error)
 
 	DestroyCache(name string) error
@@ -66,6 +68,20 @@ func (cli ClientImpl) CreateCache(name string) (Cache, error) {
 	}
 
 	return CacheImpl{&cli, &name}, nil
+}
+
+func (cli ClientImpl) CreateCacheWithConfiguration(ccfg serdes.CacheConfiguration) (Cache, error) {
+	_, contains := cli.caches[*ccfg.Name]
+	if contains {
+		return nil, errors.New("cache already exists: " + *ccfg.Name)
+	}
+
+	_, err := cli.ch.Send(serdes.CacheCreateWithConfigurationRequest{Config: ccfg})
+	if err != nil {
+		return nil, err
+	}
+
+	return CacheImpl{&cli, ccfg.Name}, nil
 }
 
 func (cli ClientImpl) GetOrCreateCache(name string) (Cache, error) {
