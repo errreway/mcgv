@@ -53,7 +53,7 @@ type CacheConfiguration struct {
 	IsOnheapCacheEnabled          bool
 	PartitionLossPolicy           int32
 	QueryDetailMetricsSize        int32
-	QueryParellelism              int32
+	QueryParallelism              int32
 	ReadFromBackup                bool
 	RebalanceBatchSize            int32
 	RebalanceBatchesPrefetchCount int64
@@ -150,40 +150,6 @@ func (buf *IgniteBuffer) ReadCacheKeyConfiguration() CacheKeyConfiguration {
 	return resp
 }
 
-func (buf *IgniteBuffer) WriteCacheConfiguration(req CacheConfiguration) {
-	buf.WriteInt32(req.Length)
-	buf.WriteInt32(req.AtomicityMode)
-	buf.WriteInt32(req.Backups)
-	buf.WriteInt32(req.CacheMode)
-	buf.WriteBool(req.CopyOnRead)
-	buf.WriteString(req.DataRegionName)
-	buf.WriteBool(req.EagerTTL)
-	buf.WriteBool(req.StatisticsEnabled)
-	buf.WriteString(req.GroupName)
-	buf.WriteInt64(req.DefaultLockTimeout)
-	buf.WriteInt32(req.MaxConcurrentAsyncOperations)
-	buf.WriteInt32(req.MaxQueryIterators)
-	buf.WriteString(req.Name)
-	buf.WriteBool(req.IsOnheapCacheEnabled)
-	buf.WriteInt32(req.PartitionLossPolicy)
-	buf.WriteInt32(req.QueryDetailMetricsSize)
-	buf.WriteInt32(req.QueryParellelism)
-	buf.WriteBool(req.ReadFromBackup)
-	buf.WriteInt32(req.RebalanceBatchSize)
-	buf.WriteInt64(req.RebalanceBatchesPrefetchCount)
-	buf.WriteInt64(req.RebalanceDelay)
-	buf.WriteInt32(req.RebalanceMode)
-	buf.WriteInt32(req.RebalanceOrder)
-	buf.WriteInt64(req.RebalanceThrottle)
-	buf.WriteInt64(req.RebalanceTimeout)
-	buf.WriteBool(req.SqlEscapeAll)
-	buf.WriteInt32(req.SqlIndexInlineMaxSize)
-	buf.WriteString(req.SqlSchema)
-	buf.WriteInt32(req.WriteSynchronizationMode)
-	buf.WriteCacheKeyConfigurationArrayWithoutType(req.CacheKeyConfigurations)
-	buf.WriteQueryEntityArrayWithoutType(req.QueryEntities)
-}
-
 func (buf *IgniteBuffer) ReadCacheConfiguration() CacheConfiguration {
 	resp := CacheConfiguration{}
 	resp.Length = buf.ReadInt32()
@@ -202,7 +168,7 @@ func (buf *IgniteBuffer) ReadCacheConfiguration() CacheConfiguration {
 	resp.IsOnheapCacheEnabled = buf.ReadBool()
 	resp.PartitionLossPolicy = buf.ReadInt32()
 	resp.QueryDetailMetricsSize = buf.ReadInt32()
-	resp.QueryParellelism = buf.ReadInt32()
+	resp.QueryParallelism = buf.ReadInt32()
 	resp.ReadFromBackup = buf.ReadBool()
 	resp.RebalanceBatchSize = buf.ReadInt32()
 	resp.RebalanceBatchesPrefetchCount = buf.ReadInt64()

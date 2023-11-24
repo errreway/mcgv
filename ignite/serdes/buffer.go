@@ -233,6 +233,10 @@ func (buf *IgniteBuffer) Position(pos int) {
 	buf.idx = pos
 }
 
+func (buf *IgniteBuffer) CurrentPosition() int {
+	return buf.idx
+}
+
 func (buf *IgniteBuffer) Limit(limit int) {
 	buf.limit = limit
 }

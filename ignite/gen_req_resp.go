@@ -58,9 +58,11 @@ type Field struct {
 }
 
 type Type struct {
-	Name     string
-	Fields   []Field
-	Optional []Field
+	Name      string
+	SkipWrite bool
+	SkipRead  bool
+	Fields    []Field
+	Optional  []Field
 }
 
 type Format struct {
@@ -155,11 +157,15 @@ func generateTypes(serdesDir string) {
 
 	for _, tp := range typesList.Types {
 		fmt.Println(fmt.Sprintf("|--> type [name=%s]", tp.Name))
-		generateWrite(&tp, fmt.Sprintf("func (buf *IgniteBuffer) %s(req %s) {", writeMethodName(tp.Name, nil), tp.Name), f)
-		line("", f)
+		if !tp.SkipWrite {
+			generateWrite(&tp, fmt.Sprintf("func (buf *IgniteBuffer) %s(req %s) {", writeMethodName(tp.Name, nil), tp.Name), f)
+			line("", f)
+		}
 
-		generateRead(&tp, tp.Name, fmt.Sprintf("func (buf *IgniteBuffer) %s() %s {", read+tp.Name, tp.Name), f)
-		line("", f)
+		if !tp.SkipRead {
+			generateRead(&tp, tp.Name, fmt.Sprintf("func (buf *IgniteBuffer) %s() %s {", read+tp.Name, tp.Name), f)
+			line("", f)
+		}
 
 		forEachField(&tp, func(fld Field) {
 			if isArrayType(fld.Type) {

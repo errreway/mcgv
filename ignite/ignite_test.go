@@ -116,6 +116,11 @@ func TestCacheConfig(t *testing.T) {
 	ccfg.Name = &cfgTest
 	ccfg.Backups = 1
 	ccfg.AtomicityMode = 1
+	ccfg.QueryParallelism = 1
+	ccfg.CacheMode = 2
+	ccfg.RebalanceBatchSize = 512 * 1024
+	ccfg.RebalanceBatchesPrefetchCount = 3
+	ccfg.RebalanceTimeout = 10000
 
 	grpTest := "my-group"
 
@@ -124,13 +129,12 @@ func TestCacheConfig(t *testing.T) {
 	cache, err = cli.CreateCacheWithConfiguration(ccfg)
 
 	assert.Nil(t, err)
+	assert.NotNil(t, cache)
 
 	readCcfg, err = cache.Configuration()
 
 	assert.Equal(t, cfgTest, *readCcfg.Name)
 	assert.Equal(t, int32(1), readCcfg.Backups)
 	assert.Equal(t, int32(1), readCcfg.AtomicityMode)
-	assert.Equal(t, grpTest, readCcfg.Name)
-
-	//TODO: Fix CacheConfiguration Write - ClientCacheConfigurationSerializer
+	assert.Equal(t, grpTest, *readCcfg.GroupName)
 }
