@@ -1,15 +1,15 @@
 {
-  "Name" : "cache_get_configuration",
-  "Code" : 1055,
-  "Request" : {
-    "Fields" : [
-      {"Name": "cacheId", "Type" : "int"},
-      {"Name": "flag", "Type" : "byte"}
+  "name" : "cache_get_configuration",
+  "code" : 1055,
+  "request" : {
+    "fields" : [
+      {"name": "cacheId", "type" : "int"},
+      {"name": "flag", "type" : "byte"}
     ]
   },
-  "Response" : {
-    "Fields" : [
-      {"Name": "cacheConfiguration", "Type" : "CacheConfiguration"}
+  "response" : {
+    "fields" : [
+      {"name": "cacheConfiguration", "type" : "CacheConfiguration"}
     ]
   }
 }

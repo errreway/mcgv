@@ -9,14 +9,14 @@ type HandshakeRequest struct {
 	Minor          int16
 	Maintenance    int16
 	ClientType     byte
-	Features       *[]byte
-	UserAttributes *map[string]string
+	Features       []byte
+	UserAttributes map[string]*string
 	Username       *string
 	Password       *string
 }
 
 type HandshakeResponse struct {
-	Features *[]byte
+	Features []byte
 	NodeId   *uuid.UUID
 }
 
@@ -28,22 +28,31 @@ func CreateHandshakeRequest() HandshakeRequest {
 	return HandshakeRequest{Code: 1, Major: 1, Minor: 7, Maintenance: 0, ClientType: 2}
 }
 
-func (req HandshakeRequest) Write(buf *IgniteBuffer) {
-	buf.WriteByte(req.Code)
-	buf.WriteInt16(req.Major)
-	buf.WriteInt16(req.Minor)
-	buf.WriteInt16(req.Maintenance)
-	buf.WriteByte(req.ClientType)
-	buf.WriteByteArray(req.Features)
-	buf.WriteStringString(req.UserAttributes)
-	buf.WriteString(req.Username)
-	buf.WriteString(req.Password)
+func (req HandshakeRequest) Write(bw BinaryWriter) {
+	bw.WriteByte(req.Code)
+	bw.WriteInt16(req.Major)
+	bw.WriteInt16(req.Minor)
+	bw.WriteInt16(req.Maintenance)
+	bw.WriteByte(req.ClientType)
+	bw.WriteInt32(int32(len(req.Features)))
+	for i := 0; i < len(req.Features); i++ {
+		bw.WriteByte(req.Features[i])
+	}
+	for key, val := range req.UserAttributes {
+		bw.WriteString(&key)
+		bw.WriteString(val)
+	}
+	bw.WriteString(req.Username)
+	bw.WriteString(req.Password)
 }
 
-func (req HandshakeRequest) ReadResponse(buf *IgniteBuffer) interface{} {
+func (req HandshakeRequest) ReadResponse(br BinaryReader) interface{} {
 	resp := HandshakeResponse{}
-	resp.Features = buf.ReadByteArray()
-	resp.NodeId = buf.ReadUuid()
+	resp.Features = make([]byte, int(br.ReadInt32()))
+	for i := 0; i < len(resp.Features); i++ {
+		resp.Features[i] = br.ReadByte()
+	}
+	resp.NodeId = br.ReadUuid()
 	return resp
 }
 
@@ -55,12 +64,12 @@ type HandshakeFailResponse struct {
 	Code        byte
 }
 
-func (req HandshakeRequest) ReadFailResponse(buf *IgniteBuffer) interface{} {
+func (req HandshakeRequest) ReadFailResponse(br BinaryReader) interface{} {
 	resp := HandshakeFailResponse{}
-	resp.Major = buf.ReadInt16()
-	resp.Minor = buf.ReadInt16()
-	resp.Maintenance = buf.ReadInt16()
-	resp.Message = buf.ReadString()
-	resp.Code = buf.ReadByte()
+	resp.Major = br.ReadInt16()
+	resp.Minor = br.ReadInt16()
+	resp.Maintenance = br.ReadInt16()
+	resp.Message = br.ReadString()
+	resp.Code = br.ReadByte()
 	return resp
 }

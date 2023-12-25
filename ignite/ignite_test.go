@@ -23,17 +23,35 @@ func TestCorrectAddresses(t *testing.T) {
 	assert.Error(t, err, "Addresses is empty!")
 }
 
+func Cleanup(t *testing.T) {
+	cli, err := Start(ClientConfiguration{DefaultAddress})
+	assert.Nil(t, err)
+	caches, err := cli.CacheNames()
+	assert.Nil(t, err)
+	for _, cache := range caches {
+		err = cli.DestroyCache(cache)
+		assert.Nil(t, err)
+	}
+	defer func() {
+		_ = cli.Close()
+	}()
+}
+
 func TestCacheNames(t *testing.T) {
+	t.Cleanup(func() {
+		Cleanup(t)
+	})
+
 	cli, err := Start(ClientConfiguration{DefaultAddress})
 
 	assert.Nil(t, err)
 	assert.NotNil(t, cli)
 
-	var names *[]string
+	var names []string
 	names, err = cli.CacheNames()
 
 	assert.Nil(t, err)
-	assert.Equal(t, 0, len(*names))
+	assert.Equal(t, 0, len(names))
 
 	var cache Cache
 	cache, err = cli.CreateCache(cacheName)
@@ -61,11 +79,14 @@ func TestCacheNames(t *testing.T) {
 	names, err = cli.CacheNames()
 
 	assert.Nil(t, err)
-	assert.Equal(t, 1, len(*names))
-	assert.Equal(t, cacheName, (*names)[0])
+	assert.Equal(t, 1, len(names))
+	assert.Equal(t, cacheName, (names)[0])
 }
 
 func TestDestroyCache(t *testing.T) {
+	t.Cleanup(func() {
+		Cleanup(t)
+	})
 	cli, err := Start(ClientConfiguration{DefaultAddress})
 
 	assert.Nil(t, err)
@@ -85,14 +106,18 @@ func TestDestroyCache(t *testing.T) {
 	err = cli.DestroyCache(toDestroy)
 	assert.Nil(t, err)
 
-	var names *[]string
+	var names []string
 	names, err = cli.CacheNames()
 
 	assert.Nil(t, err)
-	assert.Equal(t, len(*namesBefore), len(*names))
+	assert.Equal(t, len(namesBefore), len(names))
 }
 
 func TestCacheConfig(t *testing.T) {
+	t.Cleanup(func() {
+		Cleanup(t)
+	})
+
 	cli, err := Start(ClientConfiguration{DefaultAddress})
 
 	assert.Nil(t, err)
@@ -101,6 +126,7 @@ func TestCacheConfig(t *testing.T) {
 	cfgTest := "config-test"
 
 	cache, err := cli.CreateCache(cfgTest)
+	assert.Nil(t, err)
 
 	readCcfg, err := cache.Configuration()
 
@@ -108,11 +134,9 @@ func TestCacheConfig(t *testing.T) {
 	assert.Equal(t, cfgTest, *readCcfg.Name)
 	assert.Equal(t, int32(0), readCcfg.Backups)
 
-	err = cli.DestroyCache(cfgTest)
-	assert.Nil(t, err)
-
 	ccfg := serdes.CacheConfiguration{}
 
+	cfgTest += "-1"
 	ccfg.Name = &cfgTest
 	ccfg.Backups = 1
 	ccfg.AtomicityMode = 1
@@ -126,8 +150,7 @@ func TestCacheConfig(t *testing.T) {
 
 	ccfg.GroupName = &grpTest
 
-	cache, err = cli.CreateCacheWithConfiguration(ccfg)
-
+	cache, err = cli.CreateCacheWithConfiguration(&ccfg)
 	assert.Nil(t, err)
 	assert.NotNil(t, cache)
 

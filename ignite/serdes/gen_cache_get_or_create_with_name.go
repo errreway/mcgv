@@ -12,11 +12,11 @@ func (req CacheGetOrCreateWithNameRequest) OpCode() int16 {
 	return 1052
 }
 
-func (req CacheGetOrCreateWithNameRequest) Write(buf *IgniteBuffer) {
-	buf.WriteString(req.Cache)
+func (req CacheGetOrCreateWithNameRequest) Write(bw BinaryWriter) {
+	bw.WriteString(req.Cache)
 }
 
-func (req CacheGetOrCreateWithNameRequest) ReadResponse(buf *IgniteBuffer) interface{} {
+func (req CacheGetOrCreateWithNameRequest) ReadResponse(br BinaryReader) interface{} {
 	resp := CacheGetOrCreateWithNameResponse{}
 	return resp
 }

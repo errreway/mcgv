@@ -12,11 +12,11 @@ func (req CacheDestroyRequest) OpCode() int16 {
 	return 1056
 }
 
-func (req CacheDestroyRequest) Write(buf *IgniteBuffer) {
-	buf.WriteInt32(req.CacheId)
+func (req CacheDestroyRequest) Write(bw BinaryWriter) {
+	bw.WriteInt32(req.CacheId)
 }
 
-func (req CacheDestroyRequest) ReadResponse(buf *IgniteBuffer) interface{} {
+func (req CacheDestroyRequest) ReadResponse(br BinaryReader) interface{} {
 	resp := CacheDestroyResponse{}
 	return resp
 }

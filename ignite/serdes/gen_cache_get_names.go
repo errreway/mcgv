@@ -5,18 +5,21 @@ type CacheGetNamesRequest struct {
 }
 
 type CacheGetNamesResponse struct {
-	Caches *[]string
+	Caches []*string
 }
 
 func (req CacheGetNamesRequest) OpCode() int16 {
 	return 1050
 }
 
-func (req CacheGetNamesRequest) Write(buf *IgniteBuffer) {
+func (req CacheGetNamesRequest) Write(bw BinaryWriter) {
 }
 
-func (req CacheGetNamesRequest) ReadResponse(buf *IgniteBuffer) interface{} {
+func (req CacheGetNamesRequest) ReadResponse(br BinaryReader) interface{} {
 	resp := CacheGetNamesResponse{}
-	resp.Caches = buf.ReadStringArrayWithoutType()
+	resp.Caches = make([]*string, int(br.ReadInt32()))
+	for i := 0; i < len(resp.Caches); i++ {
+		resp.Caches[i] = br.ReadString()
+	}
 	return resp
 }

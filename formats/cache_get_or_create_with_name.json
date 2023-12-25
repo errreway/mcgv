@@ -1,13 +1,13 @@
 {
-  "Name" : "cache_get_or_create_with_name",
-  "Code" : 1052,
-  "Request" : {
-    "Fields" : [
-      {"Name": "cache", "Type" : "string"}
+  "name" : "cache_get_or_create_with_name",
+  "code" : 1052,
+  "request" : {
+    "fields" : [
+      {"name": "cache", "type" : "string"}
     ]
   },
-  "Response" : {
-    "Fields" : [
+  "response" : {
+    "fields" : [
     ]
   }
 }

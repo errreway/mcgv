@@ -14,13 +14,13 @@ func (req CacheGetConfigurationRequest) OpCode() int16 {
 	return 1055
 }
 
-func (req CacheGetConfigurationRequest) Write(buf *IgniteBuffer) {
-	buf.WriteInt32(req.CacheId)
-	buf.WriteByte(req.Flag)
+func (req CacheGetConfigurationRequest) Write(bw BinaryWriter) {
+	bw.WriteInt32(req.CacheId)
+	bw.WriteByte(req.Flag)
 }
 
-func (req CacheGetConfigurationRequest) ReadResponse(buf *IgniteBuffer) interface{} {
+func (req CacheGetConfigurationRequest) ReadResponse(br BinaryReader) interface{} {
 	resp := CacheGetConfigurationResponse{}
-	resp.CacheConfiguration = buf.ReadCacheConfiguration()
+	resp.CacheConfiguration = ReadCacheConfiguration(br)
 	return resp
 }

@@ -1,85 +1,85 @@
 {
-  "Types" : [
+  "types" : [
     {
-      "Name" : "Field",
-      "Fields": [
-        { "Name": "name", "Type": "string" },
-        { "Name": "isDescensing", "Type": "boolean" }
+      "name" : "Field",
+      "fields": [
+        { "name": "name", "type": "string" },
+        { "name": "isDescensing", "type": "boolean" }
       ]
     },
     {
-      "Name" : "QueryIndex",
-      "Fields": [
-        { "Name": "name", "Type": "string" },
-        { "Name": "type", "Type": "byte" },
-        { "Name": "inlineSize", "Type": "int" },
-        { "Name": "fields", "Type": "Field[]", "Unsafe" : true }
+      "name" : "QueryIndex",
+      "fields": [
+        { "name": "name", "type": "string" },
+        { "name": "type", "type": "byte" },
+        { "name": "inlineSize", "type": "int" },
+        { "name": "fields", "type": "Field[]"}
       ]
     },
     {
-      "Name" : "QueryField",
-      "Fields": [
-        { "Name": "name", "Type": "string" },
-        { "Name": "typeName", "Type": "string" },
-        { "Name": "isKey", "Type": "boolean" },
-        { "Name": "isNotNull", "Type": "boolean" }
+      "name" : "QueryField",
+      "fields": [
+        { "name": "name", "type": "string" },
+        { "name": "typeName", "type": "string" },
+        { "name": "isKey", "type": "boolean" },
+        { "name": "isNotNull", "type": "boolean" }
       ]
     },
     {
-      "Name" : "QueryEntity",
-      "Fields" : [
-        {"Name": "keyTypeName", "Type" : "string"},
-        {"Name": "valueTypeName", "Type" : "string"},
-        {"Name": "tableName", "Type" : "string"},
-        {"Name": "keyFieldName", "Type" : "string"},
-        {"Name": "valueFieldName", "Type" : "string"},
-        {"Name": "queryFields", "Type" : "QueryField[]", "Unsafe" :  true},
-        {"Name": "aliases", "Type" : "map", "KeyType" : "string", "ValueType" : "string", "Unsafe" : true},
-        {"Name": "queryIndex", "Type" : "QueryIndex[]", "Unsafe" : true}
+      "name" : "QueryEntity",
+      "fields" : [
+        {"name": "keyTypeName", "type" : "string"},
+        {"name": "valueTypeName", "type" : "string"},
+        {"name": "tableName", "type" : "string"},
+        {"name": "keyFieldName", "type" : "string"},
+        {"name": "valueFieldName", "type" : "string"},
+        {"name": "queryFields", "type" : "QueryField[]"},
+        {"name": "aliases", "type" : "map", "key_type" : "string", "value_type" : "string"},
+        {"name": "queryIndex", "type" : "QueryIndex[]"}
       ]
     },
     {
-      "Name" : "CacheKeyConfiguration",
-      "Fields" : [
-        {"Name": "typeName", "Type" : "string"},
-        {"Name": "affinityKeyFieldName", "Type" : "string"}
+      "name" : "CacheKeyConfiguration",
+      "fields" : [
+        {"name": "typeName", "type" : "string"},
+        {"name": "affinityKeyFieldName", "type" : "string"}
       ]
     },
     {
-      "Name" : "CacheConfiguration",
-      "SkipWrite" : true,
-      "Fields" : [
-        {"Name": "length", "Type" : "int"},
-        {"Name": "atomicityMode", "Type" : "int"},
-        {"Name": "backups", "Type" : "int"},
-        {"Name": "cacheMode", "Type" : "int", "Value" :  "2"},
-        {"Name": "copyOnRead", "Type" : "boolean"},
-        {"Name": "dataRegionName", "Type" : "string"},
-        {"Name": "eagerTTL", "Type" : "boolean"},
-        {"Name": "statisticsEnabled", "Type" : "boolean"},
-        {"Name": "groupName", "Type" : "string"},
-        {"Name": "defaultLockTimeout", "Type" : "long"},
-        {"Name": "maxConcurrentAsyncOperations", "Type" : "int"},
-        {"Name": "maxQueryIterators", "Type" : "int"},
-        {"Name": "name", "Type" : "string"},
-        {"Name": "isOnheapCacheEnabled", "Type" : "boolean"},
-        {"Name": "partitionLossPolicy", "Type" : "int"},
-        {"Name": "queryDetailMetricsSize", "Type" : "int"},
-        {"Name": "queryParallelism", "Type" : "int", "Value" : "1"},
-        {"Name": "readFromBackup", "Type" : "boolean"},
-        {"Name": "rebalanceBatchSize", "Type" : "int", "Value" : "512 * 1024"},
-        {"Name": "rebalanceBatchesPrefetchCount", "Type" : "long", "Value" :  "3"},
-        {"Name": "rebalanceDelay", "Type" : "long"},
-        {"Name": "rebalanceMode", "Type" : "int"},
-        {"Name": "rebalanceOrder", "Type" : "int"},
-        {"Name": "rebalanceThrottle", "Type" : "long"},
-        {"Name": "rebalanceTimeout", "Type" : "long", "Value" : "10000"},
-        {"Name": "sqlEscapeAll", "Type" : "boolean"},
-        {"Name": "sqlIndexInlineMaxSize", "Type" : "int"},
-        {"Name": "sqlSchema", "Type" : "string"},
-        {"Name": "writeSynchronizationMode", "Type" : "int"},
-        {"Name": "cacheKeyConfigurations", "Type" : "CacheKeyConfiguration[]", "Unsafe" : true},
-        {"Name": "queryEntities", "Type" : "QueryEntity[]", "Unsafe" : true}
+      "name" : "CacheConfiguration",
+      "has_property_fields": true,
+      "fields" : [
+        {"name": "length", "type" : "int", "property_index": -1, "order": -1},
+        {"name": "atomicityMode", "type" : "int", "property_index": 2,  "order": 0},
+        {"name": "backups", "type" : "int", "property_index":  3, "order": 1},
+        {"name": "cacheMode", "type" : "int", "value" :  "2", "property_index": 1, "order": 2},
+        {"name": "copyOnRead", "type" : "boolean", "property_index": 5, "order": 3},
+        {"name": "dataRegionName", "type" : "string", "property_index": 100, "order": 4},
+        {"name": "eagerTTL", "type" : "boolean", "property_index": 405 , "order":  5},
+        {"name": "statisticsEnabled", "type" : "boolean", "property_index": 406, "order": 6},
+        {"name": "groupName", "type" : "string", "property_index": 400, "order": 7},
+        {"name": "defaultLockTimeout", "type" : "long", "property_index": 402, "order": 8},
+        {"name": "maxConcurrentAsyncOperations", "type" : "int", "property_index": 403, "order": 9},
+        {"name": "maxQueryIterators", "type" : "int", "property_index": 206, "order": 10},
+        {"name": "name", "type" : "string", "property_index":  0, "order": 11},
+        {"name": "isOnheapCacheEnabled", "type" : "boolean", "property_index": 101, "order": 12},
+        {"name": "partitionLossPolicy", "type" : "int", "property_index": 404, "order": 13},
+        {"name": "queryDetailMetricsSize", "type" : "int", "property_index":  202, "order":  14},
+        {"name": "queryParallelism", "type" : "int", "value" : "1", "property_index": 201, "order": 15},
+        {"name": "readFromBackup", "type" : "boolean", "property_index": 6, "order":  16},
+        {"name": "rebalanceBatchSize", "type" : "int", "value" : "512 * 1024", "property_index": 303, "order": 17},
+        {"name": "rebalanceBatchesPrefetchCount", "type" : "long", "value" : "3", "property_index": 304, "order":  18},
+        {"name": "rebalanceDelay", "type" : "long", "property_index": 301, "order": 19},
+        {"name": "rebalanceMode", "type" : "int", "property_index": 300, "order": 20},
+        {"name": "rebalanceOrder", "type" : "int", "property_index":  305, "order": 21},
+        {"name": "rebalanceThrottle", "type" : "long", "property_index": 306, "order": 22},
+        {"name": "rebalanceTimeout", "type" : "long", "value" : "10000", "property_index": 302, "order": 23},
+        {"name": "sqlEscapeAll", "type" : "boolean", "property_index": 205, "order": 24},
+        {"name": "sqlIndexInlineMaxSize", "type" : "int", "property_index": 204, "order": 25},
+        {"name": "sqlSchema", "type" : "string", "property_index": 203, "order": 26},
+        {"name": "writeSynchronizationMode", "type" : "int", "property_index": 4, "order":  27},
+        {"name": "cacheKeyConfigurations", "type" : "CacheKeyConfiguration[]", "property_index": 401, "order":  28},
+        {"name": "queryEntities", "type" : "QueryEntity[]", "property_index": 200, "order": 29}
       ]
     }
   ]

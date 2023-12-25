@@ -1,13 +1,13 @@
 {
-  "Name" : "cache_destroy",
-  "Code" : 1056,
-  "Request" : {
-    "Fields" : [
-      {"Name": "cacheId", "Type" : "int"}
+  "name" : "cache_destroy",
+  "code" : 1056,
+  "request" : {
+    "fields" : [
+      {"name": "cacheId", "type" : "int"}
     ]
   },
-  "Response" : {
-    "Fields" : [
+  "response" : {
+    "fields" : [
     ]
   }
 }

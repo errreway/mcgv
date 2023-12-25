@@ -1,6 +1,7 @@
 package ignite
 
 import (
+	"context"
 	"errors"
 	"sbt.ru/ignite-go/ignite/ignite/serdes"
 )
@@ -12,11 +13,11 @@ type Client interface {
 
 	Close() error
 
-	CacheNames() (*[]string, error)
+	CacheNames() ([]string, error)
 
 	CreateCache(name string) (Cache, error)
 
-	CreateCacheWithConfiguration(ccfg serdes.CacheConfiguration) (Cache, error)
+	CreateCacheWithConfiguration(ccfg *serdes.CacheConfiguration) (Cache, error)
 
 	GetOrCreateCache(name string) (Cache, error)
 
@@ -28,9 +29,8 @@ type ClientConfiguration struct {
 }
 
 type ClientImpl struct {
-	cfg    ClientConfiguration
-	ch     *serdes.Channel
-	caches map[string]CacheImpl
+	cfg ClientConfiguration
+	ch  *serdes.Channel
 }
 
 func Start(cfg ClientConfiguration) (Client, error) {
@@ -44,75 +44,101 @@ func Start(cfg ClientConfiguration) (Client, error) {
 		return nil, err
 	}
 
-	return ClientImpl{cfg, ch, make(map[string]CacheImpl)}, nil
+	return &ClientImpl{cfg, ch}, nil
 }
 
-func (cli ClientImpl) CacheNames() (*[]string, error) {
-	resp, err := cli.ch.Send(serdes.CacheGetNamesRequest{})
+func (cli *ClientImpl) CacheNames() ([]string, error) {
+	var err error = nil
+	var resp serdes.CacheGetNamesResponse
+
+	req := serdes.CacheGetNamesRequest{}
+	cli.ch.Send(context.Background(), req.OpCode(), func(output serdes.BinaryWriter) {
+		req.Write(output)
+	}, func(input serdes.BinaryReader, err error) {
+		resp = req.ReadResponse(input).(serdes.CacheGetNamesResponse)
+	})
+
+	if err != nil {
+		return nil, err
+	}
+	var names []string
+	for _, v := range resp.Caches {
+		names = append(names, *v)
+	}
+
+	return names, nil
+}
+
+func (cli *ClientImpl) CreateCache(name string) (Cache, error) {
+	var err error
+	req := serdes.CacheCreateWithNameRequest{Cache: &name}
+	cli.ch.Send(context.Background(), req.OpCode(), func(output serdes.BinaryWriter) {
+		req.Write(output)
+	}, func(output serdes.BinaryReader, err0 error) {
+		if err0 != nil {
+			err = err0
+		}
+	})
 	if err != nil {
 		return nil, err
 	}
 
-	return resp.(serdes.CacheGetNamesResponse).Caches, nil
+	return &CacheImpl{cli, name}, nil
 }
 
-func (cli ClientImpl) CreateCache(name string) (Cache, error) {
-	_, contains := cli.caches[name]
-	if contains {
-		return nil, errors.New("cache already exists: " + name)
-	}
-
-	_, err := cli.ch.Send(serdes.CacheCreateWithNameRequest{Cache: &name})
+func (cli *ClientImpl) CreateCacheWithConfiguration(config *serdes.CacheConfiguration) (Cache, error) {
+	var err error
+	req := serdes.CacheCreateWithConfigurationRequest{Config: *config}
+	cli.ch.Send(context.Background(), req.OpCode(), func(output serdes.BinaryWriter) {
+		req.Write(output)
+	}, func(output serdes.BinaryReader, err0 error) {
+		if err0 != nil {
+			err = err0
+		}
+	})
 	if err != nil {
 		return nil, err
 	}
 
-	return CacheImpl{&cli, &name}, nil
+	return &CacheImpl{cli, *config.Name}, nil
 }
 
-func (cli ClientImpl) CreateCacheWithConfiguration(ccfg serdes.CacheConfiguration) (Cache, error) {
-	_, contains := cli.caches[*ccfg.Name]
-	if contains {
-		return nil, errors.New("cache already exists: " + *ccfg.Name)
-	}
-
-	_, err := cli.ch.Send(serdes.CacheCreateWithConfigurationRequest{Config: ccfg})
+func (cli *ClientImpl) GetOrCreateCache(name string) (Cache, error) {
+	var err error
+	req := serdes.CacheGetOrCreateWithNameRequest{Cache: &name}
+	cli.ch.Send(context.Background(), req.OpCode(), func(output serdes.BinaryWriter) {
+		req.Write(output)
+	}, func(output serdes.BinaryReader, err0 error) {
+		if err0 != nil {
+			err = err0
+		}
+	})
 	if err != nil {
 		return nil, err
 	}
 
-	return CacheImpl{&cli, ccfg.Name}, nil
+	return &CacheImpl{cli, name}, nil
 }
 
-func (cli ClientImpl) GetOrCreateCache(name string) (Cache, error) {
-	cache, contains := cli.caches[name]
-	if contains {
-		return cache, nil
-	}
-
-	_, err := cli.ch.Send(serdes.CacheGetOrCreateWithNameRequest{Cache: &name})
-	if err != nil {
-		return nil, err
-	}
-
-	return CacheImpl{&cli, &name}, nil
+func (cli *ClientImpl) DestroyCache(name string) error {
+	var err error
+	req := serdes.CacheDestroyRequest{CacheId: CacheId(name)}
+	cli.ch.Send(context.Background(), req.OpCode(), func(output serdes.BinaryWriter) {
+		req.Write(output)
+	}, func(output serdes.BinaryReader, err0 error) {
+		if err0 != nil {
+			err = err0
+		}
+	})
+	return err
 }
 
-func (cli ClientImpl) DestroyCache(name string) error {
-	_, err := cli.ch.Send(serdes.CacheDestroyRequest{CacheId: CacheId(name)})
-	if err != nil {
-		return err
-	}
-
-	delete(cli.caches, name)
-
-	return nil
-}
-
-func (cli ClientImpl) Version() (string, error) {
+func (cli *ClientImpl) Version() (string, error) {
 	return "unimplemented", nil
 }
 
-func (cli ClientImpl) Close() error {
-	return cli.ch.Close()
+func (cli *ClientImpl) Close() error {
+	cli.ch.Close(nil)
+
+	return nil
 }

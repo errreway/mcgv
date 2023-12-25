@@ -27,7 +27,7 @@ type QueryEntity struct {
 	KeyFieldName   *string
 	ValueFieldName *string
 	QueryFields    []QueryField
-	Aliases        *map[string]string
+	Aliases        map[string]*string
 	QueryIndex     []QueryIndex
 }
 
@@ -70,203 +70,258 @@ type CacheConfiguration struct {
 	QueryEntities                 []QueryEntity
 }
 
-func (buf *IgniteBuffer) WriteField(req Field) {
-	buf.WriteString(req.Name)
-	buf.WriteBool(req.IsDescensing)
+func WriteField(bw BinaryWriter, req *Field) {
+	bw.WriteString(req.Name)
+	bw.WriteBool(req.IsDescensing)
 }
 
-func (buf *IgniteBuffer) ReadField() Field {
+func ReadField(br BinaryReader) Field {
 	resp := Field{}
-	resp.Name = buf.ReadString()
-	resp.IsDescensing = buf.ReadBool()
+	resp.Name = br.ReadString()
+	resp.IsDescensing = br.ReadBool()
 	return resp
 }
 
-func (buf *IgniteBuffer) WriteQueryIndex(req QueryIndex) {
-	buf.WriteString(req.Name)
-	buf.WriteByte(req.Type)
-	buf.WriteInt32(req.InlineSize)
-	buf.WriteFieldArrayWithoutType(req.Fields)
+func WriteQueryIndex(bw BinaryWriter, req *QueryIndex) {
+	bw.WriteString(req.Name)
+	bw.WriteByte(req.Type)
+	bw.WriteInt32(req.InlineSize)
+	bw.WriteInt32(int32(len(req.Fields)))
+	for i := 0; i < len(req.Fields); i++ {
+		WriteField(bw, &req.Fields[i])
+	}
 }
 
-func (buf *IgniteBuffer) ReadQueryIndex() QueryIndex {
+func ReadQueryIndex(br BinaryReader) QueryIndex {
 	resp := QueryIndex{}
-	resp.Name = buf.ReadString()
-	resp.Type = buf.ReadByte()
-	resp.InlineSize = buf.ReadInt32()
-	resp.Fields = buf.ReadFieldArrayWithoutType()
+	resp.Name = br.ReadString()
+	resp.Type = br.ReadByte()
+	resp.InlineSize = br.ReadInt32()
+	resp.Fields = make([]Field, int(br.ReadInt32()))
+	for i := 0; i < len(resp.Fields); i++ {
+		resp.Fields[i] = ReadField(br)
+	}
 	return resp
 }
 
-func (buf *IgniteBuffer) WriteQueryField(req QueryField) {
-	buf.WriteString(req.Name)
-	buf.WriteString(req.TypeName)
-	buf.WriteBool(req.IsKey)
-	buf.WriteBool(req.IsNotNull)
+func WriteQueryField(bw BinaryWriter, req *QueryField) {
+	bw.WriteString(req.Name)
+	bw.WriteString(req.TypeName)
+	bw.WriteBool(req.IsKey)
+	bw.WriteBool(req.IsNotNull)
 }
 
-func (buf *IgniteBuffer) ReadQueryField() QueryField {
+func ReadQueryField(br BinaryReader) QueryField {
 	resp := QueryField{}
-	resp.Name = buf.ReadString()
-	resp.TypeName = buf.ReadString()
-	resp.IsKey = buf.ReadBool()
-	resp.IsNotNull = buf.ReadBool()
+	resp.Name = br.ReadString()
+	resp.TypeName = br.ReadString()
+	resp.IsKey = br.ReadBool()
+	resp.IsNotNull = br.ReadBool()
 	return resp
 }
 
-func (buf *IgniteBuffer) WriteQueryEntity(req QueryEntity) {
-	buf.WriteString(req.KeyTypeName)
-	buf.WriteString(req.ValueTypeName)
-	buf.WriteString(req.TableName)
-	buf.WriteString(req.KeyFieldName)
-	buf.WriteString(req.ValueFieldName)
-	buf.WriteQueryFieldArrayWithoutType(req.QueryFields)
-	buf.WriteStringStringWithoutType(req.Aliases)
-	buf.WriteQueryIndexArrayWithoutType(req.QueryIndex)
+func WriteQueryEntity(bw BinaryWriter, req *QueryEntity) {
+	bw.WriteString(req.KeyTypeName)
+	bw.WriteString(req.ValueTypeName)
+	bw.WriteString(req.TableName)
+	bw.WriteString(req.KeyFieldName)
+	bw.WriteString(req.ValueFieldName)
+	bw.WriteInt32(int32(len(req.QueryFields)))
+	for i := 0; i < len(req.QueryFields); i++ {
+		WriteQueryField(bw, &req.QueryFields[i])
+	}
+	for key, val := range req.Aliases {
+		bw.WriteString(&key)
+		bw.WriteString(val)
+	}
+	bw.WriteInt32(int32(len(req.QueryIndex)))
+	for i := 0; i < len(req.QueryIndex); i++ {
+		WriteQueryIndex(bw, &req.QueryIndex[i])
+	}
 }
 
-func (buf *IgniteBuffer) ReadQueryEntity() QueryEntity {
+func ReadQueryEntity(br BinaryReader) QueryEntity {
 	resp := QueryEntity{}
-	resp.KeyTypeName = buf.ReadString()
-	resp.ValueTypeName = buf.ReadString()
-	resp.TableName = buf.ReadString()
-	resp.KeyFieldName = buf.ReadString()
-	resp.ValueFieldName = buf.ReadString()
-	resp.QueryFields = buf.ReadQueryFieldArrayWithoutType()
-	resp.Aliases = buf.ReadStringStringWithoutType()
-	resp.QueryIndex = buf.ReadQueryIndexArrayWithoutType()
+	resp.KeyTypeName = br.ReadString()
+	resp.ValueTypeName = br.ReadString()
+	resp.TableName = br.ReadString()
+	resp.KeyFieldName = br.ReadString()
+	resp.ValueFieldName = br.ReadString()
+	resp.QueryFields = make([]QueryField, int(br.ReadInt32()))
+	for i := 0; i < len(resp.QueryFields); i++ {
+		resp.QueryFields[i] = ReadQueryField(br)
+	}
+	resp.Aliases = make(map[string]*string)
+	for i := 0; i < int(br.ReadInt32()); i++ {
+		key := br.ReadString()
+		val := br.ReadString()
+		resp.Aliases[*key] = val
+	}
+	resp.QueryIndex = make([]QueryIndex, int(br.ReadInt32()))
+	for i := 0; i < len(resp.QueryIndex); i++ {
+		resp.QueryIndex[i] = ReadQueryIndex(br)
+	}
 	return resp
 }
 
-func (buf *IgniteBuffer) WriteCacheKeyConfiguration(req CacheKeyConfiguration) {
-	buf.WriteString(req.TypeName)
-	buf.WriteString(req.AffinityKeyFieldName)
+func WriteCacheKeyConfiguration(bw BinaryWriter, req *CacheKeyConfiguration) {
+	bw.WriteString(req.TypeName)
+	bw.WriteString(req.AffinityKeyFieldName)
 }
 
-func (buf *IgniteBuffer) ReadCacheKeyConfiguration() CacheKeyConfiguration {
+func ReadCacheKeyConfiguration(br BinaryReader) CacheKeyConfiguration {
 	resp := CacheKeyConfiguration{}
-	resp.TypeName = buf.ReadString()
-	resp.AffinityKeyFieldName = buf.ReadString()
+	resp.TypeName = br.ReadString()
+	resp.AffinityKeyFieldName = br.ReadString()
 	return resp
 }
 
-func (buf *IgniteBuffer) ReadCacheConfiguration() CacheConfiguration {
+func WriteCacheConfiguration(bw BinaryWriter, req *CacheConfiguration) {
+	origPos := bw.Position()
+	bw.WriteInt32(0)
+	bw.WriteInt16(0)
+	var propCount int16 = 0
+	bw.WriteInt16(2)
+	bw.WriteInt32(req.AtomicityMode)
+	propCount += 1
+	bw.WriteInt16(3)
+	bw.WriteInt32(req.Backups)
+	propCount += 1
+	bw.WriteInt16(1)
+	bw.WriteInt32(req.CacheMode)
+	propCount += 1
+	bw.WriteInt16(5)
+	bw.WriteBool(req.CopyOnRead)
+	propCount += 1
+	bw.WriteInt16(100)
+	bw.WriteString(req.DataRegionName)
+	propCount += 1
+	bw.WriteInt16(405)
+	bw.WriteBool(req.EagerTTL)
+	propCount += 1
+	bw.WriteInt16(406)
+	bw.WriteBool(req.StatisticsEnabled)
+	propCount += 1
+	bw.WriteInt16(400)
+	bw.WriteString(req.GroupName)
+	propCount += 1
+	bw.WriteInt16(402)
+	bw.WriteInt64(req.DefaultLockTimeout)
+	propCount += 1
+	bw.WriteInt16(403)
+	bw.WriteInt32(req.MaxConcurrentAsyncOperations)
+	propCount += 1
+	bw.WriteInt16(206)
+	bw.WriteInt32(req.MaxQueryIterators)
+	propCount += 1
+	bw.WriteInt16(0)
+	bw.WriteString(req.Name)
+	propCount += 1
+	bw.WriteInt16(101)
+	bw.WriteBool(req.IsOnheapCacheEnabled)
+	propCount += 1
+	bw.WriteInt16(404)
+	bw.WriteInt32(req.PartitionLossPolicy)
+	propCount += 1
+	bw.WriteInt16(202)
+	bw.WriteInt32(req.QueryDetailMetricsSize)
+	propCount += 1
+	bw.WriteInt16(201)
+	bw.WriteInt32(req.QueryParallelism)
+	propCount += 1
+	bw.WriteInt16(6)
+	bw.WriteBool(req.ReadFromBackup)
+	propCount += 1
+	bw.WriteInt16(303)
+	bw.WriteInt32(req.RebalanceBatchSize)
+	propCount += 1
+	bw.WriteInt16(304)
+	bw.WriteInt64(req.RebalanceBatchesPrefetchCount)
+	propCount += 1
+	bw.WriteInt16(301)
+	bw.WriteInt64(req.RebalanceDelay)
+	propCount += 1
+	bw.WriteInt16(300)
+	bw.WriteInt32(req.RebalanceMode)
+	propCount += 1
+	bw.WriteInt16(305)
+	bw.WriteInt32(req.RebalanceOrder)
+	propCount += 1
+	bw.WriteInt16(306)
+	bw.WriteInt64(req.RebalanceThrottle)
+	propCount += 1
+	bw.WriteInt16(302)
+	bw.WriteInt64(req.RebalanceTimeout)
+	propCount += 1
+	bw.WriteInt16(205)
+	bw.WriteBool(req.SqlEscapeAll)
+	propCount += 1
+	bw.WriteInt16(204)
+	bw.WriteInt32(req.SqlIndexInlineMaxSize)
+	propCount += 1
+	bw.WriteInt16(203)
+	bw.WriteString(req.SqlSchema)
+	propCount += 1
+	bw.WriteInt16(4)
+	bw.WriteInt32(req.WriteSynchronizationMode)
+	propCount += 1
+	bw.WriteInt16(401)
+	bw.WriteInt32(int32(len(req.CacheKeyConfigurations)))
+	for i := 0; i < len(req.CacheKeyConfigurations); i++ {
+		WriteCacheKeyConfiguration(bw, &req.CacheKeyConfigurations[i])
+	}
+	propCount += 1
+	bw.WriteInt16(200)
+	bw.WriteInt32(int32(len(req.QueryEntities)))
+	for i := 0; i < len(req.QueryEntities); i++ {
+		WriteQueryEntity(bw, &req.QueryEntities[i])
+	}
+	propCount += 1
+	curPos := bw.Position()
+	bw.SetPosition(origPos)
+	bw.WriteInt32(curPos - origPos - IntBytes)
+	bw.WriteInt16(propCount)
+	bw.SetPosition(curPos)
+}
+
+func ReadCacheConfiguration(br BinaryReader) CacheConfiguration {
 	resp := CacheConfiguration{}
-	resp.Length = buf.ReadInt32()
-	resp.AtomicityMode = buf.ReadInt32()
-	resp.Backups = buf.ReadInt32()
-	resp.CacheMode = buf.ReadInt32()
-	resp.CopyOnRead = buf.ReadBool()
-	resp.DataRegionName = buf.ReadString()
-	resp.EagerTTL = buf.ReadBool()
-	resp.StatisticsEnabled = buf.ReadBool()
-	resp.GroupName = buf.ReadString()
-	resp.DefaultLockTimeout = buf.ReadInt64()
-	resp.MaxConcurrentAsyncOperations = buf.ReadInt32()
-	resp.MaxQueryIterators = buf.ReadInt32()
-	resp.Name = buf.ReadString()
-	resp.IsOnheapCacheEnabled = buf.ReadBool()
-	resp.PartitionLossPolicy = buf.ReadInt32()
-	resp.QueryDetailMetricsSize = buf.ReadInt32()
-	resp.QueryParallelism = buf.ReadInt32()
-	resp.ReadFromBackup = buf.ReadBool()
-	resp.RebalanceBatchSize = buf.ReadInt32()
-	resp.RebalanceBatchesPrefetchCount = buf.ReadInt64()
-	resp.RebalanceDelay = buf.ReadInt64()
-	resp.RebalanceMode = buf.ReadInt32()
-	resp.RebalanceOrder = buf.ReadInt32()
-	resp.RebalanceThrottle = buf.ReadInt64()
-	resp.RebalanceTimeout = buf.ReadInt64()
-	resp.SqlEscapeAll = buf.ReadBool()
-	resp.SqlIndexInlineMaxSize = buf.ReadInt32()
-	resp.SqlSchema = buf.ReadString()
-	resp.WriteSynchronizationMode = buf.ReadInt32()
-	resp.CacheKeyConfigurations = buf.ReadCacheKeyConfigurationArrayWithoutType()
-	resp.QueryEntities = buf.ReadQueryEntityArrayWithoutType()
+	resp.Length = br.ReadInt32()
+	resp.AtomicityMode = br.ReadInt32()
+	resp.Backups = br.ReadInt32()
+	resp.CacheMode = br.ReadInt32()
+	resp.CopyOnRead = br.ReadBool()
+	resp.DataRegionName = br.ReadString()
+	resp.EagerTTL = br.ReadBool()
+	resp.StatisticsEnabled = br.ReadBool()
+	resp.GroupName = br.ReadString()
+	resp.DefaultLockTimeout = br.ReadInt64()
+	resp.MaxConcurrentAsyncOperations = br.ReadInt32()
+	resp.MaxQueryIterators = br.ReadInt32()
+	resp.Name = br.ReadString()
+	resp.IsOnheapCacheEnabled = br.ReadBool()
+	resp.PartitionLossPolicy = br.ReadInt32()
+	resp.QueryDetailMetricsSize = br.ReadInt32()
+	resp.QueryParallelism = br.ReadInt32()
+	resp.ReadFromBackup = br.ReadBool()
+	resp.RebalanceBatchSize = br.ReadInt32()
+	resp.RebalanceBatchesPrefetchCount = br.ReadInt64()
+	resp.RebalanceDelay = br.ReadInt64()
+	resp.RebalanceMode = br.ReadInt32()
+	resp.RebalanceOrder = br.ReadInt32()
+	resp.RebalanceThrottle = br.ReadInt64()
+	resp.RebalanceTimeout = br.ReadInt64()
+	resp.SqlEscapeAll = br.ReadBool()
+	resp.SqlIndexInlineMaxSize = br.ReadInt32()
+	resp.SqlSchema = br.ReadString()
+	resp.WriteSynchronizationMode = br.ReadInt32()
+	resp.CacheKeyConfigurations = make([]CacheKeyConfiguration, int(br.ReadInt32()))
+	for i := 0; i < len(resp.CacheKeyConfigurations); i++ {
+		resp.CacheKeyConfigurations[i] = ReadCacheKeyConfiguration(br)
+	}
+	resp.QueryEntities = make([]QueryEntity, int(br.ReadInt32()))
+	for i := 0; i < len(resp.QueryEntities); i++ {
+		resp.QueryEntities[i] = ReadQueryEntity(br)
+	}
 	return resp
-}
-
-func (buf *IgniteBuffer) WriteCacheKeyConfigurationArrayWithoutType(req []CacheKeyConfiguration) {
-	l := len(req)
-	buf.WriteInt32(int32(l))
-	for i := 0; i < l; i++ {
-		buf.WriteCacheKeyConfiguration(req[i])
-	}
-}
-
-func (buf *IgniteBuffer) ReadCacheKeyConfigurationArrayWithoutType() []CacheKeyConfiguration {
-	l := int(buf.ReadInt32())
-	res := make([]CacheKeyConfiguration, l)
-	for i := 0; i < l; i++ {
-		res[i] = buf.ReadCacheKeyConfiguration()
-	}
-	return res
-}
-
-func (buf *IgniteBuffer) WriteFieldArrayWithoutType(req []Field) {
-	l := len(req)
-	buf.WriteInt32(int32(l))
-	for i := 0; i < l; i++ {
-		buf.WriteField(req[i])
-	}
-}
-
-func (buf *IgniteBuffer) ReadFieldArrayWithoutType() []Field {
-	l := int(buf.ReadInt32())
-	res := make([]Field, l)
-	for i := 0; i < l; i++ {
-		res[i] = buf.ReadField()
-	}
-	return res
-}
-
-func (buf *IgniteBuffer) WriteQueryEntityArrayWithoutType(req []QueryEntity) {
-	l := len(req)
-	buf.WriteInt32(int32(l))
-	for i := 0; i < l; i++ {
-		buf.WriteQueryEntity(req[i])
-	}
-}
-
-func (buf *IgniteBuffer) ReadQueryEntityArrayWithoutType() []QueryEntity {
-	l := int(buf.ReadInt32())
-	res := make([]QueryEntity, l)
-	for i := 0; i < l; i++ {
-		res[i] = buf.ReadQueryEntity()
-	}
-	return res
-}
-
-func (buf *IgniteBuffer) WriteQueryFieldArrayWithoutType(req []QueryField) {
-	l := len(req)
-	buf.WriteInt32(int32(l))
-	for i := 0; i < l; i++ {
-		buf.WriteQueryField(req[i])
-	}
-}
-
-func (buf *IgniteBuffer) ReadQueryFieldArrayWithoutType() []QueryField {
-	l := int(buf.ReadInt32())
-	res := make([]QueryField, l)
-	for i := 0; i < l; i++ {
-		res[i] = buf.ReadQueryField()
-	}
-	return res
-}
-
-func (buf *IgniteBuffer) WriteQueryIndexArrayWithoutType(req []QueryIndex) {
-	l := len(req)
-	buf.WriteInt32(int32(l))
-	for i := 0; i < l; i++ {
-		buf.WriteQueryIndex(req[i])
-	}
-}
-
-func (buf *IgniteBuffer) ReadQueryIndexArrayWithoutType() []QueryIndex {
-	l := int(buf.ReadInt32())
-	res := make([]QueryIndex, l)
-	for i := 0; i < l; i++ {
-		res[i] = buf.ReadQueryIndex()
-	}
-	return res
 }

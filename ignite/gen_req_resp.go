@@ -37,44 +37,44 @@ var simpleName = map[string]string{
 var typeMap = map[string]string{
 	"byte":     "byte",
 	"boolean":  "bool",
-	"byte[]":   "*[]byte",
+	"byte[]":   "[]byte",
 	"short":    "int16",
 	"int":      "int32",
 	"long":     "int64",
 	"string":   "*string",
-	"string[]": "*[]string",
+	"string[]": "[]*string",
 	"uuid":     "*uuid.UUID",
 }
 
 var customTypes = map[string]string{}
 
 type Field struct {
-	Name      string
-	Type      string
-	KeyType   string
-	ValueType string
-	Value     string
-	Unsafe    bool
+	Name      string `json:"name"`
+	Type      string `json:"type"`
+	KeyType   string `json:"key_type"`
+	ValueType string `json:"value_type""`
+	Value     string `json:"value"`
+	PropIdx   int    `json:"property_index"`
+	Order     int    `json:"order"`
 }
 
 type Type struct {
-	Name      string
-	SkipWrite bool
-	SkipRead  bool
-	Fields    []Field
-	Optional  []Field
+	Name       string  `json:"name"`
+	PropFields bool    `json:"has_property_fields"`
+	Fields     []Field `json:"fields"`
+	Optional   []Field `json:"optional"`
 }
 
 type Format struct {
-	Name         string
-	Code         int16
-	Request      *Type
-	Response     *Type
-	FailResponse *Type
+	Name         string `json:"name"`
+	Code         int16  `json:"code"`
+	Request      *Type  `json:"request"`
+	Response     *Type  `json:"response"`
+	FailResponse *Type  `json:"fail_response"`
 }
 
 type TypesList struct {
-	Types []Type
+	Types []Type `json:"types"`
 }
 
 func main() {
@@ -85,42 +85,8 @@ func main() {
 		panic(err)
 	}
 
-	generateMapsSerdes(serdesDir)
 	generateTypes(serdesDir)
 	generateFormats(serdesDir)
-}
-
-func generateMapsSerdes(serdesDir string) {
-	fmt.Println("Generating maps serdes methods")
-
-	f, err := os.Create(filepath.Join(serdesDir, "gen_maps_serdes.go"))
-	defer f.Close()
-	if err != nil {
-		panic(err)
-	}
-
-	writeHeader(f)
-	line("import (", f)
-	line(TAB+"\"github.com/google/uuid\"", f)
-	line(")", f)
-	line("", f)
-
-	types := sortedKeys(typeMap)
-	for i, keyType := range types {
-		if isArrayType(keyType) {
-			fmt.Println(fmt.Sprintf("Skip map key [key=%s]", keyType))
-			continue
-		}
-
-		for j, valType := range types {
-			if j != 0 || i != 0 {
-				line("", f)
-			}
-			generateMapWrite(keyType, valType, f)
-			line("", f)
-			generateMapRead(keyType, valType, f)
-		}
-	}
 }
 
 func generateTypes(serdesDir string) {
@@ -143,7 +109,6 @@ func generateTypes(serdesDir string) {
 
 	writeHeader(f)
 
-	arrayWriteMethodRequired := make(map[string]bool)
 	typesMap := make(map[string]Type)
 
 	for _, tp := range typesList.Types {
@@ -157,38 +122,12 @@ func generateTypes(serdesDir string) {
 
 	for _, tp := range typesList.Types {
 		fmt.Println(fmt.Sprintf("|--> type [name=%s]", tp.Name))
-		if !tp.SkipWrite {
-			generateWrite(&tp, fmt.Sprintf("func (buf *IgniteBuffer) %s(req %s) {", writeMethodName(tp.Name, nil), tp.Name), f)
-			line("", f)
-		}
 
-		if !tp.SkipRead {
-			generateRead(&tp, tp.Name, fmt.Sprintf("func (buf *IgniteBuffer) %s() %s {", read+tp.Name, tp.Name), f)
-			line("", f)
-		}
-
-		forEachField(&tp, func(fld Field) {
-			if isArrayType(fld.Type) {
-				componentType := arrayComponentType(fld.Type)
-				_, contains := typesMap[componentType]
-				if !contains {
-					panic(fmt.Sprintf("unknown array type[type=%s]", componentType))
-				}
-
-				arrayWriteMethodRequired[componentType] = fld.Unsafe
-			}
-		})
-	}
-
-	for i, compType := range sortedKeys(arrayWriteMethodRequired) {
-		unsafe := arrayWriteMethodRequired[compType]
-		fmt.Println(fmt.Sprintf("|--> array [name=%s]", compType))
-		generateWriteArray(typesMap[compType], unsafe, f)
+		generateWrite(&tp, fmt.Sprintf("func %s(bw BinaryWriter, req *%s) {", writeMethodName(tp.Name, nil), tp.Name), f)
 		line("", f)
-		generateReadArray(typesMap[compType], unsafe, f)
-		if i+1 < len(arrayWriteMethodRequired) {
-			line("", f)
-		}
+
+		generateRead(&tp, tp.Name, fmt.Sprintf("func %s(br BinaryReader) %s {", read+tp.Name, tp.Name), f)
+		line("", f)
 	}
 }
 
@@ -249,16 +188,16 @@ func generateRequest(format *Format, serdesDir string) {
 	if generateConstructor(format.Request, requestType, f) {
 		line("", f)
 	}
-	generateWrite(format.Request, fmt.Sprintf("func (req %s) Write(buf *IgniteBuffer) {", requestType), f)
+	generateWrite(format.Request, fmt.Sprintf("func (req %s) Write(bw BinaryWriter) {", requestType), f)
 	line("", f)
-	generateRead(format.Response, responseType, fmt.Sprintf("func (req %s) ReadResponse(buf *IgniteBuffer) interface{} {", requestType), f)
+	generateRead(format.Response, responseType, fmt.Sprintf("func (req %s) ReadResponse(br BinaryReader) interface{} {", requestType), f)
 
 	if format.FailResponse != nil {
 		failResponseType := exportedName(camelCase(format.Name)) + "FailResponse"
 		line("", f)
 		generateStruct(format.FailResponse, failResponseType, f)
 		line("", f)
-		generateRead(format.FailResponse, failResponseType, fmt.Sprintf("func (req %s) ReadFailResponse(buf *IgniteBuffer) interface{} {", requestType), f)
+		generateRead(format.FailResponse, failResponseType, fmt.Sprintf("func (req %s) ReadFailResponse(br BinaryReader) interface{} {", requestType), f)
 	}
 }
 
@@ -310,15 +249,27 @@ func generateRead(response *Type, responseType string, signature string, f *os.F
 	line(fmt.Sprintf(TAB+"resp := %s{}", responseType), f)
 
 	for _, fld := range response.Fields {
-		line(fmt.Sprintf(TAB+"resp.%s = buf.%s()", exportedName(fld.Name), readMethodName(fld)), f)
+		if isMapType(fld.Type) {
+			generateReadMapField(fld, f)
+		} else if isArrayType(fld.Type) {
+			generateReadArrayField(fld, f)
+		} else {
+			generateReadField(fld, f)
+		}
 	}
 
 	if len(response.Optional) > 0 {
 		line("", f)
-		line(TAB+"if buf.HasMore() {", f)
+		line(TAB+"if buf.Available() > 0 {", f)
 
 		for _, fld := range response.Optional {
-			line(fmt.Sprintf(TAB+TAB+"resp.%s = buf.%s()", exportedName(fld.Name), readMethodName(fld)), f)
+			if isMapType(fld.Type) {
+				generateReadMapField(fld, f)
+			} else if isArrayType(fld.Type) {
+				generateReadArrayField(fld, f)
+			} else {
+				generateReadField(fld, f)
+			}
 		}
 
 		line(TAB+"}", f)
@@ -328,19 +279,56 @@ func generateRead(response *Type, responseType string, signature string, f *os.F
 	line("}", f)
 }
 
-func generateReadArray(tp Type, isUnsafe bool, f *os.File) {
-	unsafePfx := ""
-	if isUnsafe {
-		unsafePfx = withoutTypeSuffix
+func generateReadField(fld Field, f *os.File) {
+	if _, ok := customTypes[fld.Type]; ok {
+		line(fmt.Sprintf(TAB+"resp.%s = %s(br)", exportedName(fld.Name), readMethodName(fld)), f)
+	} else {
+		line(fmt.Sprintf(TAB+"resp.%s = br.%s()", exportedName(fld.Name), readMethodName(fld)), f)
 	}
-	line(fmt.Sprintf("func (buf *IgniteBuffer) Read%sArray%s() []%s {", tp.Name, unsafePfx, tp.Name), f)
-	line(TAB+"l := int(buf.ReadInt32())", f)
-	line(TAB+fmt.Sprintf("res := make([]%s, l)", tp.Name), f)
-	line(TAB+"for i := 0; i < l; i++ {", f)
-	line(TAB+TAB+fmt.Sprintf("res[i] = buf.Read%s()", tp.Name), f)
+}
+
+func generateReadArrayField(fld Field, f *os.File) {
+	elType := arrayComponentType(fld.Type)
+	_, isCustom := customTypes[elType]
+	fldName := exportedName(fld.Name)
+	line(TAB+fmt.Sprintf("resp.%s = make(%s, int(br.ReadInt32()))", fldName, goType(fld.Type, nil)), f)
+	line(TAB+fmt.Sprintf("for i := 0; i < len(resp.%s); i++ {", fldName), f)
+	if isCustom {
+		line(TAB+TAB+fmt.Sprintf("resp.%s[i] = Read%s(br)", fldName, exportedName(elType)), f)
+	} else {
+		line(TAB+TAB+fmt.Sprintf("resp.%s[i] = br.Read%s()", fldName, exportedName(elType)), f)
+	}
 	line(TAB+"}", f)
-	line(TAB+"return res", f)
-	line("}", f)
+}
+
+func generateReadMapField(fld Field, f *os.File) {
+	fldName := exportedName(fld.Name)
+	goKeyType := typeMap[fld.KeyType]
+	goValType := typeMap[fld.ValueType]
+
+	isGoKeyTypePointer := goKeyType[0] == '*'
+
+	if _, isKeyCustom := customTypes[fld.KeyType]; isKeyCustom {
+		panic(fmt.Sprintf("key cannot be of custom type %s, map field %s", fld.KeyType, fld.Name))
+	}
+
+	if _, valCustom := customTypes[fld.ValueType]; valCustom {
+		panic(fmt.Sprintf("value cannot be of custom type %s, map field %s", fld.ValueType, fld.Name))
+	}
+
+	goKeyType = removePointer(goKeyType)
+	line(TAB+fmt.Sprintf("resp.%s = make(map[%s]%s)", fldName, goKeyType, goValType), f)
+	goValType = removePointer(goValType)
+
+	line(TAB+"for i := 0; i < int(br.ReadInt32()); i++ {", f)
+	line(TAB+TAB+fmt.Sprintf("key := br.Read%s()", exportedName(goKeyType)), f)
+	line(TAB+TAB+fmt.Sprintf("val := br.Read%s()", exportedName(goValType)), f)
+	if isGoKeyTypePointer {
+		line(TAB+TAB+fmt.Sprintf("resp.%s[*key] = val", fldName), f)
+	} else {
+		line(TAB+TAB+fmt.Sprintf("res.%s[key] = val", fldName), f)
+	}
+	line(TAB+"}", f)
 }
 
 func generateConstructor(request *Type, typeName string, f *os.File) bool {
@@ -372,122 +360,105 @@ func generateConstructor(request *Type, typeName string, f *os.File) bool {
 	return true
 }
 
-func generateWrite(request *Type, signamture string, f *os.File) {
-	line(signamture, f)
+func generateWrite(request *Type, signature string, f *os.File) {
+	line(signature, f)
+
+	if request.PropFields {
+		line(TAB+"origPos := bw.Position()", f)
+		line(TAB+"bw.WriteInt32(0)", f)
+		line(TAB+"bw.WriteInt16(0)", f)
+		line(TAB+"var propCount int16 = 0", f)
+	}
 
 	forEachField(request, func(fld Field) {
-		line(fmt.Sprintf(TAB+"buf.%s(req.%s)", writeMethodName(fld.Type, &fld), exportedName(fld.Name)), f)
+		if request.PropFields && fld.PropIdx < 0 {
+			return
+		}
+		if request.PropFields && fld.PropIdx >= 0 {
+			line(TAB+fmt.Sprintf("bw.WriteInt16(%d)", fld.PropIdx), f)
+		}
+		if isMapType(fld.Type) {
+			generateWriteMapField(fld, f)
+		} else if isArrayType(fld.Type) {
+			generateWriteArrayField(fld, f)
+		} else {
+			generateWriteField(fld, f)
+		}
+
+		if request.PropFields && fld.PropIdx >= 0 {
+			line(TAB+"propCount += 1", f)
+		}
 	})
 
-	line("}", f)
-}
-
-func generateWriteArray(tp Type, unsafe bool, f *os.File) {
-	unsafePfx := ""
-	if unsafe {
-		unsafePfx = withoutTypeSuffix
+	if request.PropFields {
+		line(TAB+"curPos := bw.Position()", f)
+		line(TAB+"bw.SetPosition(origPos)", f)
+		line(TAB+"bw.WriteInt32(curPos - origPos - IntBytes)", f)
+		line(TAB+"bw.WriteInt16(propCount)", f)
+		line(TAB+"bw.SetPosition(curPos)", f)
 	}
-	line(fmt.Sprintf("func (buf *IgniteBuffer) Write%sArray%s(req []%s) {", tp.Name, unsafePfx, tp.Name), f)
-	line(TAB+"l := len(req)", f)
-	line(TAB+"buf.WriteInt32(int32(l))", f)
-	line(TAB+"for i := 0; i < l; i++ {", f)
-	line(TAB+TAB+fmt.Sprintf("buf.%s(req[i])", writeMethodName(tp.Name, nil)), f)
-	line(TAB+"}", f)
+
 	line("}", f)
 }
 
-func generateMapWrite(keyType string, valType string, f *os.File) {
-	goKeyType := typeMap[keyType]
-	goValType := typeMap[valType]
+func generateWriteField(fld Field, f *os.File) {
+	_, isCustom := customTypes[fld.Type]
+
+	var fmtString string
+	if isCustom {
+		fmtString = "%s(bw, &req.%s)"
+	} else {
+		fmtString = "bw.%s(req.%s)"
+	}
+	line(fmt.Sprintf(TAB+fmtString, writeMethodName(fld.Type, &fld), exportedName(fld.Name)), f)
+}
+
+func generateWriteArrayField(fld Field, f *os.File) {
+	fldName := exportedName(fld.Name)
+	elType := arrayComponentType(fld.Type)
+	_, isCustom := customTypes[elType]
+
+	line(TAB+fmt.Sprintf("bw.WriteInt32(int32(len(req.%s)))", fldName), f)
+	line(TAB+fmt.Sprintf("for i := 0; i < len(req.%s); i++ {", fldName), f)
+
+	var fmtString string
+	if isCustom {
+		fmtString = "Write%s(bw, &req.%s[i])"
+	} else {
+		fmtString = "bw.Write%s(req.%s[i])"
+	}
+
+	line(TAB+TAB+fmt.Sprintf(fmtString, exportedName(elType), fldName), f)
+	line(TAB+"}", f)
+}
+
+func generateWriteMapField(fld Field, f *os.File) {
+	fldName := exportedName(fld.Name)
+	goKeyType := typeMap[fld.KeyType]
+	goValType := typeMap[fld.ValueType]
 
 	isGoKeyTypePointer := goKeyType[0] == '*'
 	goKeyType = removePointer(goKeyType)
-	isGoValTypePointer := goValType[0] == '*'
 	goValType = removePointer(goValType)
 
-	line(fmt.Sprintf("func (buf *IgniteBuffer) %s0(m *map[%s]%s) {", mapMethodName(write, keyType, valType), goKeyType, goValType), f)
-	line(TAB+"for key, val := range *m {", f)
+	if _, isKeyCustom := customTypes[fld.KeyType]; isKeyCustom {
+		panic(fmt.Sprintf("key cannot be of custom type %s, map field %s", fld.KeyType, fld.Name))
+	}
 
-	keyArg := "key"
+	if _, valCustom := customTypes[fld.ValueType]; valCustom {
+		panic(fmt.Sprintf("value cannot be of custom type %s, map field %s", fld.ValueType, fld.Name))
+	}
+
+	line(TAB+fmt.Sprintf("for key, val := range req.%s {", fldName), f)
+
 	if isGoKeyTypePointer {
-		keyArg = "&key"
+		line(TAB+TAB+fmt.Sprintf("bw.Write%s(&key)", exportedName(goKeyType)), f)
+	} else {
+		line(TAB+TAB+fmt.Sprintf("bw.Write%s(key)", exportedName(goKeyType)), f)
 	}
+	line(TAB+TAB+fmt.Sprintf("bw.Write%s(val)", exportedName(goValType)), f)
 
-	valArg := "val"
-	if isGoValTypePointer {
-		valArg = "&val"
-	}
-
-	line(TAB+TAB+fmt.Sprintf("buf.%s(%s)", writeMethodName(keyType, nil), keyArg), f)
-	line(TAB+TAB+fmt.Sprintf("buf.%s(%s)", writeMethodName(valType, nil), valArg), f)
 	line(TAB+"}", f)
-
-	line("}", f)
-	line("", f)
-
-	mName := mapMethodName(write, keyType, valType)
-
-	line(fmt.Sprintf("func (buf *IgniteBuffer) %s(m *map[%s]%s) {", mName, goKeyType, goValType), f)
-	line(TAB+"if m == nil {", f)
-	line(TAB+TAB+"buf.WriteByte(Null)", f)
-	line(TAB+TAB+"return", f)
-	line(TAB+"}", f)
-
-	line(TAB+"WriteMapHeader(buf, len(*m))", f)
-	line(TAB+fmt.Sprintf("buf.%s0(m)", mName), f)
-	line("}", f)
-	line("", f)
-
-	line(fmt.Sprintf("func (buf *IgniteBuffer) %sWithoutType(m *map[%s]%s) {", mName, goKeyType, goValType), f)
-	line(TAB+"if m == nil {", f)
-	line(TAB+TAB+"buf.WriteInt(0)", f)
-	line(TAB+TAB+"return", f)
-	line(TAB+"}", f)
-	line(TAB+"buf.WriteInt(len(*m))", f)
-	line(TAB+fmt.Sprintf("buf.%s0(m)", mName), f)
-	line("}", f)
-}
-
-func generateMapRead(keyType string, valType string, f *os.File) {
-	goKeyType := typeMap[keyType]
-	goValType := typeMap[valType]
-
-	keyPointer := ""
-	if goKeyType[0] == '*' {
-		keyPointer = "*"
-	}
-
-	valPointer := ""
-	if goValType[0] == '*' {
-		valPointer = "*"
-	}
-
-	goKeyType = removePointer(goKeyType)
-	goValType = removePointer(goValType)
-
-	line(fmt.Sprintf("func (buf *IgniteBuffer) %s%s() *map[%s]%s {", mapMethodName(read, keyType, valType), withoutTypeSuffix, goKeyType, goValType), f)
-	line(TAB+fmt.Sprintf("res := make(map[%s]%s)", goKeyType, goValType), f)
-	line(TAB+"l := int(buf.ReadInt32())", f)
-	line(TAB+"for i := 0; i < l; i++ {", f)
-	line(TAB+TAB+fmt.Sprintf("key := %sbuf.%s()", keyPointer, methodName(read, keyType)), f)
-	line(TAB+TAB+fmt.Sprintf("res[key] = %sbuf.%s()", valPointer, methodName(read, valType)), f)
-	line(TAB+"}", f)
-	line(TAB+"return &res", f)
-	line("}", f)
-	line("", f)
-	line(fmt.Sprintf("func (buf *IgniteBuffer) %s() *map[%s]%s {", mapMethodName(read, keyType, valType), goKeyType, goValType), f)
-	line(TAB+"if buf.EnsureMapType() {", f)
-	line(TAB+TAB+"return nil", f)
-	line(TAB+"}", f)
-	line(TAB+fmt.Sprintf("res := make(map[%s]%s)", goKeyType, goValType), f)
-	line(TAB+"l := int(buf.ReadInt32())", f)
-	line(TAB+"buf.ReadByte()", f)
-	line(TAB+"for i := 0; i < l; i++ {", f)
-	line(TAB+TAB+fmt.Sprintf("key := %sbuf.%s()", keyPointer, methodName(read, keyType)), f)
-	line(TAB+TAB+fmt.Sprintf("res[key] = %sbuf.%s()", valPointer, methodName(read, valType)), f)
-	line(TAB+"}", f)
-	line(TAB+"return &res", f)
-	line("}", f)
 }
 
 func writeHeader(f *os.File) {
@@ -515,10 +486,6 @@ func writeMethodName(tp string, fld *Field) string {
 	} else {
 		res = methodName(write, tp)
 	}
-
-	if fld != nil && fld.Unsafe {
-		return res + withoutTypeSuffix
-	}
 	return res
 }
 
@@ -528,10 +495,6 @@ func readMethodName(fld Field) string {
 		res = mapMethodName(read, fld.KeyType, fld.ValueType)
 	} else {
 		res = methodName(read, fld.Type)
-	}
-
-	if fld.Unsafe {
-		return res + withoutTypeSuffix
 	}
 	return res
 }
@@ -575,9 +538,9 @@ func goType(tp string, fld *Field) string {
 		if fld == nil {
 			panic("fld is nil")
 		}
-		return fmt.Sprintf("*map[%s]%s",
+		return fmt.Sprintf("map[%s]%s",
 			removePointer(goType(fld.KeyType, nil)),
-			removePointer(goType(fld.ValueType, nil)))
+			goType(fld.ValueType, nil))
 	}
 
 	res, ok := typeMap[tp]
@@ -612,11 +575,27 @@ func removePointer(tp string) string {
 }
 
 func forEachField(tp *Type, consumer func(fld Field)) {
-	for _, fld := range tp.Fields {
+	var fields []Field
+	var optionals []Field
+	if tp.PropFields {
+		fields = make([]Field, len(tp.Fields))
+		optionals = make([]Field, len(tp.Optional))
+		copy(fields, tp.Fields)
+		copy(optionals, tp.Optional)
+
+		sort.Slice(fields, func(i int, j int) bool {
+			return fields[i].Order < fields[j].Order
+		})
+	} else {
+		fields = tp.Fields
+		optionals = tp.Optional
+	}
+
+	for _, fld := range fields {
 		consumer(fld)
 	}
 
-	for _, fld := range tp.Optional {
+	for _, fld := range optionals {
 		consumer(fld)
 	}
 }
@@ -625,17 +604,10 @@ func isArrayType(keyType string) bool {
 	return strings.HasSuffix(keyType, arraySuffix)
 }
 
-func arrayComponentType(tp string) string {
-	return tp[:len(tp)-len(arraySuffix)]
+func isMapType(keyType string) bool {
+	return keyType == "map"
 }
 
-func sortedKeys[T any](m map[string]T) []string {
-	keys := make([]string, len(m))
-	i := 0
-	for k := range m {
-		keys[i] = k
-		i++
-	}
-	sort.Strings(keys)
-	return keys
+func arrayComponentType(tp string) string {
+	return tp[:len(tp)-len(arraySuffix)]
 }

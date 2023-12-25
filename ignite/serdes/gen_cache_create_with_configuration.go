@@ -12,11 +12,11 @@ func (req CacheCreateWithConfigurationRequest) OpCode() int16 {
 	return 1053
 }
 
-func (req CacheCreateWithConfigurationRequest) Write(buf *IgniteBuffer) {
-	buf.WriteCacheConfiguration(req.Config)
+func (req CacheCreateWithConfigurationRequest) Write(bw BinaryWriter) {
+	WriteCacheConfiguration(bw, &req.Config)
 }
 
-func (req CacheCreateWithConfigurationRequest) ReadResponse(buf *IgniteBuffer) interface{} {
+func (req CacheCreateWithConfigurationRequest) ReadResponse(br BinaryReader) interface{} {
 	resp := CacheCreateWithConfigurationResponse{}
 	return resp
 }

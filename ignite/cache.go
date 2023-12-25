@@ -1,6 +1,9 @@
 package ignite
 
-import "sbt.ru/ignite-go/ignite/ignite/serdes"
+import (
+	"context"
+	"sbt.ru/ignite-go/ignite/ignite/serdes"
+)
 
 type Cache interface {
 	Name() string
@@ -11,20 +14,27 @@ type Cache interface {
 type CacheImpl struct {
 	cli *ClientImpl
 
-	name *string
+	name string
 }
 
-func (cache CacheImpl) Name() string {
-	return *cache.name
+func (cache *CacheImpl) Name() string {
+	return cache.name
 }
 
-func (cache CacheImpl) Configuration() (*serdes.CacheConfiguration, error) {
-	resp, err := cache.cli.ch.Send(serdes.CacheGetConfigurationRequest{CacheId: CacheId(*cache.name), Flag: 0})
-	if err != nil {
-		return nil, err
-	}
+func (cache *CacheImpl) Configuration() (*serdes.CacheConfiguration, error) {
+	var err error
+	req := serdes.CacheGetConfigurationRequest{CacheId: CacheId(cache.name), Flag: 0}
+	var cfg *serdes.CacheConfiguration = nil
+	cache.cli.ch.Send(context.Background(), req.OpCode(), func(output serdes.BinaryWriter) {
+		req.Write(output)
+	}, func(output serdes.BinaryReader, err0 error) {
+		if err0 != nil {
+			err = err0
+		} else {
+			resp, _ := req.ReadResponse(output).(serdes.CacheGetConfigurationResponse)
+			cfg = &resp.CacheConfiguration
+		}
+	})
 
-	ccfg := resp.(serdes.CacheGetConfigurationResponse).CacheConfiguration
-
-	return &ccfg, nil
+	return cfg, err
 }
