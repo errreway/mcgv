@@ -2,7 +2,7 @@ package ignite
 
 import (
 	"github.com/stretchr/testify/assert"
-	"sbt.ru/ignite-go/ignite/ignite/serdes"
+	"sbt.ru/ignite-go/ignite/serdes"
 	"testing"
 )
 

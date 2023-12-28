@@ -2,7 +2,7 @@ package ignite
 
 import (
 	"context"
-	"sbt.ru/ignite-go/ignite/ignite/serdes"
+	"sbt.ru/ignite-go/ignite/serdes"
 )
 
 type Cache interface {

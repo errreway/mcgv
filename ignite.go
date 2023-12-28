@@ -3,7 +3,7 @@ package ignite
 import (
 	"context"
 	"errors"
-	"sbt.ru/ignite-go/ignite/ignite/serdes"
+	"sbt.ru/ignite-go/ignite/serdes"
 )
 
 //go:generate go run gen_req_resp.go

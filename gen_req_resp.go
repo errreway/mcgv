@@ -12,7 +12,6 @@ import (
 	"golang.org/x/text/language"
 	"os"
 	"path/filepath"
-	"sort"
 	"strconv"
 	"strings"
 )
@@ -55,7 +54,6 @@ type Field struct {
 	ValueType string `json:"value_type""`
 	Value     string `json:"value"`
 	PropIdx   int    `json:"property_index"`
-	Order     int    `json:"order"`
 }
 
 type Type struct {
@@ -92,7 +90,7 @@ func main() {
 func generateTypes(serdesDir string) {
 	fmt.Println("Generating Ignite Thin Client types structs")
 
-	formatBytes, _ := os.ReadFile("../formats/" + TYPES)
+	formatBytes, _ := os.ReadFile("./formats/" + TYPES)
 
 	var typesList TypesList
 
@@ -120,14 +118,17 @@ func generateTypes(serdesDir string) {
 		line("", f)
 	}
 
-	for _, tp := range typesList.Types {
+	for i, tp := range typesList.Types {
 		fmt.Println(fmt.Sprintf("|--> type [name=%s]", tp.Name))
 
 		generateWrite(&tp, fmt.Sprintf("func %s(bw BinaryWriter, req *%s) {", writeMethodName(tp.Name, nil), tp.Name), f)
 		line("", f)
 
 		generateRead(&tp, tp.Name, fmt.Sprintf("func %s(br BinaryReader) %s {", read+tp.Name, tp.Name), f)
-		line("", f)
+
+		if i < len(typesList.Types)-1 {
+			line("", f)
+		}
 	}
 }
 
@@ -575,27 +576,11 @@ func removePointer(tp string) string {
 }
 
 func forEachField(tp *Type, consumer func(fld Field)) {
-	var fields []Field
-	var optionals []Field
-	if tp.PropFields {
-		fields = make([]Field, len(tp.Fields))
-		optionals = make([]Field, len(tp.Optional))
-		copy(fields, tp.Fields)
-		copy(optionals, tp.Optional)
-
-		sort.Slice(fields, func(i int, j int) bool {
-			return fields[i].Order < fields[j].Order
-		})
-	} else {
-		fields = tp.Fields
-		optionals = tp.Optional
-	}
-
-	for _, fld := range fields {
+	for _, fld := range tp.Fields {
 		consumer(fld)
 	}
 
-	for _, fld := range optionals {
+	for _, fld := range tp.Optional {
 		consumer(fld)
 	}
 }

@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"github.com/google/uuid"
 	"net"
-	"sbt.ru/ignite-go/ignite/ignite/bitset"
+	"sbt.ru/ignite-go/ignite/bitset"
 	"strconv"
 	"strings"
 	"sync"

@@ -22,12 +22,18 @@ func (bs *BitSet) Test(idx uint) bool {
 	if wordIdx >= bs.wordsInUse {
 		return false
 	}
-	return (bs.words[wordIdx] & (uint64(1) << idx)) != 0
+	if wordIdx > 0 {
+		idx = idx % wordIdx
+	}
+	return bs.words[wordIdx]&(uint64(1)<<idx) != 0
 }
 
 func (bs *BitSet) Set(idx uint) {
 	wordIdx := wordIndex(idx)
 	bs.expandTo(wordIdx)
+	if wordIdx > 0 {
+		idx = idx % wordIdx
+	}
 	bs.words[wordIdx] |= uint64(1) << idx
 }
 
@@ -36,8 +42,23 @@ func (bs *BitSet) Clear(idx uint) {
 	if wordIdx >= bs.wordsInUse {
 		return
 	}
+	if wordIdx > 0 {
+		idx = idx % wordIdx
+	}
 	bs.words[wordIdx] &= ^(uint64(1) << idx)
 	bs.recalculateWordsInUse()
+}
+
+func (bs *BitSet) Equals(other *BitSet) bool {
+	if bs.wordsInUse != other.wordsInUse {
+		return false
+	}
+	for i := uint(0); i < bs.wordsInUse; i++ {
+		if bs.words[i] != other.words[i] {
+			return false
+		}
+	}
+	return true
 }
 
 func FromBytes(data []byte) *BitSet {
@@ -57,11 +78,12 @@ func FromBytes(data []byte) *BitSet {
 		words[i] = binary.LittleEndian.Uint64(data[8*i:])
 	}
 
-	return &BitSet{
+	bs := BitSet{
 		words:      words,
 		wordsInUse: uint(length),
 	}
-
+	bs.recalculateWordsInUse()
+	return &bs
 }
 
 func (bs *BitSet) Bytes() []byte {
@@ -87,20 +109,20 @@ func (bs *BitSet) expandTo(wordIdx uint) {
 
 func (bs *BitSet) ensureCapacity(wordsRequired uint) {
 	if len(bs.words) < int(wordsRequired) {
-		tmp := make([]uint64, max(wordsRequired, uint(len(bs.words))*2))
+		tmp := make([]uint64, maxUint(wordsRequired, uint(len(bs.words))*2))
 		copy(tmp, bs.words)
 		bs.words = tmp
 	}
 }
 
 func (bs *BitSet) recalculateWordsInUse() {
-	var i uint
-	for i = bs.wordsInUse - 1; i >= 0; i-- {
+	var i int
+	for i = int(bs.wordsInUse) - 1; i >= 0; i-- {
 		if bs.words[i] != 0 {
 			break
 		}
 	}
-	bs.wordsInUse = i + 1
+	bs.wordsInUse = uint(i) + 1
 }
 
 func wordIndex(bitIndex uint) uint {
@@ -109,14 +131,6 @@ func wordIndex(bitIndex uint) uint {
 
 func maxUint(x uint, y uint) uint {
 	if x > y {
-		return x
-	} else {
-		return y
-	}
-}
-
-func minUint(x uint, y uint) uint {
-	if x < y {
 		return x
 	} else {
 		return y
