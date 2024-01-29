@@ -2,6 +2,8 @@ package ignite
 
 import (
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/suite"
+	testing2 "sbt.ru/ignite-go/ignite/internal/testing"
 	"sbt.ru/ignite-go/ignite/serdes"
 	"testing"
 )
@@ -11,86 +13,115 @@ const (
 	DefaultAddress = "localhost:10800"
 )
 
-func TestCorrectAddresses(t *testing.T) {
-	cli, err := Start(ClientConfiguration{})
-
-	assert.Nil(t, cli)
-	assert.Error(t, err, "Addresses is empty!")
-
-	cli, err = Start(ClientConfiguration{""})
-
-	assert.Nil(t, cli)
-	assert.Error(t, err, "Addresses is empty!")
+type BasicTestSuite struct {
+	suite.Suite
+	grids []testing2.IgniteInstance
 }
 
-func Cleanup(t *testing.T) {
-	cli, err := Start(ClientConfiguration{DefaultAddress})
-	assert.Nil(t, err)
-	caches, err := cli.CacheNames()
-	assert.Nil(t, err)
-	for _, cache := range caches {
-		err = cli.DestroyCache(cache)
-		assert.Nil(t, err)
+func TestBasicTestSuite(t *testing.T) {
+	suite.Run(t, new(BasicTestSuite))
+}
+
+func (suite *BasicTestSuite) SetupSuite() {
+	var err error
+	suite.grids = make([]testing2.IgniteInstance, 0)
+	ign, err := testing2.StartIgnite()
+	if err != nil {
+		suite.T().Errorf("Failed to start suite: %s", err.Error())
 	}
+	suite.grids = append(suite.grids, ign)
+}
+
+func (suite *BasicTestSuite) TearDownSuite() {
+	if suite.grids != nil {
+		for _, ign := range suite.grids {
+			_ = ign.Kill()
+		}
+		clear(suite.grids)
+	}
+}
+
+func (suite *BasicTestSuite) TearDownTest() {
+	cli, err := Start(ClientConfiguration{DefaultAddress})
+	assert.Nil(suite.T(), err)
 	defer func() {
 		_ = cli.Close()
 	}()
+	caches, err := cli.CacheNames()
+	assert.Nil(suite.T(), err)
+	for _, cache := range caches {
+		err = cli.DestroyCache(cache)
+		assert.Nil(suite.T(), err)
+	}
 }
 
-func TestCacheNames(t *testing.T) {
-	t.Cleanup(func() {
-		Cleanup(t)
-	})
+func (suite *BasicTestSuite) TestCorrectAddresses() {
+	cli, err := Start(ClientConfiguration{})
 
+	assert.Nil(suite.T(), cli)
+	assert.Error(suite.T(), err, "Addresses is empty!")
+
+	cli, err = Start(ClientConfiguration{""})
+
+	assert.Nil(suite.T(), cli)
+	assert.Error(suite.T(), err, "Addresses is empty!")
+}
+
+func (suite *BasicTestSuite) TestCacheNames() {
 	cli, err := Start(ClientConfiguration{DefaultAddress})
 
-	assert.Nil(t, err)
-	assert.NotNil(t, cli)
+	assert.Nil(suite.T(), err)
+	assert.NotNil(suite.T(), cli)
+	defer func() {
+		_ = cli.Close()
+	}()
 
 	var names []string
 	names, err = cli.CacheNames()
 
-	assert.Nil(t, err)
-	assert.Equal(t, 0, len(names))
+	assert.Nil(suite.T(), err)
+	assert.Equal(suite.T(), 0, len(names))
 
 	var cache Cache
 	cache, err = cli.CreateCache(cacheName)
 
-	assert.Nil(t, err)
-	assert.NotNil(t, cache)
-	assert.Equal(t, cacheName, cache.Name())
+	assert.Nil(suite.T(), err)
+	assert.NotNil(suite.T(), cache)
+	assert.Equal(suite.T(), cacheName, cache.Name())
 
 	var cli0 Client
 	cli0, err = Start(ClientConfiguration{DefaultAddress})
 
-	assert.Nil(t, err)
-	assert.NotNil(t, cli0)
+	assert.Nil(suite.T(), err)
+	assert.NotNil(suite.T(), cli0)
+	defer func() {
+		_ = cli0.Close()
+	}()
 
 	cache, err = cli0.CreateCache(cacheName)
 
-	assert.NotNil(t, err)
-	assert.Nil(t, cache)
+	assert.NotNil(suite.T(), err)
+	assert.Nil(suite.T(), cache)
 
 	cache, err = cli0.GetOrCreateCache(cacheName)
 
-	assert.Nil(t, err)
-	assert.NotNil(t, cache)
+	assert.Nil(suite.T(), err)
+	assert.NotNil(suite.T(), cache)
 
 	names, err = cli.CacheNames()
 
-	assert.Nil(t, err)
-	assert.Equal(t, 1, len(names))
-	assert.Equal(t, cacheName, (names)[0])
+	assert.Nil(suite.T(), err)
+	assert.Equal(suite.T(), 1, len(names))
+	assert.Equal(suite.T(), cacheName, (names)[0])
 }
 
-func TestDestroyCache(t *testing.T) {
-	t.Cleanup(func() {
-		Cleanup(t)
-	})
+func (suite *BasicTestSuite) TestDestroyCache() {
 	cli, err := Start(ClientConfiguration{DefaultAddress})
-
-	assert.Nil(t, err)
-	assert.NotNil(t, cli)
+	assert.Nil(suite.T(), err)
+	assert.NotNil(suite.T(), cli)
+	defer func() {
+		_ = cli.Close()
+	}()
 
 	namesBefore, err := cli.CacheNames()
 
@@ -99,40 +130,38 @@ func TestDestroyCache(t *testing.T) {
 	var cache Cache
 	cache, err = cli.CreateCache(toDestroy)
 
-	assert.Nil(t, err)
-	assert.NotNil(t, cache)
-	assert.Equal(t, toDestroy, cache.Name())
+	assert.Nil(suite.T(), err)
+	assert.NotNil(suite.T(), cache)
+	assert.Equal(suite.T(), toDestroy, cache.Name())
 
 	err = cli.DestroyCache(toDestroy)
-	assert.Nil(t, err)
+	assert.Nil(suite.T(), err)
 
 	var names []string
 	names, err = cli.CacheNames()
 
-	assert.Nil(t, err)
-	assert.Equal(t, len(namesBefore), len(names))
+	assert.Nil(suite.T(), err)
+	assert.Equal(suite.T(), len(namesBefore), len(names))
 }
 
-func TestCacheConfig(t *testing.T) {
-	t.Cleanup(func() {
-		Cleanup(t)
-	})
-
+func (suite *BasicTestSuite) TestCacheConfig() {
 	cli, err := Start(ClientConfiguration{DefaultAddress})
-
-	assert.Nil(t, err)
-	assert.NotNil(t, cli)
+	assert.Nil(suite.T(), err)
+	assert.NotNil(suite.T(), cli)
+	defer func() {
+		_ = cli.Close()
+	}()
 
 	cfgTest := "config-test"
 
 	cache, err := cli.CreateCache(cfgTest)
-	assert.Nil(t, err)
+	assert.Nil(suite.T(), err)
 
 	readCcfg, err := cache.Configuration()
 
-	assert.Nil(t, err)
-	assert.Equal(t, cfgTest, *readCcfg.Name)
-	assert.Equal(t, int32(0), readCcfg.Backups)
+	assert.Nil(suite.T(), err)
+	assert.Equal(suite.T(), cfgTest, *readCcfg.Name)
+	assert.Equal(suite.T(), int32(0), readCcfg.Backups)
 
 	ccfg := serdes.CacheConfiguration{}
 
@@ -151,13 +180,13 @@ func TestCacheConfig(t *testing.T) {
 	ccfg.GroupName = &grpTest
 
 	cache, err = cli.CreateCacheWithConfiguration(&ccfg)
-	assert.Nil(t, err)
-	assert.NotNil(t, cache)
+	assert.Nil(suite.T(), err)
+	assert.NotNil(suite.T(), cache)
 
 	readCcfg, err = cache.Configuration()
 
-	assert.Equal(t, cfgTest, *readCcfg.Name)
-	assert.Equal(t, int32(1), readCcfg.Backups)
-	assert.Equal(t, int32(1), readCcfg.AtomicityMode)
-	assert.Equal(t, grpTest, *readCcfg.GroupName)
+	assert.Equal(suite.T(), cfgTest, *readCcfg.Name)
+	assert.Equal(suite.T(), int32(1), readCcfg.Backups)
+	assert.Equal(suite.T(), int32(1), readCcfg.AtomicityMode)
+	assert.Equal(suite.T(), grpTest, *readCcfg.GroupName)
 }

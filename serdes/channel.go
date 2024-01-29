@@ -295,7 +295,7 @@ func NewRequest(id int64, opCode int16, requestWriter func(input BinaryWriter)) 
 	return &PendingRequest{
 		id:          id,
 		requestData: reqInput.Data(),
-		doneCh:      make(chan struct{}),
+		doneCh:      make(chan struct{}, 1),
 	}
 }
 
@@ -485,6 +485,7 @@ func (ch *Channel) readLoop() {
 			req.responseData = data
 
 			req.doneCh <- struct{}{}
+			close(req.doneCh)
 			break
 		}
 	}
