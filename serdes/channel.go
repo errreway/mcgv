@@ -409,13 +409,13 @@ func (ch *Channel) writeLoop() {
 func (ch *Channel) writeFully(data []byte) error {
 	total, err := ch.socket.Write(data)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to write to socket: %w", err)
 	}
 	for total < len(data) {
 		n := 0
 		n, err = ch.socket.Write(data[total:])
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to write to socket: %w", err)
 		}
 		total += n
 	}
