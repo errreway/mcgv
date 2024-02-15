@@ -1,4 +1,4 @@
-package serdes
+package ignite
 
 import (
 	"bytes"
@@ -7,10 +7,9 @@ import (
 	"errors"
 	"fmt"
 	"github.com/google/uuid"
+	"io"
 	"net"
-	"sbt.ru/ignite-go/ignite/bitset"
-	"strconv"
-	"strings"
+	"sbt.ru/ignite-go/ignite/internal/bitset"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -39,28 +38,6 @@ const (
 	Default = V1_7_0
 )
 
-type AttributeFeature = uint
-
-const (
-	UserAttributesFeature AttributeFeature = iota
-	ExecuteTaskByNameFeature
-	ClusterStatesFeature
-	ClusterGroupGetNodesEndpointsFeature
-	ClusterGroupsFeature
-	ServiceInvokeFeature
-	DefaultQueryTimeoutFeature
-	QueryPartitionsBatchSizeFeature
-	BinaryConfigurationFeature
-	GetServiceDescriptorsFeature
-	ServiceInvokeCallContextFature
-	HeartbeatFeature
-	DataReplicationOperationsFeature
-	AllAffinityMappingsFeature
-	IndexQueryFeature
-	IndexQueryLimitFeature
-	ServiceTopologyFeature
-)
-
 type ClientStatus = uint
 
 const (
@@ -80,128 +57,6 @@ const (
 	TooManyComputeTasks   = 1030
 	AuthFailed
 )
-
-type ProtocolBitmaskFeature struct {
-	bitSet bitset.BitSet
-}
-
-func (bm *ProtocolBitmaskFeature) IsSupported(f AttributeFeature) bool {
-	return bm.bitSet.Test(f)
-}
-
-func (bm *ProtocolBitmaskFeature) Bytes() []byte {
-	return bm.bitSet.Bytes()
-}
-
-func CreateBitmaskFeatures(features ...AttributeFeature) *ProtocolBitmaskFeature {
-	bs := bitset.New()
-	for _, f := range features {
-		bs.Set(f)
-	}
-	return &ProtocolBitmaskFeature{
-		bitSet: *bs,
-	}
-}
-
-func BitmaskFeaturesFromBytes(data []byte) *ProtocolBitmaskFeature {
-	return &ProtocolBitmaskFeature{
-		bitSet: *bitset.FromBytes(data),
-	}
-}
-
-type ProtocolVersion struct {
-	Major int16
-	Minor int16
-	Patch int16
-}
-
-type ProtocolContext struct {
-	Version  ProtocolVersion
-	Features ProtocolBitmaskFeature
-}
-
-func NewProtocolContext(version ProtocolVersion) *ProtocolContext {
-	ctx := ProtocolContext{
-		Version: version,
-	}
-
-	if ctx.SupportsBitmapFeatures() {
-		ctx.Features = *CreateBitmaskFeatures(UserAttributesFeature)
-	}
-
-	return &ctx
-}
-
-func (ctx *ProtocolContext) SupportsAttributeFeature(f AttributeFeature) bool {
-	return ctx.Features.IsSupported(f)
-}
-
-func (ctx *ProtocolContext) SupportsAuthorization() bool {
-	return ctx.Version.Compare(ProtocolVersion{1, 1, 0}) >= 0
-}
-
-func (ctx *ProtocolContext) SupportsQueryEntityPrecisionAndScale() bool {
-	return ctx.Version.Compare(ProtocolVersion{1, 2, 0}) >= 0
-}
-
-func (ctx *ProtocolContext) SupportsPartitionAwareness() bool {
-	return ctx.Version.Compare(ProtocolVersion{1, 4, 0}) >= 0
-}
-
-func (ctx *ProtocolContext) SupportsTransactions() bool {
-	return ctx.Version.Compare(ProtocolVersion{1, 5, 0}) >= 0
-}
-
-func (ctx *ProtocolContext) SupportsExpiryPolicy() bool {
-	return ctx.Version.Compare(ProtocolVersion{1, 6, 0}) >= 0
-}
-
-func (ctx *ProtocolContext) SupportsClusterApi() bool {
-	return ctx.Version.Compare(ProtocolVersion{1, 6, 0}) >= 0
-}
-
-func (ctx *ProtocolContext) SupportsBitmapFeatures() bool {
-	return ctx.Version.Compare(ProtocolVersion{1, 7, 0}) >= 0
-}
-
-func ParseVersion(ver string) (ProtocolVersion, bool) {
-	res := ProtocolVersion{}
-	parts := strings.Split(ver, ".")
-	if len(parts) != 3 {
-		return res, false
-	}
-	for i, part := range parts {
-		var curr int64
-		var err error
-		if curr, err = strconv.ParseInt(part, 10, 16); err != nil {
-			return res, false
-		}
-		if i == 0 {
-			res.Major = int16(curr)
-		} else if i == 1 {
-			res.Minor = int16(curr)
-		} else {
-			res.Patch = int16(curr)
-		}
-	}
-	return res, true
-}
-
-func (curr *ProtocolVersion) String() string {
-	return fmt.Sprintf("%d.%.d.%d", curr.Major, curr.Minor, curr.Patch)
-}
-
-func (curr *ProtocolVersion) Compare(other ProtocolVersion) int {
-	if diff := curr.Major - other.Major; diff != 0 {
-		return int(diff)
-	}
-
-	if diff := curr.Minor - other.Minor; diff != 0 {
-		return int(diff)
-	}
-
-	return int(curr.Patch - other.Patch)
-}
 
 type ClientError struct {
 	Message string
@@ -242,7 +97,7 @@ type Channel struct {
 	pendingCh         chan int64
 	pendingRequests   sync.Map
 	doneCh            chan struct{}
-	serverId          *uuid.UUID
+	serverId          uuid.UUID
 	status            int32
 	supportedVersions map[string]bool
 }
@@ -275,7 +130,7 @@ func responseId(packet []byte) (int64, bool) {
 	return 0, false
 }
 
-func NewRequest(id int64, opCode int16, requestWriter func(input BinaryWriter)) *PendingRequest {
+func NewRequest(id int64, opCode int16, requestWriter func(input BinaryWriter) error) (*PendingRequest, error) {
 	reqInput := NewBinaryWriter(64)
 
 	reqInput.WriteInt32(0)
@@ -285,7 +140,10 @@ func NewRequest(id int64, opCode int16, requestWriter func(input BinaryWriter)) 
 		reqInput.WriteInt16(opCode)
 		reqInput.WriteInt64(id)
 	}
-	requestWriter(reqInput)
+	err := requestWriter(reqInput)
+	if err != nil {
+		return nil, err
+	}
 
 	currPosition := reqInput.Position()
 	reqInput.SetPosition(0)
@@ -296,23 +154,38 @@ func NewRequest(id int64, opCode int16, requestWriter func(input BinaryWriter)) 
 		id:          id,
 		requestData: reqInput.Data(),
 		doneCh:      make(chan struct{}, 1),
-	}
+	}, nil
 }
 
-func (ch *Channel) ProtocolContext() *ProtocolContext {
+func (ch *Channel) ProtocolContext() ProtocolContext {
 	res := ch.protocolCtx.Load()
 	if res == nil {
 		return nil
 	}
-	return res.(*ProtocolContext)
+	return res.(*protocolContextImpl)
 }
 
-func (ch *Channel) Send(ctx context.Context, opCode int16, requestWriter func(output BinaryWriter), responseReader func(input BinaryReader, err error)) {
+func (ch *Channel) Send(ctx context.Context, opCode int16, requestWriter func(output BinaryWriter) error, responseReader func(input BinaryReader, err error)) {
 	ch.send(ctx, ch.requestId(), opCode, requestWriter, responseReader)
 }
 
-func (ch *Channel) send(ctx context.Context, id int64, opCode int16, requestWriter func(output BinaryWriter), responseReader func(input BinaryReader, err error)) {
-	req := NewRequest(id, opCode, requestWriter)
+func (ch *Channel) send(ctx context.Context, id int64, opCode int16, requestWriter func(output BinaryWriter) error, responseReader func(input BinaryReader, err error)) {
+	req, err := NewRequest(id, opCode, requestWriter)
+	if err != nil {
+		responseReader(nil, err)
+	}
+
+	var deadlineSet = false
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if _, deadlineSet = ctx.Deadline(); !deadlineSet {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, 1*time.Second)
+		defer func() {
+			cancel()
+		}()
+	}
 
 	reqId := req.id
 	ch.pendingRequests.Store(reqId, req)
@@ -358,10 +231,13 @@ func (ch *Channel) send(ctx context.Context, id int64, opCode int16, requestWrit
 
 			if checkFlag(flags, ErrorFlag) {
 				statusCode := int(input.ReadInt32())
-				errorMessage := input.ReadString()
+				var errMsg string
+				if errMsg, err = unmarshallString(input, false); err != nil {
+					err = fmt.Errorf("broken output from server: %w", err)
+				}
 				req.err = &ClientServerError{
 					ClientError{
-						Message: *errorMessage,
+						Message: errMsg,
 					},
 					statusCode,
 				}
@@ -441,6 +317,9 @@ func (ch *Channel) readLoop() {
 		if err != nil {
 			var netErr net.Error
 			if errors.As(err, &netErr) && netErr.Timeout() {
+				continue
+			}
+			if errors.Is(err, io.EOF) {
 				continue
 			}
 			break
@@ -558,15 +437,15 @@ func (pa *packetAccumulator) processData() bool {
 func (ch *Channel) handshake(ver ProtocolVersion, user string, password string, attrs map[string]string) error {
 	for {
 		cliCtx := NewProtocolContext(ver)
-		writer := func(bw BinaryWriter) {
-			bw.WriteByte(1)
-			bw.WriteInt16(cliCtx.Version.Major)
-			bw.WriteInt16(cliCtx.Version.Minor)
-			bw.WriteInt16(cliCtx.Version.Patch)
-			bw.WriteByte(2)
-			if cliCtx.SupportsBitmapFeatures() {
-				bw.WriteByteArray(cliCtx.Features.Bytes())
-			}
+		var err error = nil
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
+		defer func() {
+			cancel()
+		}()
+
+		writer := func(bw BinaryWriter) error {
+			bw.WriteInt8(1)
+			cliCtx.Marshall(bw)
 			if cliCtx.SupportsAttributeFeature(UserAttributesFeature) {
 				if len(attrs) == 0 {
 					bw.WriteInt8(int8(Null))
@@ -575,22 +454,17 @@ func (ch *Channel) handshake(ver ProtocolVersion, user string, password string, 
 					bw.WriteInt32(int32(len(attrs)))
 					bw.WriteInt8(1)
 					for k, v := range attrs {
-						bw.WriteString(&k)
-						bw.WriteString(&v)
+						marshalString(bw, k)
+						marshalString(bw, v)
 					}
 				}
 			}
 			if cliCtx.SupportsAuthorization() && len(user) > 0 {
-				bw.WriteString(&user)
-				bw.WriteString(&password)
+				marshalString(bw, user)
+				marshalString(bw, password)
 			}
+			return nil
 		}
-
-		var err error = nil
-		ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
-		defer func() {
-			cancel()
-		}()
 		reader := func(input BinaryReader, err0 error) {
 			if err0 != nil {
 				err = err0
@@ -599,37 +473,52 @@ func (ch *Channel) handshake(ver ProtocolVersion, user string, password string, 
 			success := input.ReadBool()
 			if success {
 				if cliCtx.SupportsBitmapFeatures() {
-					cliCtx.Features = *BitmaskFeaturesFromBytes(input.ReadByteArray())
+					var bitMaskBytes []byte = nil
+					if bitMaskBytes, err = unmarshallBytes(input, false); err != nil {
+						err = fmt.Errorf("broken output from server: %w", err)
+						return
+					}
+					if bitMaskBytes != nil {
+						cliCtx.UpdateAttributeFeatures(bitset.FromBytes(bitMaskBytes))
+					}
 				}
 				if cliCtx.SupportsPartitionAwareness() {
-					ch.serverId = input.ReadUuid()
+					var serverId uuid.UUID
+					if serverId, err = unmarshallUuid(input, false); err != nil {
+						err = fmt.Errorf("broken output from server: %w", err)
+						return
+					}
+					ch.serverId = serverId
 				}
 				ch.protocolCtx.Store(cliCtx)
 			} else {
 				srvCtx := NewProtocolContext(
 					ProtocolVersion{Major: input.ReadInt16(), Minor: input.ReadInt16(), Patch: input.ReadInt16()},
 				)
-				errMsg := ""
-				if errMsgPtr := input.ReadString(); errMsgPtr != nil {
-					errMsg = *errMsgPtr
+				var errMsg string
+				if errMsg, err = unmarshallString(input, false); err != nil {
+					err = fmt.Errorf("broken output from server: %w", err)
+					return
 				}
 
 				errCode := Failed
 				if input.Available() > 0 {
 					errCode = uint(input.ReadUInt32())
 				}
+
+				cliVersion := cliCtx.Version()
 				if errCode == AuthFailed {
 					err = &ClientAuthenticationError{
 						ClientError{errMsg},
 					}
-				} else if cliCtx.Version.Compare(srvCtx.Version) == 0 {
+				} else if cliVersion.Compare(srvCtx.Version()) == 0 {
 					err = &ClientProtocolError{
 						ClientError{errMsg},
 					}
-				} else if exists := ch.supportedVersions[cliCtx.Version.String()]; !exists || (!cliCtx.SupportsAuthorization() && len(user) > 0) {
+				} else if exists := ch.supportedVersions[cliVersion.String()]; !exists || (!cliCtx.SupportsAuthorization() && len(user) > 0) {
 					errMsg = fmt.Sprintf("Protocol version mismatch: client %v / server %v. Server details: %s",
-						cliCtx.Version,
-						srvCtx.Version,
+						cliVersion,
+						srvCtx.Version(),
 						errMsg,
 					)
 					err = &ClientProtocolError{

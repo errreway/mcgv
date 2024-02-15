@@ -1,10 +1,10 @@
 package ignite
 
 import (
+	"context"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 	testing2 "sbt.ru/ignite-go/ignite/internal/testing"
-	"sbt.ru/ignite-go/ignite/serdes"
 	"testing"
 )
 
@@ -27,7 +27,7 @@ func (suite *BasicTestSuite) SetupSuite() {
 	suite.grids = make([]testing2.IgniteInstance, 0)
 	ign, err := testing2.StartIgnite()
 	if err != nil {
-		suite.T().Errorf("Failed to start suite: %s", err.Error())
+		suite.T().Errorf("Failed to startClient suite: %s", err.Error())
 	}
 	suite.grids = append(suite.grids, ign)
 }
@@ -47,10 +47,11 @@ func (suite *BasicTestSuite) TearDownTest() {
 	defer func() {
 		_ = cli.Close()
 	}()
-	caches, err := cli.CacheNames()
+	ctx := context.Background()
+	caches, err := cli.CacheNames(ctx)
 	assert.Nil(suite.T(), err)
 	for _, cache := range caches {
-		err = cli.DestroyCache(cache)
+		err = cli.DestroyCache(ctx, cache)
 		assert.Nil(suite.T(), err)
 	}
 }
@@ -67,6 +68,31 @@ func (suite *BasicTestSuite) TestCorrectAddresses() {
 	assert.Error(suite.T(), err, "Addresses is empty!")
 }
 
+func (suite *BasicTestSuite) TestCacheSize() {
+	cli, err := Start(ClientConfiguration{DefaultAddress})
+
+	assert.Nil(suite.T(), err)
+	assert.NotNil(suite.T(), cli)
+	defer func() {
+		_ = cli.Close()
+	}()
+
+	var cache Cache
+	ctx := context.Background()
+	cache, err = cli.GetOrCreateCache(ctx, cacheName)
+	assert.Nil(suite.T(), err)
+
+	var cacheSz uint64
+	cacheSz, err = cache.Size(ctx)
+	assert.Nil(suite.T(), err)
+	assert.Equal(suite.T(), uint64(0), cacheSz)
+	err = cache.Put(ctx, "test", "test")
+	assert.Nil(suite.T(), err)
+	cacheSz, err = cache.Size(ctx)
+	assert.Nil(suite.T(), err)
+	assert.Equal(suite.T(), uint64(1), cacheSz)
+}
+
 func (suite *BasicTestSuite) TestCacheNames() {
 	cli, err := Start(ClientConfiguration{DefaultAddress})
 
@@ -77,13 +103,14 @@ func (suite *BasicTestSuite) TestCacheNames() {
 	}()
 
 	var names []string
-	names, err = cli.CacheNames()
+	ctx := context.Background()
+	names, err = cli.CacheNames(ctx)
 
 	assert.Nil(suite.T(), err)
 	assert.Equal(suite.T(), 0, len(names))
 
 	var cache Cache
-	cache, err = cli.CreateCache(cacheName)
+	cache, err = cli.CreateCache(ctx, cacheName)
 
 	assert.Nil(suite.T(), err)
 	assert.NotNil(suite.T(), cache)
@@ -98,17 +125,17 @@ func (suite *BasicTestSuite) TestCacheNames() {
 		_ = cli0.Close()
 	}()
 
-	cache, err = cli0.CreateCache(cacheName)
+	cache, err = cli0.CreateCache(ctx, cacheName)
 
 	assert.NotNil(suite.T(), err)
 	assert.Nil(suite.T(), cache)
 
-	cache, err = cli0.GetOrCreateCache(cacheName)
+	cache, err = cli0.GetOrCreateCache(ctx, cacheName)
 
 	assert.Nil(suite.T(), err)
 	assert.NotNil(suite.T(), cache)
 
-	names, err = cli.CacheNames()
+	names, err = cli.CacheNames(ctx)
 
 	assert.Nil(suite.T(), err)
 	assert.Equal(suite.T(), 1, len(names))
@@ -123,22 +150,23 @@ func (suite *BasicTestSuite) TestDestroyCache() {
 		_ = cli.Close()
 	}()
 
-	namesBefore, err := cli.CacheNames()
+	ctx := context.Background()
+	namesBefore, err := cli.CacheNames(ctx)
 
 	toDestroy := "to-destroy"
 
 	var cache Cache
-	cache, err = cli.CreateCache(toDestroy)
+	cache, err = cli.CreateCache(ctx, toDestroy)
 
 	assert.Nil(suite.T(), err)
 	assert.NotNil(suite.T(), cache)
 	assert.Equal(suite.T(), toDestroy, cache.Name())
 
-	err = cli.DestroyCache(toDestroy)
+	err = cli.DestroyCache(ctx, toDestroy)
 	assert.Nil(suite.T(), err)
 
 	var names []string
-	names, err = cli.CacheNames()
+	names, err = cli.CacheNames(ctx)
 
 	assert.Nil(suite.T(), err)
 	assert.Equal(suite.T(), len(namesBefore), len(names))
@@ -152,41 +180,37 @@ func (suite *BasicTestSuite) TestCacheConfig() {
 		_ = cli.Close()
 	}()
 
+	ctx := context.Background()
 	cfgTest := "config-test"
 
-	cache, err := cli.CreateCache(cfgTest)
-	assert.Nil(suite.T(), err)
-
-	readCcfg, err := cache.Configuration()
-
-	assert.Nil(suite.T(), err)
-	assert.Equal(suite.T(), cfgTest, *readCcfg.Name)
-	assert.Equal(suite.T(), int32(0), readCcfg.Backups)
-
-	ccfg := serdes.CacheConfiguration{}
-
-	cfgTest += "-1"
-	ccfg.Name = &cfgTest
-	ccfg.Backups = 1
-	ccfg.AtomicityMode = 1
-	ccfg.QueryParallelism = 1
-	ccfg.CacheMode = 2
-	ccfg.RebalanceBatchSize = 512 * 1024
-	ccfg.RebalanceBatchesPrefetchCount = 3
-	ccfg.RebalanceTimeout = 10000
-
-	grpTest := "my-group"
-
-	ccfg.GroupName = &grpTest
-
-	cache, err = cli.CreateCacheWithConfiguration(&ccfg)
+	cache, err := cli.CreateCache(ctx, cfgTest)
 	assert.Nil(suite.T(), err)
 	assert.NotNil(suite.T(), cache)
 
-	readCcfg, err = cache.Configuration()
+	readCcfg, err := cache.Configuration(ctx)
 
-	assert.Equal(suite.T(), cfgTest, *readCcfg.Name)
-	assert.Equal(suite.T(), int32(1), readCcfg.Backups)
-	assert.Equal(suite.T(), int32(1), readCcfg.AtomicityMode)
-	assert.Equal(suite.T(), grpTest, *readCcfg.GroupName)
+	assert.Nil(suite.T(), err)
+	assert.Equal(suite.T(), cfgTest, readCcfg.Name())
+	assert.Equal(suite.T(), 0, readCcfg.Backups())
+
+	cfgTest += "-1"
+	grpTest := "my-group"
+	ccfg := CreateCacheConfiguration(cfgTest,
+		WithCacheGroupName(grpTest),
+		WithCacheMode(Partitioned),
+		WithCacheAtomicityMode(Atomic),
+		WithBackupsCount(1),
+		WithQueryParallelism(1),
+	)
+
+	cache, err = cli.CreateCacheWithConfiguration(ctx, ccfg)
+	assert.Nil(suite.T(), err)
+	assert.NotNil(suite.T(), cache)
+
+	readCcfg, err = cache.Configuration(ctx)
+
+	assert.Equal(suite.T(), cfgTest, readCcfg.Name())
+	assert.Equal(suite.T(), 1, readCcfg.Backups())
+	assert.Equal(suite.T(), Atomic, readCcfg.CacheAtomicityMode())
+	assert.Equal(suite.T(), grpTest, readCcfg.GroupName())
 }

@@ -2,39 +2,36 @@ package ignite
 
 import (
 	"context"
-	"sbt.ru/ignite-go/ignite/serdes"
+	"time"
+)
+
+type CachePeekMode uint8
+
+const (
+	All CachePeekMode = iota
+	Near
+	Primary
+	Backup
+	OnHeap
+	OffHeap
+)
+
+const (
+	DurationUnchanged time.Duration = -2
+	DurationEternal   time.Duration = -1
+	DurationZero      time.Duration = 0
 )
 
 type Cache interface {
 	Name() string
-
-	Configuration() (*serdes.CacheConfiguration, error)
+	Get(ctx context.Context, key interface{}) (interface{}, error)
+	Put(ctx context.Context, key interface{}, value interface{}) error
+	Size(ctx context.Context, peekModes ...CachePeekMode) (uint64, error)
+	Configuration(ctx context.Context) (CacheConfiguration, error)
 }
 
-type CacheImpl struct {
-	cli *ClientImpl
-
-	name string
-}
-
-func (cache *CacheImpl) Name() string {
-	return cache.name
-}
-
-func (cache *CacheImpl) Configuration() (*serdes.CacheConfiguration, error) {
-	var err error
-	req := serdes.CacheGetConfigurationRequest{CacheId: CacheId(cache.name), Flag: 0}
-	var cfg *serdes.CacheConfiguration = nil
-	cache.cli.ch.Send(context.Background(), req.OpCode(), func(output serdes.BinaryWriter) {
-		req.Write(output)
-	}, func(output serdes.BinaryReader, err0 error) {
-		if err0 != nil {
-			err = err0
-		} else {
-			resp, _ := req.ReadResponse(output).(serdes.CacheGetConfigurationResponse)
-			cfg = &resp.CacheConfiguration
-		}
-	})
-
-	return cfg, err
+type ExpirePolicy interface {
+	Creation() time.Duration
+	Access() time.Duration
+	Update() time.Duration
 }
