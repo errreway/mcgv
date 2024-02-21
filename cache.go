@@ -23,6 +23,7 @@ const (
 )
 
 type Cache interface {
+	WithExpirePolicy(creation time.Duration, access time.Duration, update time.Duration) Cache
 	Name() string
 	Get(ctx context.Context, key interface{}) (interface{}, error)
 	Put(ctx context.Context, key interface{}, value interface{}) error

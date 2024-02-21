@@ -48,9 +48,40 @@ func (cache *cacheImpl) Name() string {
 	return cache.name
 }
 
+func (cache *cacheImpl) WithExpirePolicy(creation time.Duration, access time.Duration, update time.Duration) Cache {
+	return &cacheImpl{
+		cli: cache.cli,
+		expiryPolicy: &expirePolicyImpl{
+			creation: creation,
+			access:   access,
+			update:   update,
+		},
+		name: cache.name,
+		id:   cache.id,
+	}
+}
+
 func (cache *cacheImpl) Get(ctx context.Context, key interface{}) (interface{}, error) {
-	//TODO implement me
-	panic("implement me")
+	var err error = nil
+	var ret interface{}
+	cache.cli.ch.Send(ctx, opCacheGet, func(output BinaryWriter) error {
+		err = cache.writeCacheInfo(cache.cli.ch.ProtocolContext(), output)
+		if err != nil {
+			return err
+		}
+		err = cache.cli.marsh.Marshal(ctx, output, key)
+		if err != nil {
+			return err
+		}
+		return nil
+	}, func(input BinaryReader, err0 error) {
+		if err0 != nil {
+			err = err0
+			return
+		}
+		ret, err = cache.cli.marsh.Unmarshall(ctx, input)
+	})
+	return ret, err
 }
 
 func (cache *cacheImpl) Put(ctx context.Context, key interface{}, value interface{}) error {
@@ -76,7 +107,6 @@ func (cache *cacheImpl) Put(ctx context.Context, key interface{}, value interfac
 		}
 
 	})
-
 	return err
 }
 
