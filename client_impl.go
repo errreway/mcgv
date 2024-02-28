@@ -46,7 +46,7 @@ func (cli *clientImpl) CacheNames(ctx context.Context) ([]string, error) {
 		sz := int(input.ReadInt32())
 		names = make([]string, sz)
 		for i := 0; i < sz; i++ {
-			name, err0 := unmarshallString(input, false)
+			name, err0 := unmarshalString(input, false)
 			if err0 != nil {
 				err = err0
 				return
@@ -80,7 +80,7 @@ func (cli *clientImpl) CreateCache(ctx context.Context, name string) (Cache, err
 func (cli *clientImpl) CreateCacheWithConfiguration(ctx context.Context, config CacheConfiguration) (Cache, error) {
 	var err error
 	cli.ch.Send(ctx, opCacheCreateWithConfig, func(output BinaryWriter) error {
-		if err0 := config.marshall(cli.marsh, output); err0 != nil {
+		if err0 := config.marshall(ctx, cli.marsh, output); err0 != nil {
 			return err0
 		}
 		return nil
@@ -116,7 +116,7 @@ func (cli *clientImpl) GetOrCreateCache(ctx context.Context, name string) (Cache
 func (cli *clientImpl) GetOrCreateCacheWithConfig(ctx context.Context, config CacheConfiguration) (Cache, error) {
 	var err error
 	cli.ch.Send(ctx, opCacheGetOrCreateWithConfig, func(output BinaryWriter) error {
-		if err0 := config.marshall(cli.marsh, output); err0 != nil {
+		if err0 := config.marshall(ctx, cli.marsh, output); err0 != nil {
 			return err0
 		}
 		return nil

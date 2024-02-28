@@ -173,6 +173,7 @@ func (ch *Channel) send(ctx context.Context, id int64, opCode int16, requestWrit
 	req, err := NewRequest(id, opCode, requestWriter)
 	if err != nil {
 		responseReader(nil, err)
+		return
 	}
 
 	var deadlineSet = false
@@ -232,7 +233,7 @@ func (ch *Channel) send(ctx context.Context, id int64, opCode int16, requestWrit
 			if checkFlag(flags, ErrorFlag) {
 				statusCode := int(input.ReadInt32())
 				var errMsg string
-				if errMsg, err = unmarshallString(input, false); err != nil {
+				if errMsg, err = unmarshalString(input, false); err != nil {
 					err = fmt.Errorf("broken output from server: %w", err)
 				}
 				req.err = &ClientServerError{
@@ -474,7 +475,7 @@ func (ch *Channel) handshake(ver ProtocolVersion, user string, password string, 
 			if success {
 				if cliCtx.SupportsBitmapFeatures() {
 					var bitMaskBytes []byte = nil
-					if bitMaskBytes, err = unmarshallBytes(input, false); err != nil {
+					if bitMaskBytes, err = unmarshalBytes(input, false); err != nil {
 						err = fmt.Errorf("broken output from server: %w", err)
 						return
 					}
@@ -484,7 +485,7 @@ func (ch *Channel) handshake(ver ProtocolVersion, user string, password string, 
 				}
 				if cliCtx.SupportsPartitionAwareness() {
 					var serverId uuid.UUID
-					if serverId, err = unmarshallUuid(input, false); err != nil {
+					if serverId, err = unmarshalUuid(input, false); err != nil {
 						err = fmt.Errorf("broken output from server: %w", err)
 						return
 					}
@@ -496,7 +497,7 @@ func (ch *Channel) handshake(ver ProtocolVersion, user string, password string, 
 					ProtocolVersion{Major: input.ReadInt16(), Minor: input.ReadInt16(), Patch: input.ReadInt16()},
 				)
 				var errMsg string
-				if errMsg, err = unmarshallString(input, false); err != nil {
+				if errMsg, err = unmarshalString(input, false); err != nil {
 					err = fmt.Errorf("broken output from server: %w", err)
 					return
 				}

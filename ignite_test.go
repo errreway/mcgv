@@ -215,5 +215,47 @@ func (suite *BasicTestSuite) TestCacheConfig() {
 	assert.Equal(suite.T(), cfgTest, readCcfg.Name())
 	assert.Equal(suite.T(), 1, readCcfg.Backups())
 	assert.Equal(suite.T(), Atomic, readCcfg.CacheAtomicityMode())
-	assert.Equal(suite.T(), grpTest, readCcfg.GroupName())
+	assert.Equal(suite.T(), grpTest, readCcfg.CacheGroupName())
+}
+
+func (suite *BasicTestSuite) TestQueryEntitiesConfig() {
+	cli, err := Start(ClientConfiguration{DefaultAddress})
+	defer func() {
+		_ = cli.Close()
+	}()
+	if !assert.Nil(suite.T(), err) || !assert.NotNil(suite.T(), cli) {
+		suite.T().FailNow()
+	}
+
+	ctx := context.Background()
+	testName := "qry-cache"
+	grpName := "qry-grp"
+
+	cfg := CreateCacheConfiguration(testName,
+		WithCacheGroupName(grpName),
+		WithCacheMode(Partitioned),
+		WithCacheAtomicityMode(Atomic),
+		WithBackupsCount(1),
+		WithQueryParallelism(1),
+		WithCacheKeyConfiguration("PersonId", "BUCKET_ID"),
+		WithQueryEntity("PersonId", "Person", WithTableName("QUERY_CACHE"),
+			WithQueryField("ID", "java.lang.Long", WithKey()),
+			WithQueryField("BUCKET_ID", "java.lang.Long", WithKey()),
+			WithQueryField("NAME", "java.lang.String", WithNotNull(), WithDefaultValue("")),
+			WithQueryField("SALARY", "java.math.BigDecimal",
+				WithPrecision(10), WithScale(2), WithNotNull()),
+			WithQueryField("PERSON.AGE", "java.lang.Short", WithNotNull(), WithDefaultValue(2)),
+			WithFieldAlias("PERSON.AGE", "PERSON_AGE"),
+			WithIndex("NAME_IDX", WithIndexField(IndexField{Name: "NAME", Asc: true})),
+		))
+	cache, err := cli.CreateCacheWithConfiguration(ctx, cfg)
+	if !assert.Nil(suite.T(), err) || !assert.NotNil(suite.T(), cache) {
+		suite.T().FailNow()
+	}
+	cfg1, err := cache.Configuration(ctx)
+	if !assert.Nil(suite.T(), err) || !assert.Equal(suite.T(), cfg.Name(), cfg1.Name()) {
+		suite.T().FailNow()
+	}
+	cfg2 := cfg1.Copy(WithCacheName("test"))
+	assert.Equal(suite.T(), cfg2.CacheGroupName(), cfg1.CacheGroupName())
 }

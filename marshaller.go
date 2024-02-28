@@ -58,6 +58,7 @@ func (m *marshallerImpl) ProtocolContext() ProtocolContext {
 func (m *marshallerImpl) Marshal(ctx context.Context, writer BinaryWriter, payload interface{}) error {
 	if payload == nil {
 		writer.WriteInt8(nullType)
+		return nil
 	}
 	switch val := payload.(type) {
 	case uint8:
@@ -89,6 +90,11 @@ func (m *marshallerImpl) Marshal(ctx context.Context, writer BinaryWriter, paylo
 		{
 			writer.WriteInt8(intType)
 			writer.WriteInt32(val)
+		}
+	case int:
+		{
+			writer.WriteInt8(intType)
+			writer.WriteInt32(int32(val))
 		}
 	case uint64:
 		{
@@ -124,7 +130,7 @@ func (m *marshallerImpl) Marshal(ctx context.Context, writer BinaryWriter, paylo
 			writer.WriteBytes(val[:])
 		}
 	default:
-		return fmt.Errorf("type %t is not supported", val)
+		return fmt.Errorf("type '%T' is not supported", val)
 	}
 	return nil
 }
@@ -200,7 +206,7 @@ func (m *marshallerImpl) Unmarshall(_ context.Context, reader BinaryReader) (int
 	case byteArrayType:
 		{
 			var ret []byte = nil
-			if ret, err = unmarshallBytes(reader, true); err != nil {
+			if ret, err = unmarshalBytes(reader, true); err != nil {
 				return nil, err
 			}
 			return ret, nil
@@ -208,7 +214,7 @@ func (m *marshallerImpl) Unmarshall(_ context.Context, reader BinaryReader) (int
 	case stringType:
 		{
 			var ret string
-			if ret, err = unmarshallString(reader, true); err != nil {
+			if ret, err = unmarshalString(reader, true); err != nil {
 				return "", err
 			}
 			return ret, nil
@@ -216,7 +222,7 @@ func (m *marshallerImpl) Unmarshall(_ context.Context, reader BinaryReader) (int
 	case uuidType:
 		{
 			var ret uuid.UUID
-			if ret, err = unmarshallUuid(reader, true); err != nil {
+			if ret, err = unmarshalUuid(reader, true); err != nil {
 				return uuid.Nil, err
 			}
 			return ret, nil
@@ -243,7 +249,7 @@ func marshalBytes(writer BinaryWriter, val []byte) {
 	writer.WriteBytes(val)
 }
 
-func unmarshallBytes(reader BinaryReader, skipHeader bool) ([]byte, error) {
+func unmarshalBytes(reader BinaryReader, skipHeader bool) ([]byte, error) {
 	var err error
 	if !skipHeader {
 		if err = ensureAvailable(reader, 1); err != nil {
@@ -275,7 +281,7 @@ func unmarshallBytes(reader BinaryReader, skipHeader bool) ([]byte, error) {
 	return reader.ReadBytes(bytesSz), nil
 }
 
-func unmarshallString(reader BinaryReader, skipHeader bool) (string, error) {
+func unmarshalString(reader BinaryReader, skipHeader bool) (string, error) {
 	var err error
 	if !skipHeader {
 		if err = ensureAvailable(reader, 1); err != nil {
@@ -307,7 +313,7 @@ func unmarshallString(reader BinaryReader, skipHeader bool) (string, error) {
 	return bytesToString(reader.ReadBytes(strSz)), nil
 }
 
-func unmarshallUuid(reader BinaryReader, skipHeader bool) (uuid.UUID, error) {
+func unmarshalUuid(reader BinaryReader, skipHeader bool) (uuid.UUID, error) {
 	var err error
 	if !skipHeader {
 		if err = ensureAvailable(reader, 1); err != nil {
