@@ -14,8 +14,12 @@ type Marshaller interface {
 	ProtocolContext() ProtocolContext
 }
 
+type typeDesc = int8
+type mapTypeDesc = int8
+type collectionTypeDesc = int8
+
 const (
-	byteType int8 = iota + 1
+	byteType typeDesc = iota + 1
 	shortType
 	intType
 	longType
@@ -38,7 +42,22 @@ const (
 	uuidArrayType
 	dateArrayType
 	objectArrayType
-	nullType int8 = 101
+	collectionType
+	mapType
+	nullType typeDesc = 101
+)
+
+const (
+	hashMap mapTypeDesc = iota + 1
+	linkedHashMap
+)
+
+const (
+	arrayList collectionTypeDesc = iota + 1
+	linkedList
+	hashSet
+	linkedHashSet
+	singletonList
 )
 
 type marshallerImpl struct {
@@ -61,6 +80,11 @@ func (m *marshallerImpl) Marshal(ctx context.Context, writer BinaryWriter, paylo
 		return nil
 	}
 	switch val := payload.(type) {
+	case bool:
+		{
+			writer.WriteInt8(boolType)
+			writer.WriteBool(val)
+		}
 	case uint8:
 		{
 			writer.WriteInt8(byteType)

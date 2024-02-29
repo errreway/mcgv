@@ -65,6 +65,7 @@ func (suite *TtlTestSuite) TestCreationPolicy() {
 	err = cache.Put(ctx, "test", "test")
 	assert.Nil(suite.T(), err)
 	<-time.After(1200 * time.Millisecond)
-	val, err := cache.Get(ctx, "test")
-	assert.Nil(suite.T(), val)
+	contains, err := cache.ContainsKey(ctx, "test")
+	assert.Nil(suite.T(), err)
+	assert.False(suite.T(), contains)
 }

@@ -111,7 +111,7 @@ type PendingRequest struct {
 }
 
 func (req *PendingRequest) ResponseLength() (int, bool) {
-	if req.responseData != nil && len(req.responseData) >= IntBytes {
+	if req.responseData != nil && len(req.responseData) >= intBytes {
 		res := binary.LittleEndian.Uint32(req.responseData)
 		return int(res), true
 	}
@@ -123,7 +123,7 @@ func (req *PendingRequest) ResponseId() (int64, bool) {
 }
 
 func responseId(packet []byte) (int64, bool) {
-	if packet != nil && len(packet) >= LongBytes {
+	if packet != nil && len(packet) >= longBytes {
 		res := binary.LittleEndian.Uint64(packet)
 		return int64(res), true
 	}
@@ -147,7 +147,7 @@ func NewRequest(id int64, opCode int16, requestWriter func(input BinaryWriter) e
 
 	currPosition := reqInput.Position()
 	reqInput.SetPosition(0)
-	reqInput.WriteInt32(currPosition - IntBytes)
+	reqInput.WriteInt32(currPosition - intBytes)
 	reqInput.SetPosition(currPosition)
 
 	return &PendingRequest{
@@ -393,7 +393,7 @@ func (pa *packetAccumulator) data() []byte {
 		return nil
 	}
 	// prepare result
-	size := int(pa.currentSize + IntBytes)
+	size := int(pa.currentSize + intBytes)
 	result := make([]byte, size)
 	copy(result, pa.buf.Next(size))
 
@@ -416,11 +416,11 @@ func (pa *packetAccumulator) data() []byte {
 
 func (pa *packetAccumulator) processData() bool {
 	if pa.currentSize <= 0 {
-		if pa.buf.Len() < IntBytes {
+		if pa.buf.Len() < intBytes {
 			return false
 		}
-		size := int32(binary.LittleEndian.Uint32(pa.buf.Next(IntBytes)))
-		if size < ByteBytes {
+		size := int32(binary.LittleEndian.Uint32(pa.buf.Next(intBytes)))
+		if size < byteBytes {
 			panic("packet size is less than minimal message size")
 		}
 		pa.currentSize = size
@@ -436,107 +436,118 @@ func (pa *packetAccumulator) processData() bool {
 }
 
 func (ch *Channel) handshake(ver ProtocolVersion, user string, password string, attrs map[string]string) error {
+	cliCtx := NewProtocolContext(ver)
 	for {
-		cliCtx := NewProtocolContext(ver)
-		var err error = nil
-		ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
-		defer func() {
-			cancel()
-		}()
-
-		writer := func(bw BinaryWriter) error {
-			bw.WriteInt8(1)
-			cliCtx.Marshall(bw)
-			if cliCtx.SupportsAttributeFeature(UserAttributesFeature) {
-				if len(attrs) == 0 {
-					bw.WriteInt8(int8(Null))
-				} else {
-					bw.WriteInt8(int8(Map))
-					bw.WriteInt32(int32(len(attrs)))
-					bw.WriteInt8(1)
-					for k, v := range attrs {
-						marshalString(bw, k)
-						marshalString(bw, v)
-					}
-				}
-			}
-			if cliCtx.SupportsAuthorization() && len(user) > 0 {
-				marshalString(bw, user)
-				marshalString(bw, password)
-			}
-			return nil
+		srvCtx, err := ch.handshakeRound(cliCtx, user, password, attrs)
+		if err != nil {
+			return err
 		}
-		reader := func(input BinaryReader, err0 error) {
-			if err0 != nil {
-				err = err0
-				return
-			}
-			success := input.ReadBool()
-			if success {
-				if cliCtx.SupportsBitmapFeatures() {
-					var bitMaskBytes []byte = nil
-					if bitMaskBytes, err = unmarshalBytes(input, false); err != nil {
-						err = fmt.Errorf("broken output from server: %w", err)
-						return
-					}
-					if bitMaskBytes != nil {
-						cliCtx.UpdateAttributeFeatures(bitset.FromBytes(bitMaskBytes))
-					}
-				}
-				if cliCtx.SupportsPartitionAwareness() {
-					var serverId uuid.UUID
-					if serverId, err = unmarshalUuid(input, false); err != nil {
-						err = fmt.Errorf("broken output from server: %w", err)
-						return
-					}
-					ch.serverId = serverId
-				}
-				ch.protocolCtx.Store(cliCtx)
+		if srvCtx == nil {
+			break
+		}
+		// Try to do handshake with server version.
+		cliCtx = srvCtx
+	}
+	return nil
+}
+
+func (ch *Channel) handshakeRound(cliCtx ProtocolContext, user string, password string, attrs map[string]string) (ProtocolContext, error) {
+	var err error = nil
+	var srvCtx ProtocolContext = nil
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
+	defer func() {
+		cancel()
+	}()
+
+	writer := func(bw BinaryWriter) error {
+		bw.WriteInt8(1)
+		cliCtx.Marshall(bw)
+		if cliCtx.SupportsAttributeFeature(UserAttributesFeature) {
+			if len(attrs) == 0 {
+				bw.WriteNull()
 			} else {
-				srvCtx := NewProtocolContext(
-					ProtocolVersion{Major: input.ReadInt16(), Minor: input.ReadInt16(), Patch: input.ReadInt16()},
-				)
-				var errMsg string
-				if errMsg, err = unmarshalString(input, false); err != nil {
+				bw.WriteInt8(mapType)
+				bw.WriteInt32(int32(len(attrs)))
+				bw.WriteInt8(hashMap)
+				for k, v := range attrs {
+					marshalString(bw, k)
+					marshalString(bw, v)
+				}
+			}
+		}
+		if cliCtx.SupportsAuthorization() && len(user) > 0 {
+			marshalString(bw, user)
+			marshalString(bw, password)
+		}
+		return nil
+	}
+	reader := func(input BinaryReader, err0 error) {
+		if err0 != nil {
+			err = err0
+			return
+		}
+		success := input.ReadBool()
+		if success {
+			if cliCtx.SupportsBitmapFeatures() {
+				var bitMaskBytes []byte = nil
+				if bitMaskBytes, err = unmarshalBytes(input, false); err != nil {
 					err = fmt.Errorf("broken output from server: %w", err)
 					return
 				}
-
-				errCode := Failed
-				if input.Available() > 0 {
-					errCode = uint(input.ReadUInt32())
+				if bitMaskBytes != nil {
+					cliCtx.UpdateAttributeFeatures(bitset.FromBytes(bitMaskBytes))
 				}
+			}
+			if cliCtx.SupportsPartitionAwareness() {
+				var serverId uuid.UUID
+				if serverId, err = unmarshalUuid(input, false); err != nil {
+					err = fmt.Errorf("broken output from server: %w", err)
+					return
+				}
+				ch.serverId = serverId
+			}
+			ch.protocolCtx.Store(cliCtx)
+		} else {
+			srvCtx = NewProtocolContext(
+				ProtocolVersion{Major: input.ReadInt16(), Minor: input.ReadInt16(), Patch: input.ReadInt16()},
+			)
+			var errMsg string
+			if errMsg, err = unmarshalString(input, false); err != nil {
+				err = fmt.Errorf("broken output from server: %w", err)
+				return
+			}
 
-				cliVersion := cliCtx.Version()
-				if errCode == AuthFailed {
-					err = &ClientAuthenticationError{
-						ClientError{errMsg},
-					}
-				} else if cliVersion.Compare(srvCtx.Version()) == 0 {
-					err = &ClientProtocolError{
-						ClientError{errMsg},
-					}
-				} else if exists := ch.supportedVersions[cliVersion.String()]; !exists || (!cliCtx.SupportsAuthorization() && len(user) > 0) {
-					errMsg = fmt.Sprintf("Protocol version mismatch: client %v / server %v. Server details: %s",
-						cliVersion,
-						srvCtx.Version(),
-						errMsg,
-					)
-					err = &ClientProtocolError{
-						ClientError{errMsg},
-					}
+			errCode := Failed
+			if input.Available() > 0 {
+				errCode = uint(input.ReadUInt32())
+			}
+
+			cliVersion := cliCtx.Version()
+			if errCode == AuthFailed {
+				err = &ClientAuthenticationError{
+					ClientError{errMsg},
+				}
+			} else if cliVersion.Compare(srvCtx.Version()) == 0 {
+				err = &ClientProtocolError{
+					ClientError{errMsg},
+				}
+			} else if exists := ch.supportedVersions[cliVersion.String()]; !exists || (!cliCtx.SupportsAuthorization() && len(user) > 0) {
+				errMsg = fmt.Sprintf("Protocol version mismatch: client %v / server %v. Server details: %s",
+					cliVersion,
+					srvCtx.Version(),
+					errMsg,
+				)
+				err = &ClientProtocolError{
+					ClientError{errMsg},
 				}
 			}
 		}
-
-		ch.send(ctx, -1, 0, writer, reader)
-
-		if ch.protocolCtx.Load() != nil {
-			return nil
-		} else if err != nil {
-			return err
-		}
 	}
+	ch.send(ctx, -1, 0, writer, reader)
+	if err != nil {
+		return nil, err
+	}
+	return srvCtx, nil
 }
 
 func checkFlag(flags int16, flag int16) bool {

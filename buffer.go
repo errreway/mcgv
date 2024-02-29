@@ -6,31 +6,13 @@ import (
 	"math"
 )
 
-//go:generate go run golang.org/x/tools/cmd/stringer -type=TypeDesc
-
-type TypeDesc int8
-
 const (
-	BoolBytes  = 1
-	ByteBytes  = 1
-	ShortBytes = 2
-	IntBytes   = 4
-	LongBytes  = 8
-	UuidBytes  = 16
-
-	String       TypeDesc = 9
-	Uuid         TypeDesc = 10
-	ByteArray    TypeDesc = 12
-	ShortArray   TypeDesc = 13
-	IntArray     TypeDesc = 14
-	LongArray    TypeDesc = 15
-	FloatArray   TypeDesc = 16
-	DoubleArray  TypeDesc = 17
-	CharArray    TypeDesc = 18
-	BooleanArray TypeDesc = 19
-	StringArray  TypeDesc = 20
-	Map          TypeDesc = 25
-	Null         TypeDesc = 101
+	boolBytes  = 1
+	byteBytes  = 1
+	shortBytes = 2
+	intBytes   = 4
+	longBytes  = 8
+	uuidBytes  = 16
 )
 
 type Signed interface {
@@ -137,7 +119,7 @@ func (bw *binaryWriterImpl) WriteNull() {
 }
 
 func (bw *binaryWriterImpl) WriteBool(v bool) {
-	bw.ensureAvailable(BoolBytes)
+	bw.ensureAvailable(boolBytes)
 	bw.writeBool(v)
 }
 
@@ -147,67 +129,67 @@ func (bw *binaryWriterImpl) writeBool(v bool) {
 	} else {
 		bw.buffer[bw.position] = 0
 	}
-	bw.position += BoolBytes
+	bw.position += boolBytes
 }
 
 func (bw *binaryWriterImpl) WriteUInt8(v uint8) {
-	bw.ensureAvailable(ByteBytes)
+	bw.ensureAvailable(byteBytes)
 	bw.writeByte(v)
 }
 
 func (bw *binaryWriterImpl) WriteInt8(v int8) {
-	bw.ensureAvailable(ByteBytes)
+	bw.ensureAvailable(byteBytes)
 	bw.writeByte(uint8(v))
 }
 
 func (bw *binaryWriterImpl) writeByte(v byte) {
 	bw.buffer[bw.position] = v
-	bw.position += ByteBytes
+	bw.position += byteBytes
 }
 
 func (bw *binaryWriterImpl) WriteInt16(v int16) {
-	bw.ensureAvailable(ShortBytes)
+	bw.ensureAvailable(shortBytes)
 	bw.writeShort(uint16(v))
 }
 
 func (bw *binaryWriterImpl) WriteUInt16(v uint16) {
-	bw.ensureAvailable(ShortBytes)
+	bw.ensureAvailable(shortBytes)
 	bw.writeShort(v)
 }
 
 func (bw *binaryWriterImpl) writeShort(v uint16) {
 	binary.LittleEndian.PutUint16(bw.buffer[bw.position:], v)
-	bw.position += ShortBytes
+	bw.position += shortBytes
 }
 
 func (bw *binaryWriterImpl) WriteInt32(v int32) {
-	bw.ensureAvailable(IntBytes)
+	bw.ensureAvailable(intBytes)
 	bw.writeInt(uint32(v))
 }
 
 func (bw *binaryWriterImpl) WriteUInt32(v uint32) {
-	bw.ensureAvailable(IntBytes)
+	bw.ensureAvailable(intBytes)
 	bw.writeInt(v)
 }
 
 func (bw *binaryWriterImpl) writeInt(v uint32) {
 	binary.LittleEndian.PutUint32(bw.buffer[bw.position:], v)
-	bw.position += IntBytes
+	bw.position += intBytes
 }
 
 func (bw *binaryWriterImpl) WriteUInt64(v uint64) {
-	bw.ensureAvailable(LongBytes)
+	bw.ensureAvailable(longBytes)
 	bw.writeLong(v)
 }
 
 func (bw *binaryWriterImpl) WriteInt64(v int64) {
-	bw.ensureAvailable(LongBytes)
+	bw.ensureAvailable(longBytes)
 	bw.writeLong(uint64(v))
 }
 
 func (bw *binaryWriterImpl) writeLong(v uint64) {
 	binary.LittleEndian.PutUint64(bw.buffer[bw.position:], v)
-	bw.position += LongBytes
+	bw.position += longBytes
 }
 
 func (bw *binaryWriterImpl) WriteBytes(v []byte) {
@@ -240,7 +222,7 @@ func (br *binaryReaderImpl) ReadBool() bool {
 	if br.buffer[br.position] == 1 {
 		ret = true
 	}
-	br.position += BoolBytes
+	br.position += boolBytes
 	return ret
 }
 
@@ -250,7 +232,7 @@ func (br *binaryReaderImpl) ReadByte() byte {
 
 func (br *binaryReaderImpl) ReadUInt8() uint8 {
 	ret := br.buffer[br.position]
-	br.position += ByteBytes
+	br.position += byteBytes
 	return ret
 }
 
@@ -260,7 +242,7 @@ func (br *binaryReaderImpl) ReadInt8() int8 {
 
 func (br *binaryReaderImpl) ReadUInt16() uint16 {
 	r := binary.LittleEndian.Uint16(br.buffer[br.position:])
-	br.position += ShortBytes
+	br.position += shortBytes
 	return r
 }
 
@@ -270,7 +252,7 @@ func (br *binaryReaderImpl) ReadInt16() int16 {
 
 func (br *binaryReaderImpl) ReadUInt32() uint32 {
 	r := binary.LittleEndian.Uint32(br.buffer[br.position:])
-	br.position += IntBytes
+	br.position += intBytes
 	return r
 }
 
@@ -280,13 +262,13 @@ func (br *binaryReaderImpl) ReadInt32() int32 {
 
 func (br *binaryReaderImpl) ReadUInt64() uint64 {
 	r := binary.LittleEndian.Uint64(br.buffer[br.position:])
-	br.position += LongBytes
+	br.position += longBytes
 	return r
 }
 
 func (br *binaryReaderImpl) IsNull() bool {
-	if br.buffer[br.position] == byte(Null) {
-		br.position += ByteBytes
+	if br.buffer[br.position] == byte(nullType) {
+		br.position += byteBytes
 		return true
 	}
 	return false
