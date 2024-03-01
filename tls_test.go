@@ -65,6 +65,7 @@ func (suite *TlsTestSuite) TestCreationPolicy() {
 	for _, fixture := range fixtures {
 		suite.T().Run(fixture.name, func(t *testing.T) {
 			cli, err := Start(WithAddresses(defaultAddress), WithTls(fixture.supplier),
+				WithClientAttribute("clientName", "ignite-go"),
 				WithCredentials("ignite", "ignite"))
 			defer func() {
 				_ = cli.Close()

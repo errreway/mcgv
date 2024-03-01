@@ -32,6 +32,7 @@ type ClientConfiguration struct {
 	addressesSupplier func() ([]string, error)
 	user              string
 	password          string
+	attrs             map[string]string
 	tlsConfigSupplier func() (*tls.Config, error)
 }
 
@@ -85,6 +86,18 @@ func WithTls(supplier func() (*tls.Config, error)) func(config *ClientConfigurat
 			return errors.New("nil tls configuration supplier")
 		}
 		config.tlsConfigSupplier = supplier
+		return nil
+	}
+}
+
+func WithClientAttribute(key string, value string) func(config *ClientConfiguration) error {
+	return func(config *ClientConfiguration) error {
+		if len(key) != 0 && len(value) != 0 {
+			if config.attrs == nil {
+				config.attrs = make(map[string]string)
+			}
+			config.attrs[key] = value
+		}
 		return nil
 	}
 }

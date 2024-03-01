@@ -103,6 +103,7 @@ type Channel struct {
 	supportedVersions map[string]bool
 	closeErr          error
 	closeWg           sync.WaitGroup
+	clientCfg         *ClientConfiguration
 }
 
 type pendingRequest struct {
@@ -449,10 +450,10 @@ func (pa *packetAccumulator) processData() bool {
 	return false
 }
 
-func (ch *Channel) handshake(ver ProtocolVersion, user string, password string, attrs map[string]string) error {
-	cliCtx := NewProtocolContext(ver)
+func (ch *Channel) handshake(ver ProtocolVersion) error {
+	cliCtx := NewProtocolContext(ver, UserAttributesFeature)
 	for {
-		srvCtx, err := ch.handshakeRound(cliCtx, user, password, attrs)
+		srvCtx, err := ch.handshakeRound(cliCtx, ch.clientCfg.user, ch.clientCfg.password, ch.clientCfg.attrs)
 		if err != nil {
 			return err
 		}
@@ -601,6 +602,7 @@ func CreateChannel(cfg *ClientConfiguration) (*Channel, error) {
 		pendingCh:         make(chan int64, 1024),
 		doneCh:            make(chan struct{}),
 		supportedVersions: make(map[string]bool),
+		clientCfg:         cfg,
 	}
 	ch.supportedVersions[V1_0_0] = true
 	ch.supportedVersions[V1_1_0] = true
@@ -615,7 +617,7 @@ func CreateChannel(cfg *ClientConfiguration) (*Channel, error) {
 	ch.closeWg.Add(1)
 	go ch.readLoop()
 	ver, _ := ParseVersion(Default)
-	err = ch.handshake(ver, cfg.user, cfg.password, nil)
+	err = ch.handshake(ver)
 	if err != nil {
 		return nil, err
 	}
