@@ -38,7 +38,7 @@ func (suite *TtlTestSuite) TearDownSuite() {
 }
 
 func (suite *TtlTestSuite) TearDownTest() {
-	cli, err := Start(ClientConfiguration{DefaultAddress})
+	cli, err := Start(WithAddresses(defaultAddress))
 	assert.Nil(suite.T(), err)
 	defer func() {
 		_ = cli.Close()
@@ -53,7 +53,7 @@ func (suite *TtlTestSuite) TearDownTest() {
 }
 
 func (suite *TtlTestSuite) TestCreationPolicy() {
-	cli, err := Start(ClientConfiguration{DefaultAddress})
+	cli, err := Start(WithAddresses(defaultAddress))
 	assert.Nil(suite.T(), err)
 	defer func() {
 		_ = cli.Close()

@@ -3,6 +3,7 @@ package ignite
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -100,9 +101,11 @@ type Channel struct {
 	serverId          uuid.UUID
 	status            int32
 	supportedVersions map[string]bool
+	closeErr          error
+	closeWg           sync.WaitGroup
 }
 
-type PendingRequest struct {
+type pendingRequest struct {
 	id           int64
 	requestData  []byte
 	responseData []byte
@@ -110,7 +113,7 @@ type PendingRequest struct {
 	doneCh       chan struct{}
 }
 
-func (req *PendingRequest) ResponseLength() (int, bool) {
+func (req *pendingRequest) responseLength() (int, bool) {
 	if req.responseData != nil && len(req.responseData) >= intBytes {
 		res := binary.LittleEndian.Uint32(req.responseData)
 		return int(res), true
@@ -118,7 +121,7 @@ func (req *PendingRequest) ResponseLength() (int, bool) {
 	return 0, false
 }
 
-func (req *PendingRequest) ResponseId() (int64, bool) {
+func (req *pendingRequest) responseId() (int64, bool) {
 	return responseId(req.responseData)
 }
 
@@ -130,7 +133,7 @@ func responseId(packet []byte) (int64, bool) {
 	return 0, false
 }
 
-func NewRequest(id int64, opCode int16, requestWriter func(input BinaryWriter) error) (*PendingRequest, error) {
+func newRequest(id int64, opCode int16, requestWriter func(input BinaryWriter) error) (*pendingRequest, error) {
 	reqInput := NewBinaryWriter(64)
 
 	reqInput.WriteInt32(0)
@@ -150,7 +153,7 @@ func NewRequest(id int64, opCode int16, requestWriter func(input BinaryWriter) e
 	reqInput.WriteInt32(currPosition - intBytes)
 	reqInput.SetPosition(currPosition)
 
-	return &PendingRequest{
+	return &pendingRequest{
 		id:          id,
 		requestData: reqInput.Data(),
 		doneCh:      make(chan struct{}, 1),
@@ -170,7 +173,7 @@ func (ch *Channel) Send(ctx context.Context, opCode int16, requestWriter func(ou
 }
 
 func (ch *Channel) send(ctx context.Context, id int64, opCode int16, requestWriter func(output BinaryWriter) error, responseReader func(input BinaryReader, err error)) {
-	req, err := NewRequest(id, opCode, requestWriter)
+	req, err := newRequest(id, opCode, requestWriter)
 	if err != nil {
 		responseReader(nil, err)
 		return
@@ -199,10 +202,15 @@ func (ch *Channel) send(ctx context.Context, id int64, opCode int16, requestWrit
 	for {
 		select {
 		case <-ctx.Done():
-			responseReader(nil, errors.New("cancelled"))
+			responseReader(nil, errors.New("request cancelled"))
 			return
 		case <-ch.doneCh:
-			responseReader(nil, errors.New("cancelled"))
+			if ch.closeErr != nil {
+				err = fmt.Errorf("connection closed on error %w", ch.closeErr)
+			} else {
+				err = errors.New("connection closed")
+			}
+			responseReader(nil, err)
 			return
 		case <-req.doneCh:
 			if req.err != nil {
@@ -250,31 +258,34 @@ func (ch *Channel) send(ctx context.Context, id int64, opCode int16, requestWrit
 	}
 }
 
-func (ch *Channel) Close(err error) {
+func (ch *Channel) beginClose(err error) {
 	if !atomic.CompareAndSwapInt32(&ch.status, open, closed) {
 		return
 	}
+	ch.closeErr = err
 	close(ch.doneCh)
+	_ = ch.socket.Close()
+}
 
-	if err := ch.socket.Close(); err != nil {
-		//
-	}
+func (ch *Channel) Close(err error) {
+	ch.beginClose(err)
+	ch.closeWg.Wait()
 }
 
 func (ch *Channel) writeLoop() {
+	defer func() {
+		ch.closeWg.Done()
+	}()
 	for {
 		select {
-		case id, ok := <-ch.pendingCh:
-			if !ok {
-				return
-			}
+		case id := <-ch.pendingCh:
 			req, ok := ch.pendingRequests.Load(id)
 			if !ok {
 				panic("invalid request id")
 			}
-			if err := ch.writeFully(req.(*PendingRequest).requestData); err != nil {
-				req.(*PendingRequest).err = err
-				ch.Close(err)
+			if err := ch.writeFully(req.(*pendingRequest).requestData); err != nil {
+				req.(*pendingRequest).err = err
+				ch.beginClose(err)
 				return
 			}
 		case <-ch.doneCh:
@@ -306,6 +317,9 @@ const (
 func (ch *Channel) readLoop() {
 	var err error
 	var n int
+	defer func() {
+		ch.closeWg.Done()
+	}()
 
 	buf := make([]byte, messageBufferSize)
 	packetAcc := newPacketAccumulator()
@@ -358,7 +372,7 @@ func (ch *Channel) readLoop() {
 				break
 			}
 
-			req, ok := val.(*PendingRequest)
+			req, ok := val.(*pendingRequest)
 			if !ok {
 				panic("invalid data in pending requests")
 			}
@@ -369,7 +383,7 @@ func (ch *Channel) readLoop() {
 			break
 		}
 	}
-	ch.Close(err)
+	ch.beginClose(err)
 }
 
 type packetAccumulator struct {
@@ -458,7 +472,6 @@ func (ch *Channel) handshakeRound(cliCtx ProtocolContext, user string, password 
 	defer func() {
 		cancel()
 	}()
-
 	writer := func(bw BinaryWriter) error {
 		bw.WriteInt8(1)
 		cliCtx.Marshall(bw)
@@ -516,12 +529,10 @@ func (ch *Channel) handshakeRound(cliCtx ProtocolContext, user string, password 
 				err = fmt.Errorf("broken output from server: %w", err)
 				return
 			}
-
 			errCode := Failed
 			if input.Available() > 0 {
 				errCode = uint(input.ReadUInt32())
 			}
-
 			cliVersion := cliCtx.Version()
 			if errCode == AuthFailed {
 				err = &ClientAuthenticationError{
@@ -558,24 +569,39 @@ func (ch *Channel) requestId() int64 {
 	return ch.idGen.Add(1)
 }
 
-func CreateChannel(addr string) (*Channel, error) {
-	if len(addr) == 0 {
-		return nil, errors.New("address is empty")
+func CreateChannel(cfg *ClientConfiguration) (*Channel, error) {
+	if cfg.addressesSupplier == nil {
+		return nil, errors.New("address supplier is nil")
 	}
-
-	conn, err := net.Dial("tcp", addr)
-
+	addresses, err := cfg.addressesSupplier()
+	if err != nil {
+		return nil, fmt.Errorf("failed to obtain addresses: %w", err)
+	}
+	if len(addresses) == 0 {
+		return nil, errors.New("addresses are empty")
+	}
+	conn, err := net.Dial("tcp", addresses[0])
 	if err != nil {
 		return nil, err
 	}
+	if cfg.tlsConfigSupplier != nil {
+		tlsCfg, err := cfg.tlsConfigSupplier()
+		if err != nil {
+			return nil, fmt.Errorf("failed to obtain tls config: %w", err)
+		}
 
+		tlsCon := tls.Client(conn, tlsCfg)
+		if err = tlsCon.Handshake(); err != nil {
+			return nil, fmt.Errorf("tls handshake failed: %w", err)
+		}
+		conn = tlsCon
+	}
 	ch := Channel{
 		socket:            conn,
 		pendingCh:         make(chan int64, 1024),
 		doneCh:            make(chan struct{}),
 		supportedVersions: make(map[string]bool),
 	}
-
 	ch.supportedVersions[V1_0_0] = true
 	ch.supportedVersions[V1_1_0] = true
 	ch.supportedVersions[V1_2_0] = true
@@ -584,15 +610,14 @@ func CreateChannel(addr string) (*Channel, error) {
 	ch.supportedVersions[V1_5_0] = true
 	ch.supportedVersions[V1_6_0] = true
 	ch.supportedVersions[V1_7_0] = true
-
+	ch.closeWg.Add(1)
 	go ch.writeLoop()
+	ch.closeWg.Add(1)
 	go ch.readLoop()
-
 	ver, _ := ParseVersion(Default)
-	err = ch.handshake(ver, "", "", nil)
+	err = ch.handshake(ver, cfg.user, cfg.password, nil)
 	if err != nil {
 		return nil, err
 	}
-
 	return &ch, nil
 }

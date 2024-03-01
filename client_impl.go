@@ -2,7 +2,6 @@ package ignite
 
 import (
 	"context"
-	"errors"
 	"sbt.ru/ignite-go/ignite/internal"
 )
 
@@ -16,23 +15,17 @@ const (
 )
 
 type clientImpl struct {
-	cfg   ClientConfiguration
+	cfg   *ClientConfiguration
 	ch    *Channel
 	marsh Marshaller
 }
 
 func startClient(cfg ClientConfiguration) (Client, error) {
-	if len(cfg.Addresses) == 0 {
-		return nil, errors.New("addresses is empty")
-	}
-
-	ch, err := CreateChannel(cfg.Addresses)
-
+	ch, err := CreateChannel(&cfg)
 	if err != nil {
 		return nil, err
 	}
-
-	cli := clientImpl{cfg: cfg, ch: ch}
+	cli := clientImpl{cfg: &cfg, ch: ch}
 	cli.marsh = NewMarshaller(&cli)
 	return &cli, err
 }

@@ -14,7 +14,7 @@
             <bean class="org.apache.ignite.configuration.DataStorageConfiguration">
                 <property name="defaultDataRegionConfiguration">
                     <bean class="org.apache.ignite.configuration.DataRegionConfiguration">
-                        {{ if .UsePersistence }}
+                        {{ if or .UsePersistence .UseAuth }}
                         <property name="persistenceEnabled" value="true"/>
                         {{ end }}
                     </bean>

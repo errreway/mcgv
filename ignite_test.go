@@ -10,7 +10,7 @@ import (
 
 const (
 	cacheName      = "new-cache"
-	DefaultAddress = "localhost:10800"
+	defaultAddress = "localhost"
 )
 
 type BasicTestSuite struct {
@@ -42,7 +42,7 @@ func (suite *BasicTestSuite) TearDownSuite() {
 }
 
 func (suite *BasicTestSuite) TearDownTest() {
-	cli, err := Start(ClientConfiguration{DefaultAddress})
+	cli, err := Start(WithAddresses(defaultAddress))
 	assert.Nil(suite.T(), err)
 	defer func() {
 		_ = cli.Close()
@@ -57,19 +57,19 @@ func (suite *BasicTestSuite) TearDownTest() {
 }
 
 func (suite *BasicTestSuite) TestCorrectAddresses() {
-	cli, err := Start(ClientConfiguration{})
+	cli, err := Start()
 
 	assert.Nil(suite.T(), cli)
-	assert.Error(suite.T(), err, "Addresses is empty!")
+	assert.Error(suite.T(), err, "address supplier is nil")
 
-	cli, err = Start(ClientConfiguration{""})
+	cli, err = Start(WithAddresses())
 
 	assert.Nil(suite.T(), cli)
-	assert.Error(suite.T(), err, "Addresses is empty!")
+	assert.Error(suite.T(), err, "addresses are empty")
 }
 
 func (suite *BasicTestSuite) TestCacheSize() {
-	cli, err := Start(ClientConfiguration{DefaultAddress})
+	cli, err := Start(WithAddresses(defaultAddress))
 
 	assert.Nil(suite.T(), err)
 	assert.NotNil(suite.T(), cli)
@@ -97,7 +97,7 @@ func (suite *BasicTestSuite) TestCacheSize() {
 }
 
 func (suite *BasicTestSuite) TestCacheNames() {
-	cli, err := Start(ClientConfiguration{DefaultAddress})
+	cli, err := Start(WithAddresses(defaultAddress))
 
 	assert.Nil(suite.T(), err)
 	assert.NotNil(suite.T(), cli)
@@ -120,7 +120,7 @@ func (suite *BasicTestSuite) TestCacheNames() {
 	assert.Equal(suite.T(), cacheName, cache.Name())
 
 	var cli0 Client
-	cli0, err = Start(ClientConfiguration{DefaultAddress})
+	cli0, err = Start(WithAddresses(defaultAddress))
 
 	assert.Nil(suite.T(), err)
 	assert.NotNil(suite.T(), cli0)
@@ -146,7 +146,7 @@ func (suite *BasicTestSuite) TestCacheNames() {
 }
 
 func (suite *BasicTestSuite) TestDestroyCache() {
-	cli, err := Start(ClientConfiguration{DefaultAddress})
+	cli, err := Start(WithAddresses(defaultAddress))
 	assert.Nil(suite.T(), err)
 	assert.NotNil(suite.T(), cli)
 	defer func() {
@@ -176,7 +176,7 @@ func (suite *BasicTestSuite) TestDestroyCache() {
 }
 
 func (suite *BasicTestSuite) TestCacheConfig() {
-	cli, err := Start(ClientConfiguration{DefaultAddress})
+	cli, err := Start(WithAddresses(defaultAddress))
 	assert.Nil(suite.T(), err)
 	assert.NotNil(suite.T(), cli)
 	defer func() {
@@ -219,7 +219,7 @@ func (suite *BasicTestSuite) TestCacheConfig() {
 }
 
 func (suite *BasicTestSuite) TestQueryEntitiesConfig() {
-	cli, err := Start(ClientConfiguration{DefaultAddress})
+	cli, err := Start(WithAddresses(defaultAddress))
 	defer func() {
 		_ = cli.Close()
 	}()
