@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net"
 	"strconv"
+	"time"
 )
 
 const (
@@ -34,6 +35,7 @@ type ClientConfiguration struct {
 	password          string
 	attrs             map[string]string
 	tlsConfigSupplier func() (*tls.Config, error)
+	requestTimeout    time.Duration
 }
 
 func WithAddressSupplier(supplier func() ([]string, error)) func(config *ClientConfiguration) error {
@@ -90,6 +92,13 @@ func WithTls(supplier func() (*tls.Config, error)) func(config *ClientConfigurat
 	}
 }
 
+func WithRequestTimeout(timeout time.Duration) func(config *ClientConfiguration) error {
+	return func(config *ClientConfiguration) error {
+		config.requestTimeout = timeout
+		return nil
+	}
+}
+
 func WithClientAttribute(key string, value string) func(config *ClientConfiguration) error {
 	return func(config *ClientConfiguration) error {
 		if len(key) != 0 && len(value) != 0 {
@@ -103,8 +112,9 @@ func WithClientAttribute(key string, value string) func(config *ClientConfigurat
 }
 
 func Start(opts ...func(options *ClientConfiguration) error) (Client, error) {
-	cfg := ClientConfiguration{}
-
+	cfg := ClientConfiguration{
+		requestTimeout: 1 * time.Second,
+	}
 	if len(opts) > 0 {
 		for _, opt := range opts {
 			if err := opt(&cfg); err != nil {

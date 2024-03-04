@@ -136,9 +136,7 @@ func responseId(packet []byte) (int64, bool) {
 
 func newRequest(id int64, opCode int16, requestWriter func(input BinaryWriter) error) (*pendingRequest, error) {
 	reqInput := NewBinaryWriter(64)
-
 	reqInput.WriteInt32(0)
-
 	// Handshake request
 	if id != -1 {
 		reqInput.WriteInt16(opCode)
@@ -148,12 +146,10 @@ func newRequest(id int64, opCode int16, requestWriter func(input BinaryWriter) e
 	if err != nil {
 		return nil, err
 	}
-
 	currPosition := reqInput.Position()
 	reqInput.SetPosition(0)
 	reqInput.WriteInt32(currPosition - intBytes)
 	reqInput.SetPosition(currPosition)
-
 	return &pendingRequest{
 		id:          id,
 		requestData: reqInput.Data(),
@@ -186,7 +182,7 @@ func (ch *Channel) send(ctx context.Context, id int64, opCode int16, requestWrit
 	}
 	if _, deadlineSet = ctx.Deadline(); !deadlineSet {
 		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, 1*time.Second)
+		ctx, cancel = context.WithTimeout(ctx, ch.clientCfg.requestTimeout)
 		defer func() {
 			cancel()
 		}()
@@ -218,27 +214,21 @@ func (ch *Channel) send(ctx context.Context, id int64, opCode int16, requestWrit
 				responseReader(nil, req.err)
 				return
 			}
-
 			input := NewBinaryReader(req.responseData, 0)
-
 			// process handshake
 			if reqId == -1 {
 				responseReader(input, nil)
 				return
 			}
-
 			resId := input.ReadInt64()
 			if resId != reqId {
 				panic(fmt.Sprintf("reqId != resId %d, %d", reqId, resId))
 			}
-
 			flags := input.ReadInt16()
-
 			if checkFlag(flags, AffinityTopologyChangedFlag) {
 				ch.topVer = input.ReadInt64()
 				ch.minTopVer = input.ReadInt32()
 			}
-
 			if checkFlag(flags, ErrorFlag) {
 				statusCode := int(input.ReadInt32())
 				var errMsg string
@@ -252,7 +242,6 @@ func (ch *Channel) send(ctx context.Context, id int64, opCode int16, requestWrit
 					statusCode,
 				}
 			}
-
 			responseReader(input, req.err)
 			return
 		}
@@ -411,7 +400,6 @@ func (pa *packetAccumulator) data() []byte {
 	size := int(pa.currentSize + intBytes)
 	result := make([]byte, size)
 	copy(result, pa.buf.Next(size))
-
 	// copy remained data, reinitialize buffer.
 	remainDataSlice := pa.buf.Next(pa.buf.Len())
 	remainData := make([]byte, len(remainDataSlice))
@@ -425,7 +413,6 @@ func (pa *packetAccumulator) data() []byte {
 		pa.buf.Write(remainData)
 	}
 	pa.currentSize = 0
-
 	return result
 }
 
@@ -451,9 +438,13 @@ func (pa *packetAccumulator) processData() bool {
 }
 
 func (ch *Channel) handshake(ver ProtocolVersion) error {
-	cliCtx := NewProtocolContext(ver, UserAttributesFeature)
+	cliProtoCtx := NewProtocolContext(ver, UserAttributesFeature)
+	ctx, cancel := context.WithTimeout(context.Background(), ch.clientCfg.requestTimeout*3)
+	defer func() {
+		cancel()
+	}()
 	for {
-		srvCtx, err := ch.handshakeRound(cliCtx, ch.clientCfg.user, ch.clientCfg.password, ch.clientCfg.attrs)
+		srvCtx, err := ch.handshakeRound(ctx, cliProtoCtx, ch.clientCfg)
 		if err != nil {
 			return err
 		}
@@ -461,37 +452,33 @@ func (ch *Channel) handshake(ver ProtocolVersion) error {
 			break
 		}
 		// Try to do handshake with server version.
-		cliCtx = srvCtx
+		cliProtoCtx = srvCtx
 	}
 	return nil
 }
 
-func (ch *Channel) handshakeRound(cliCtx ProtocolContext, user string, password string, attrs map[string]string) (ProtocolContext, error) {
+func (ch *Channel) handshakeRound(ctx context.Context, cliProtoCtx ProtocolContext, cliCfg *ClientConfiguration) (ProtocolContext, error) {
 	var err error = nil
-	var srvCtx ProtocolContext = nil
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
-	defer func() {
-		cancel()
-	}()
+	var srvProtoCtx ProtocolContext = nil
 	writer := func(bw BinaryWriter) error {
 		bw.WriteInt8(1)
-		cliCtx.Marshall(bw)
-		if cliCtx.SupportsAttributeFeature(UserAttributesFeature) {
-			if len(attrs) == 0 {
+		cliProtoCtx.Marshall(bw)
+		if cliProtoCtx.SupportsAttributeFeature(UserAttributesFeature) {
+			if len(cliCfg.attrs) == 0 {
 				bw.WriteNull()
 			} else {
 				bw.WriteInt8(mapType)
-				bw.WriteInt32(int32(len(attrs)))
+				bw.WriteInt32(int32(len(cliCfg.attrs)))
 				bw.WriteInt8(hashMap)
-				for k, v := range attrs {
+				for k, v := range cliCfg.attrs {
 					marshalString(bw, k)
 					marshalString(bw, v)
 				}
 			}
 		}
-		if cliCtx.SupportsAuthorization() && len(user) > 0 {
-			marshalString(bw, user)
-			marshalString(bw, password)
+		if cliProtoCtx.SupportsAuthorization() && len(cliCfg.user) > 0 {
+			marshalString(bw, cliCfg.user)
+			marshalString(bw, cliCfg.password)
 		}
 		return nil
 	}
@@ -502,17 +489,17 @@ func (ch *Channel) handshakeRound(cliCtx ProtocolContext, user string, password 
 		}
 		success := input.ReadBool()
 		if success {
-			if cliCtx.SupportsBitmapFeatures() {
+			if cliProtoCtx.SupportsBitmapFeatures() {
 				var bitMaskBytes []byte = nil
 				if bitMaskBytes, err = unmarshalBytes(input, false); err != nil {
 					err = fmt.Errorf("broken output from server: %w", err)
 					return
 				}
 				if bitMaskBytes != nil {
-					cliCtx.UpdateAttributeFeatures(bitset.FromBytes(bitMaskBytes))
+					cliProtoCtx.UpdateAttributeFeatures(bitset.FromBytes(bitMaskBytes))
 				}
 			}
-			if cliCtx.SupportsPartitionAwareness() {
+			if cliProtoCtx.SupportsPartitionAwareness() {
 				var serverId uuid.UUID
 				if serverId, err = unmarshalUuid(input, false); err != nil {
 					err = fmt.Errorf("broken output from server: %w", err)
@@ -520,9 +507,9 @@ func (ch *Channel) handshakeRound(cliCtx ProtocolContext, user string, password 
 				}
 				ch.serverId = serverId
 			}
-			ch.protocolCtx.Store(cliCtx)
+			ch.protocolCtx.Store(cliProtoCtx)
 		} else {
-			srvCtx = NewProtocolContext(
+			srvProtoCtx = NewProtocolContext(
 				ProtocolVersion{Major: input.ReadInt16(), Minor: input.ReadInt16(), Patch: input.ReadInt16()},
 			)
 			var errMsg string
@@ -534,19 +521,19 @@ func (ch *Channel) handshakeRound(cliCtx ProtocolContext, user string, password 
 			if input.Available() > 0 {
 				errCode = uint(input.ReadUInt32())
 			}
-			cliVersion := cliCtx.Version()
+			cliVersion := cliProtoCtx.Version()
 			if errCode == AuthFailed {
 				err = &ClientAuthenticationError{
 					ClientError{errMsg},
 				}
-			} else if cliVersion.Compare(srvCtx.Version()) == 0 {
+			} else if cliVersion.Compare(srvProtoCtx.Version()) == 0 {
 				err = &ClientProtocolError{
 					ClientError{errMsg},
 				}
-			} else if exists := ch.supportedVersions[cliVersion.String()]; !exists || (!cliCtx.SupportsAuthorization() && len(user) > 0) {
+			} else if exists := ch.supportedVersions[cliVersion.String()]; !exists || (!cliProtoCtx.SupportsAuthorization() && len(cliCfg.user) > 0) {
 				errMsg = fmt.Sprintf("Protocol version mismatch: client %v / server %v. Server details: %s",
 					cliVersion,
-					srvCtx.Version(),
+					srvProtoCtx.Version(),
 					errMsg,
 				)
 				err = &ClientProtocolError{
@@ -559,7 +546,7 @@ func (ch *Channel) handshakeRound(cliCtx ProtocolContext, user string, password 
 	if err != nil {
 		return nil, err
 	}
-	return srvCtx, nil
+	return srvProtoCtx, nil
 }
 
 func checkFlag(flags int16, flag int16) bool {
@@ -590,7 +577,6 @@ func CreateChannel(cfg *ClientConfiguration) (*Channel, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to obtain tls config: %w", err)
 		}
-
 		tlsCon := tls.Client(conn, tlsCfg)
 		if err = tlsCon.Handshake(); err != nil {
 			return nil, fmt.Errorf("tls handshake failed: %w", err)
