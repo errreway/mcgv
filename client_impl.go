@@ -2,7 +2,7 @@ package ignite
 
 import (
 	"context"
-	"sbt.ru/ignite-go/ignite/internal"
+	"gitverse.ru/sc/sbertech/ignite-go-client/internal"
 )
 
 const (

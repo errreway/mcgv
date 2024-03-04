@@ -2,7 +2,7 @@ package ignite
 
 import (
 	"fmt"
-	"sbt.ru/ignite-go/ignite/internal/bitset"
+	"gitverse.ru/sc/sbertech/ignite-go-client/internal/bitset"
 	"strconv"
 	"strings"
 )

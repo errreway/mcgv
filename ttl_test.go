@@ -4,7 +4,7 @@ import (
 	"context"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
-	testing2 "sbt.ru/ignite-go/ignite/internal/testing"
+	testing2 "gitverse.ru/sc/sbertech/ignite-go-client/internal/testing"
 	"testing"
 	"time"
 )

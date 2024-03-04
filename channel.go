@@ -8,9 +8,9 @@ import (
 	"errors"
 	"fmt"
 	"github.com/google/uuid"
+	"gitverse.ru/sc/sbertech/ignite-go-client/internal/bitset"
 	"io"
 	"net"
-	"sbt.ru/ignite-go/ignite/internal/bitset"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -39,24 +39,25 @@ const (
 	Default = V1_7_0
 )
 
-type ClientStatus = uint
+//go:generate stringer -type=ErrorCode
+type ErrorCode uint
 
 const (
-	Success ClientStatus = iota
-	Failed
-	InvalidOpCode
-	InvalidNodeState      = 10
-	FunctionalityDisabled = 100
-	CacheDoesNotExists    = 1000
-	CacheExists           = 1001
-	CacheConfigInvalid    = 1002
-	TooManyCursors        = 1010
-	ResourceDoesNotExists = 1011
-	SecurityViolation     = 1012
-	TxLimitExceeded       = 1020
-	TxNotFound            = 1021
-	TooManyComputeTasks   = 1030
-	AuthFailed
+	Success               ErrorCode = 0
+	Failed                ErrorCode = 1
+	InvalidOpCode         ErrorCode = 2
+	InvalidNodeState      ErrorCode = 10
+	FunctionalityDisabled ErrorCode = 100
+	CacheDoesNotExists    ErrorCode = 1000
+	CacheExists           ErrorCode = 1001
+	CacheConfigInvalid    ErrorCode = 1002
+	TooManyCursors        ErrorCode = 1010
+	ResourceDoesNotExists ErrorCode = 1011
+	SecurityViolation     ErrorCode = 1012
+	TxLimitExceeded       ErrorCode = 1020
+	TxNotFound            ErrorCode = 1021
+	TooManyComputeTasks   ErrorCode = 1030
+	AuthFailed            ErrorCode = 2000
 )
 
 type ClientError struct {
@@ -73,7 +74,7 @@ type ClientAuthenticationError struct {
 
 type ClientServerError struct {
 	ClientError
-	Code int
+	Code ErrorCode
 }
 
 type VersionMismatchError struct {
@@ -86,7 +87,7 @@ func (err *ClientError) Error() string {
 }
 
 func (err *ClientServerError) Error() string {
-	return fmt.Sprintf("%d: %s", err.Code, err.Message)
+	return fmt.Sprintf("%s: %s", err.Code, err.Message)
 }
 
 type Channel struct {
@@ -187,15 +188,12 @@ func (ch *Channel) send(ctx context.Context, id int64, opCode int16, requestWrit
 			cancel()
 		}()
 	}
-
 	reqId := req.id
 	ch.pendingRequests.Store(reqId, req)
 	ch.pendingCh <- reqId
-
 	defer func() {
 		ch.pendingRequests.Delete(reqId)
 	}()
-
 	for {
 		select {
 		case <-ctx.Done():
@@ -239,7 +237,7 @@ func (ch *Channel) send(ctx context.Context, id int64, opCode int16, requestWrit
 					ClientError{
 						Message: errMsg,
 					},
-					statusCode,
+					ErrorCode(statusCode),
 				}
 			}
 			responseReader(input, req.err)
@@ -333,19 +331,16 @@ func (ch *Channel) readLoop() {
 			continue
 		}
 		packetAcc.append(buf[:n])
-
 		for {
 			data := packetAcc.data()
 			if data == nil {
 				break
 			}
-
 			if !handshakeDone {
 				if ch.ProtocolContext() != nil {
 					handshakeDone = true
 				}
 			}
-
 			var id int64
 			if !handshakeDone {
 				id = -1
@@ -356,18 +351,15 @@ func (ch *Channel) readLoop() {
 					break
 				}
 			}
-
 			val, ok := ch.pendingRequests.Load(id)
 			if !ok {
 				break
 			}
-
 			req, ok := val.(*pendingRequest)
 			if !ok {
 				panic("invalid data in pending requests")
 			}
 			req.responseData = data
-
 			req.doneCh <- struct{}{}
 			close(req.doneCh)
 			break
@@ -519,7 +511,7 @@ func (ch *Channel) handshakeRound(ctx context.Context, cliProtoCtx ProtocolConte
 			}
 			errCode := Failed
 			if input.Available() > 0 {
-				errCode = uint(input.ReadUInt32())
+				errCode = ErrorCode(input.ReadUInt32())
 			}
 			cliVersion := cliProtoCtx.Version()
 			if errCode == AuthFailed {
