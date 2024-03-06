@@ -1,4 +1,4 @@
-module gitverse.ru/sc/sbertech/ignite-go-client
+module gitverse.ru/sbertech/ignite-go-client
 
 go 1.21.3
 

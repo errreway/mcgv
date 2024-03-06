@@ -13,7 +13,7 @@ import (
 	"fmt"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
-	testing2 "gitverse.ru/sc/sbertech/ignite-go-client/internal/testing"
+	testing2 "gitverse.ru/sbertech/ignite-go-client/internal/testing"
 	"os"
 	"strings"
 	"testing"

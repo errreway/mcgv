@@ -8,7 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/google/uuid"
-	"gitverse.ru/sc/sbertech/ignite-go-client/internal/bitset"
+	"gitverse.ru/sbertech/ignite-go-client/internal/bitset"
 	"io"
 	"net"
 	"sync"
