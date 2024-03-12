@@ -268,8 +268,8 @@ func CreateCacheConfiguration(name string, opts ...func(*CacheConfiguration)) Ca
 	return ret
 }
 
-func (config *CacheConfiguration) marshall(ctx context.Context, marshaller Marshaller, writer BinaryWriter) error {
-	protoCtx := marshaller.ProtocolContext()
+func (config *CacheConfiguration) marshall(ctx context.Context, marshaller marshaller, writer BinaryWriter) error {
+	protoCtx := marshaller.protocolContext()
 	origPos := writer.Position()
 	writer.WriteInt32(0)
 	writer.WriteInt16(int16(len(config.props)))
@@ -331,9 +331,9 @@ func (config *CacheConfiguration) marshall(ctx context.Context, marshaller Marsh
 	return nil
 }
 
-func unmarshall(ctx context.Context, marshaller Marshaller, reader BinaryReader) (CacheConfiguration, error) {
+func unmarshall(ctx context.Context, marshaller marshaller, reader BinaryReader) (CacheConfiguration, error) {
 	var err error
-	protoCtx := marshaller.ProtocolContext()
+	protoCtx := marshaller.protocolContext()
 	reader.ReadInt32() // Skip unneeded length field
 	props := make(map[int16]interface{})
 	conf := CacheConfiguration{
@@ -407,7 +407,7 @@ func unmarshall(ctx context.Context, marshaller Marshaller, reader BinaryReader)
 	return conf, err
 }
 
-func marshalQueryEntity(ctx context.Context, marshaller Marshaller) func(writer BinaryWriter, entity QueryEntity) error {
+func marshalQueryEntity(ctx context.Context, marshaller marshaller) func(writer BinaryWriter, entity QueryEntity) error {
 	marshalEmptyAsNull := func(writer BinaryWriter, val string) {
 		if len(val) == 0 {
 			writer.WriteNull()
@@ -439,8 +439,8 @@ func marshalQueryEntity(ctx context.Context, marshaller Marshaller) func(writer 
 	}
 }
 
-func marshalQueryField(ctx context.Context, marshaller Marshaller) func(writer BinaryWriter, field QueryField) error {
-	protoCtx := marshaller.ProtocolContext()
+func marshalQueryField(ctx context.Context, marshaller marshaller) func(writer BinaryWriter, field QueryField) error {
+	protoCtx := marshaller.protocolContext()
 	withPrecisionScale := protoCtx.SupportsQueryEntityPrecisionAndScale()
 	return func(writer BinaryWriter, field QueryField) error {
 		var err error
@@ -448,7 +448,7 @@ func marshalQueryField(ctx context.Context, marshaller Marshaller) func(writer B
 		marshalString(writer, field.TypeName())
 		writer.WriteBool(field.IsKey())
 		writer.WriteBool(field.IsNotNull())
-		err = marshaller.Marshal(ctx, writer, field.DefaultValue())
+		err = marshaller.marshal(ctx, writer, field.DefaultValue())
 		if err != nil {
 			return err
 		}
@@ -475,7 +475,7 @@ func marshalQueryIndex(writer BinaryWriter, index QueryIndex) error {
 	return nil
 }
 
-func unmarshalQueryEntity(ctx context.Context, marshaller Marshaller) func(reader BinaryReader) (QueryEntity, error) {
+func unmarshalQueryEntity(ctx context.Context, marshaller marshaller) func(reader BinaryReader) (QueryEntity, error) {
 	qryFieldUnmarshalProc := unmarshalQueryField(ctx, marshaller)
 	return func(reader BinaryReader) (QueryEntity, error) {
 		var err error
@@ -525,8 +525,8 @@ func unmarshalQueryEntity(ctx context.Context, marshaller Marshaller) func(reade
 	}
 }
 
-func unmarshalQueryField(ctx context.Context, marshaller Marshaller) func(reader BinaryReader) (QueryField, error) {
-	protoCtx := marshaller.ProtocolContext()
+func unmarshalQueryField(ctx context.Context, marshaller marshaller) func(reader BinaryReader) (QueryField, error) {
+	protoCtx := marshaller.protocolContext()
 	withPrecisionScale := protoCtx.SupportsQueryEntityPrecisionAndScale()
 	return func(reader BinaryReader) (QueryField, error) {
 		var err error
@@ -541,7 +541,7 @@ func unmarshalQueryField(ctx context.Context, marshaller Marshaller) func(reader
 		}
 		fld.isKey = reader.ReadBool()
 		fld.isNotNull = reader.ReadBool()
-		fld.dfltVal, err = marshaller.Unmarshall(ctx, reader)
+		fld.dfltVal, err = marshaller.unmarshall(ctx, reader)
 		if err != nil {
 			return fld, err
 		}

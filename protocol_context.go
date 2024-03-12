@@ -90,6 +90,9 @@ func (ctx *protocolContextImpl) UpdateAttributeFeatures(bs *bitset.BitSet) {
 }
 
 func (ctx *protocolContextImpl) SupportsAttributeFeature(f AttributeFeature) bool {
+	if ctx.features == nil {
+		return false
+	}
 	return ctx.features.Test(f)
 }
 

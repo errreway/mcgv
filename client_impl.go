@@ -16,17 +16,17 @@ const (
 
 type clientImpl struct {
 	cfg   *ClientConfiguration
-	ch    *Channel
-	marsh Marshaller
+	ch    Channel
+	marsh marshaller
 }
 
 func startClient(cfg ClientConfiguration) (Client, error) {
-	ch, err := CreateChannel(&cfg)
+	ch, err := CreateReliableChannel(&cfg)
 	if err != nil {
 		return nil, err
 	}
 	cli := clientImpl{cfg: &cfg, ch: ch}
-	cli.marsh = NewMarshaller(&cli)
+	cli.marsh = newMarshaller(&cli)
 	return &cli, err
 }
 
@@ -91,7 +91,7 @@ func (cli *clientImpl) CreateCacheWithConfiguration(ctx context.Context, config 
 func (cli *clientImpl) GetOrCreateCache(ctx context.Context, name string) (Cache, error) {
 	var err error
 	cli.ch.Send(ctx, opCacheGetOrCreateWithName, func(output BinaryWriter) error {
-		if err0 := cli.marsh.Marshal(ctx, output, name); err0 != nil {
+		if err0 := cli.marsh.marshal(ctx, output, name); err0 != nil {
 			return err0
 		}
 		return nil
@@ -152,6 +152,6 @@ func (cli *clientImpl) Version() (string, error) {
 }
 
 func (cli *clientImpl) Close() error {
-	cli.ch.Close(nil)
+	cli.ch.Close()
 	return nil
 }

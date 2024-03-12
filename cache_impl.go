@@ -73,7 +73,7 @@ func (cache *cacheImpl) Get(ctx context.Context, key interface{}) (interface{}, 
 		if err != nil {
 			return err
 		}
-		err = cache.cli.marsh.Marshal(ctx, output, key)
+		err = cache.cli.marsh.marshal(ctx, output, key)
 		if err != nil {
 			return err
 		}
@@ -83,7 +83,7 @@ func (cache *cacheImpl) Get(ctx context.Context, key interface{}) (interface{}, 
 			err = err0
 			return
 		}
-		ret, err = cache.cli.marsh.Unmarshall(ctx, input)
+		ret, err = cache.cli.marsh.unmarshall(ctx, input)
 	})
 	return ret, err
 }
@@ -102,11 +102,11 @@ func (cache *cacheImpl) GetAndPut(ctx context.Context, key interface{}, value in
 		if err != nil {
 			return err
 		}
-		err = cache.cli.marsh.Marshal(ctx, output, key)
+		err = cache.cli.marsh.marshal(ctx, output, key)
 		if err != nil {
 			return err
 		}
-		err = cache.cli.marsh.Marshal(ctx, output, value)
+		err = cache.cli.marsh.marshal(ctx, output, value)
 		if err != nil {
 			return err
 		}
@@ -116,7 +116,7 @@ func (cache *cacheImpl) GetAndPut(ctx context.Context, key interface{}, value in
 			err = err0
 			return
 		}
-		ret, err = cache.cli.marsh.Unmarshall(ctx, input)
+		ret, err = cache.cli.marsh.unmarshall(ctx, input)
 	})
 	return ret, err
 }
@@ -135,11 +135,11 @@ func (cache *cacheImpl) GetAndReplace(ctx context.Context, key interface{}, valu
 		if err != nil {
 			return err
 		}
-		err = cache.cli.marsh.Marshal(ctx, output, key)
+		err = cache.cli.marsh.marshal(ctx, output, key)
 		if err != nil {
 			return err
 		}
-		err = cache.cli.marsh.Marshal(ctx, output, value)
+		err = cache.cli.marsh.marshal(ctx, output, value)
 		if err != nil {
 			return err
 		}
@@ -149,7 +149,7 @@ func (cache *cacheImpl) GetAndReplace(ctx context.Context, key interface{}, valu
 			err = err0
 			return
 		}
-		ret, err = cache.cli.marsh.Unmarshall(ctx, input)
+		ret, err = cache.cli.marsh.unmarshall(ctx, input)
 	})
 	return ret, err
 }
@@ -167,11 +167,11 @@ func (cache *cacheImpl) Put(ctx context.Context, key interface{}, value interfac
 		if err != nil {
 			return err
 		}
-		err = cache.cli.marsh.Marshal(ctx, output, key)
+		err = cache.cli.marsh.marshal(ctx, output, key)
 		if err != nil {
 			return err
 		}
-		err = cache.cli.marsh.Marshal(ctx, output, value)
+		err = cache.cli.marsh.marshal(ctx, output, value)
 		if err != nil {
 			return err
 		}
@@ -199,11 +199,11 @@ func (cache *cacheImpl) PutIfAbsent(ctx context.Context, key interface{}, value 
 		if err != nil {
 			return err
 		}
-		err = cache.cli.marsh.Marshal(ctx, output, key)
+		err = cache.cli.marsh.marshal(ctx, output, key)
 		if err != nil {
 			return err
 		}
-		err = cache.cli.marsh.Marshal(ctx, output, value)
+		err = cache.cli.marsh.marshal(ctx, output, value)
 		if err != nil {
 			return err
 		}
@@ -232,11 +232,11 @@ func (cache *cacheImpl) GetAndPutIfAbsent(ctx context.Context, key interface{}, 
 		if err != nil {
 			return err
 		}
-		err = cache.cli.marsh.Marshal(ctx, output, key)
+		err = cache.cli.marsh.marshal(ctx, output, key)
 		if err != nil {
 			return err
 		}
-		err = cache.cli.marsh.Marshal(ctx, output, value)
+		err = cache.cli.marsh.marshal(ctx, output, value)
 		if err != nil {
 			return err
 		}
@@ -246,7 +246,7 @@ func (cache *cacheImpl) GetAndPutIfAbsent(ctx context.Context, key interface{}, 
 			err = err0
 			return
 		}
-		ret, err = cache.cli.marsh.Unmarshall(ctx, input)
+		ret, err = cache.cli.marsh.unmarshall(ctx, input)
 	})
 	return ret, err
 }
@@ -262,7 +262,7 @@ func (cache *cacheImpl) ContainsKey(ctx context.Context, key interface{}) (bool,
 		if err != nil {
 			return err
 		}
-		err = cache.cli.marsh.Marshal(ctx, output, key)
+		err = cache.cli.marsh.marshal(ctx, output, key)
 		if err != nil {
 			return err
 		}
@@ -289,7 +289,7 @@ func (cache *cacheImpl) ContainsKeys(ctx context.Context, keys ...interface{}) (
 			return err
 		}
 		err = writeCollection(output, keys, func(output0 BinaryWriter, el interface{}) error {
-			return cache.cli.marsh.Marshal(ctx, output0, el)
+			return cache.cli.marsh.marshal(ctx, output0, el)
 		})
 		if err != nil {
 			return err
@@ -317,7 +317,7 @@ func (cache *cacheImpl) GetAll(ctx context.Context, keys ...interface{}) ([]KeyV
 			return err
 		}
 		err = writeCollection(output, keys, func(output0 BinaryWriter, el interface{}) error {
-			return cache.cli.marsh.Marshal(ctx, output0, el)
+			return cache.cli.marsh.marshal(ctx, output0, el)
 		})
 		if err != nil {
 			return err
@@ -333,12 +333,12 @@ func (cache *cacheImpl) GetAll(ctx context.Context, keys ...interface{}) ([]KeyV
 			return
 		}
 		for i := 0; i < int(sz); i++ {
-			key, err0 := cache.cli.marsh.Unmarshall(ctx, input)
+			key, err0 := cache.cli.marsh.unmarshall(ctx, input)
 			if err0 != nil {
 				err = err0
 				return
 			}
-			value, err0 := cache.cli.marsh.Unmarshall(ctx, input)
+			value, err0 := cache.cli.marsh.unmarshall(ctx, input)
 			if err0 != nil {
 				err = err0
 				return
@@ -368,11 +368,11 @@ func (cache *cacheImpl) PutAll(ctx context.Context, keysAndValues ...KeyValue) e
 				return fmt.Errorf("nil value")
 			}
 			var err0 error
-			err0 = cache.cli.marsh.Marshal(ctx, output0, el.Key)
+			err0 = cache.cli.marsh.marshal(ctx, output0, el.Key)
 			if err0 != nil {
 				return err0
 			}
-			err0 = cache.cli.marsh.Marshal(ctx, output0, el.Value)
+			err0 = cache.cli.marsh.marshal(ctx, output0, el.Value)
 			if err0 != nil {
 				return err0
 			}
@@ -408,15 +408,15 @@ func (cache *cacheImpl) ReplaceIfEquals(ctx context.Context, key interface{}, ol
 		if err != nil {
 			return err
 		}
-		err = cache.cli.marsh.Marshal(ctx, output, key)
+		err = cache.cli.marsh.marshal(ctx, output, key)
 		if err != nil {
 			return err
 		}
-		err = cache.cli.marsh.Marshal(ctx, output, oldValue)
+		err = cache.cli.marsh.marshal(ctx, output, oldValue)
 		if err != nil {
 			return err
 		}
-		err = cache.cli.marsh.Marshal(ctx, output, newValue)
+		err = cache.cli.marsh.marshal(ctx, output, newValue)
 		if err != nil {
 			return err
 		}
@@ -445,11 +445,11 @@ func (cache *cacheImpl) Replace(ctx context.Context, key interface{}, value inte
 		if err != nil {
 			return err
 		}
-		err = cache.cli.marsh.Marshal(ctx, output, key)
+		err = cache.cli.marsh.marshal(ctx, output, key)
 		if err != nil {
 			return err
 		}
-		err = cache.cli.marsh.Marshal(ctx, output, value)
+		err = cache.cli.marsh.marshal(ctx, output, value)
 		if err != nil {
 			return err
 		}
@@ -475,7 +475,7 @@ func (cache *cacheImpl) Remove(ctx context.Context, key interface{}) (bool, erro
 		if err != nil {
 			return err
 		}
-		err = cache.cli.marsh.Marshal(ctx, output, key)
+		err = cache.cli.marsh.marshal(ctx, output, key)
 		if err != nil {
 			return err
 		}
@@ -501,7 +501,7 @@ func (cache *cacheImpl) GetAndRemove(ctx context.Context, key interface{}) (inte
 		if err != nil {
 			return err
 		}
-		err = cache.cli.marsh.Marshal(ctx, output, key)
+		err = cache.cli.marsh.marshal(ctx, output, key)
 		if err != nil {
 			return err
 		}
@@ -511,7 +511,7 @@ func (cache *cacheImpl) GetAndRemove(ctx context.Context, key interface{}) (inte
 			err = err0
 			return
 		}
-		ret, err = cache.cli.marsh.Unmarshall(ctx, input)
+		ret, err = cache.cli.marsh.unmarshall(ctx, input)
 	})
 	return ret, err
 }
@@ -530,11 +530,11 @@ func (cache *cacheImpl) RemoveIfEquals(ctx context.Context, key interface{}, old
 		if err != nil {
 			return err
 		}
-		err = cache.cli.marsh.Marshal(ctx, output, key)
+		err = cache.cli.marsh.marshal(ctx, output, key)
 		if err != nil {
 			return err
 		}
-		err = cache.cli.marsh.Marshal(ctx, output, oldValue)
+		err = cache.cli.marsh.marshal(ctx, output, oldValue)
 		if err != nil {
 			return err
 		}
@@ -560,7 +560,7 @@ func (cache *cacheImpl) RemoveKeys(ctx context.Context, keys ...interface{}) err
 			return err
 		}
 		err = writeCollection(output, keys, func(output0 BinaryWriter, el interface{}) error {
-			return cache.cli.marsh.Marshal(ctx, output0, el)
+			return cache.cli.marsh.marshal(ctx, output0, el)
 		})
 		if err != nil {
 			return err
@@ -602,7 +602,7 @@ func (cache *cacheImpl) Clear(ctx context.Context, key interface{}) error {
 		if err != nil {
 			return err
 		}
-		err = cache.cli.marsh.Marshal(ctx, output, key)
+		err = cache.cli.marsh.marshal(ctx, output, key)
 		if err != nil {
 			return err
 		}
@@ -627,7 +627,7 @@ func (cache *cacheImpl) ClearKeys(ctx context.Context, keys ...interface{}) erro
 			return err
 		}
 		err = writeCollection(output, keys, func(output0 BinaryWriter, el interface{}) error {
-			return cache.cli.marsh.Marshal(ctx, output0, el)
+			return cache.cli.marsh.marshal(ctx, output0, el)
 		})
 		if err != nil {
 			return err

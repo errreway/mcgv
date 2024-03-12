@@ -24,6 +24,7 @@ func (suite *TtlTestSuite) SetupSuite() {
 	ign, err := testing2.StartIgnite()
 	if err != nil {
 		suite.T().Errorf("Failed to startClient suite: %s", err.Error())
+		return
 	}
 	suite.grids = append(suite.grids, ign)
 }
@@ -59,13 +60,47 @@ func (suite *TtlTestSuite) TestCreationPolicy() {
 		_ = cli.Close()
 	}()
 
-	ctx := context.Background()
-	cache, err := cli.CreateCache(ctx, "test")
-	cache = cache.WithExpirePolicy(1*time.Second, DurationZero, DurationZero)
-	err = cache.Put(ctx, "test", "test")
-	assert.Nil(suite.T(), err)
-	<-time.After(1200 * time.Millisecond)
-	contains, err := cache.ContainsKey(ctx, "test")
-	assert.Nil(suite.T(), err)
-	assert.False(suite.T(), contains)
+	fixtures := []struct {
+		name     string
+		supplier func() (Cache, error)
+	}{
+		{"cache_config", func() (Cache, error) {
+			ctx := context.Background()
+			ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+			defer func() {
+				cancel()
+			}()
+			cache, err0 := cli.GetOrCreateCache(ctx, "test")
+			if err0 != nil {
+				return nil, err0
+			}
+			return cache.WithExpirePolicy(1*time.Second, DurationZero, DurationZero), nil
+		}},
+		{"cache_decorator", func() (Cache, error) {
+			ctx := context.Background()
+			ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+			defer func() {
+				cancel()
+			}()
+			return cli.CreateCacheWithConfiguration(ctx,
+				CreateCacheConfiguration("test", WithExpirePolicy(1*time.Second, DurationZero, DurationZero)))
+		}},
+	}
+
+	for _, fixture := range fixtures {
+		suite.T().Run(fixture.name, func(t *testing.T) {
+			ctx := context.Background()
+			cache, err := fixture.supplier()
+			assert.Nil(suite.T(), err)
+			err = cache.Put(ctx, "test", "test")
+			defer func() {
+				_ = cli.DestroyCache(ctx, "test")
+			}()
+			assert.Nil(suite.T(), err)
+			<-time.After(1200 * time.Millisecond)
+			contains, err := cache.ContainsKey(ctx, "test")
+			assert.Nil(suite.T(), err)
+			assert.False(suite.T(), contains)
+		})
+	}
 }

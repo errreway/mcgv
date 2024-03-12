@@ -64,6 +64,11 @@ type ClientError struct {
 	Message string
 }
 
+type ClientConnectionError struct {
+	ClientError
+	err error
+}
+
 type ClientProtocolError struct {
 	ClientError
 }
@@ -77,11 +82,6 @@ type ClientServerError struct {
 	Code ErrorCode
 }
 
-type VersionMismatchError struct {
-	ClientError
-	Version ProtocolVersion
-}
-
 func (err *ClientError) Error() string {
 	return err.Message
 }
@@ -90,7 +90,25 @@ func (err *ClientServerError) Error() string {
 	return fmt.Sprintf("%s: %s", err.Code, err.Message)
 }
 
-type Channel struct {
+func (err *ClientConnectionError) Error() string {
+	msg := err.Message
+	if len(msg) == 0 {
+		msg = "connection failed"
+	}
+	if err.err != nil {
+		return fmt.Sprintf("%s: %s", msg, err.err)
+	}
+	return msg
+}
+
+type Channel interface {
+	Send(ctx context.Context, opCode int16, requestWriter func(output BinaryWriter) error, responseReader func(input BinaryReader, err error))
+	ProtocolContext() ProtocolContext
+	Close()
+}
+
+type tcpChannel struct {
+	addr              string
 	socket            net.Conn
 	idGen             atomic.Int64
 	protocolCtx       atomic.Value
@@ -102,7 +120,7 @@ type Channel struct {
 	serverId          uuid.UUID
 	status            int32
 	supportedVersions map[string]bool
-	closeErr          error
+	closeErr          atomic.Value
 	closeWg           sync.WaitGroup
 	clientCfg         *ClientConfiguration
 }
@@ -158,7 +176,7 @@ func newRequest(id int64, opCode int16, requestWriter func(input BinaryWriter) e
 	}, nil
 }
 
-func (ch *Channel) ProtocolContext() ProtocolContext {
+func (ch *tcpChannel) ProtocolContext() ProtocolContext {
 	res := ch.protocolCtx.Load()
 	if res == nil {
 		return nil
@@ -166,17 +184,16 @@ func (ch *Channel) ProtocolContext() ProtocolContext {
 	return res.(*protocolContextImpl)
 }
 
-func (ch *Channel) Send(ctx context.Context, opCode int16, requestWriter func(output BinaryWriter) error, responseReader func(input BinaryReader, err error)) {
+func (ch *tcpChannel) Send(ctx context.Context, opCode int16, requestWriter func(output BinaryWriter) error, responseReader func(input BinaryReader, err error)) {
 	ch.send(ctx, ch.requestId(), opCode, requestWriter, responseReader)
 }
 
-func (ch *Channel) send(ctx context.Context, id int64, opCode int16, requestWriter func(output BinaryWriter) error, responseReader func(input BinaryReader, err error)) {
+func (ch *tcpChannel) send(ctx context.Context, id int64, opCode int16, requestWriter func(output BinaryWriter) error, responseReader func(input BinaryReader, err error)) {
 	req, err := newRequest(id, opCode, requestWriter)
 	if err != nil {
 		responseReader(nil, err)
 		return
 	}
-
 	var deadlineSet = false
 	if ctx == nil {
 		ctx = context.Background()
@@ -197,15 +214,10 @@ func (ch *Channel) send(ctx context.Context, id int64, opCode int16, requestWrit
 	for {
 		select {
 		case <-ctx.Done():
-			responseReader(nil, errors.New("request cancelled"))
+			responseReader(nil, ch.processCloseError("request cancelled"))
 			return
 		case <-ch.doneCh:
-			if ch.closeErr != nil {
-				err = fmt.Errorf("connection closed on error %w", ch.closeErr)
-			} else {
-				err = errors.New("connection closed")
-			}
-			responseReader(nil, err)
+			responseReader(nil, ch.processCloseError("connection closed"))
 			return
 		case <-req.doneCh:
 			if req.err != nil {
@@ -246,21 +258,31 @@ func (ch *Channel) send(ctx context.Context, id int64, opCode int16, requestWrit
 	}
 }
 
-func (ch *Channel) beginClose(err error) {
+func (ch *tcpChannel) processCloseError(defaultMsg string) error {
+	closeErr := ch.closeErr.Load()
+	if closeErr == nil {
+		return &ClientError{defaultMsg}
+	}
+	return &ClientConnectionError{ClientError{"connection error"}, closeErr.(error)}
+}
+
+func (ch *tcpChannel) beginClose(err error) {
 	if !atomic.CompareAndSwapInt32(&ch.status, open, closed) {
 		return
 	}
-	ch.closeErr = err
+	if err != nil {
+		ch.closeErr.Store(err)
+	}
 	close(ch.doneCh)
 	_ = ch.socket.Close()
 }
 
-func (ch *Channel) Close(err error) {
-	ch.beginClose(err)
+func (ch *tcpChannel) Close() {
+	ch.beginClose(nil)
 	ch.closeWg.Wait()
 }
 
-func (ch *Channel) writeLoop() {
+func (ch *tcpChannel) writeLoop() {
 	defer func() {
 		ch.closeWg.Done()
 	}()
@@ -272,7 +294,6 @@ func (ch *Channel) writeLoop() {
 				panic("invalid request id")
 			}
 			if err := ch.writeFully(req.(*pendingRequest).requestData); err != nil {
-				req.(*pendingRequest).err = err
 				ch.beginClose(err)
 				return
 			}
@@ -282,7 +303,7 @@ func (ch *Channel) writeLoop() {
 	}
 }
 
-func (ch *Channel) writeFully(data []byte) error {
+func (ch *tcpChannel) writeFully(data []byte) error {
 	total, err := ch.socket.Write(data)
 	if err != nil {
 		return fmt.Errorf("failed to write to socket: %w", err)
@@ -302,7 +323,7 @@ const (
 	messageBufferSize = 128 * 1024
 )
 
-func (ch *Channel) readLoop() {
+func (ch *tcpChannel) readLoop() {
 	var err error
 	var n int
 	defer func() {
@@ -429,7 +450,7 @@ func (pa *packetAccumulator) processData() bool {
 	return false
 }
 
-func (ch *Channel) handshake(ver ProtocolVersion) error {
+func (ch *tcpChannel) handshake(ver ProtocolVersion) error {
 	cliProtoCtx := NewProtocolContext(ver, UserAttributesFeature)
 	ctx, cancel := context.WithTimeout(context.Background(), ch.clientCfg.requestTimeout*3)
 	defer func() {
@@ -449,7 +470,7 @@ func (ch *Channel) handshake(ver ProtocolVersion) error {
 	return nil
 }
 
-func (ch *Channel) handshakeRound(ctx context.Context, cliProtoCtx ProtocolContext, cliCfg *ClientConfiguration) (ProtocolContext, error) {
+func (ch *tcpChannel) handshakeRound(ctx context.Context, cliProtoCtx ProtocolContext, cliCfg *ClientConfiguration) (ProtocolContext, error) {
 	var err error = nil
 	var srvProtoCtx ProtocolContext = nil
 	writer := func(bw BinaryWriter) error {
@@ -545,37 +566,28 @@ func checkFlag(flags int16, flag int16) bool {
 	return flags&flag != 0
 }
 
-func (ch *Channel) requestId() int64 {
+func (ch *tcpChannel) requestId() int64 {
 	return ch.idGen.Add(1)
 }
 
-func CreateChannel(cfg *ClientConfiguration) (*Channel, error) {
-	if cfg.addressesSupplier == nil {
-		return nil, errors.New("address supplier is nil")
-	}
-	addresses, err := cfg.addressesSupplier()
+func createTcpChannel(addr string, cfg *ClientConfiguration) (*tcpChannel, error) {
+	conn, err := net.Dial("tcp", addr)
 	if err != nil {
-		return nil, fmt.Errorf("failed to obtain addresses: %w", err)
-	}
-	if len(addresses) == 0 {
-		return nil, errors.New("addresses are empty")
-	}
-	conn, err := net.Dial("tcp", addresses[0])
-	if err != nil {
-		return nil, err
+		return nil, &ClientConnectionError{ClientError{Message: fmt.Sprintf("failed to connect to %s", addr)}, err}
 	}
 	if cfg.tlsConfigSupplier != nil {
 		tlsCfg, err := cfg.tlsConfigSupplier()
 		if err != nil {
-			return nil, fmt.Errorf("failed to obtain tls config: %w", err)
+			return nil, &ClientConnectionError{ClientError{Message: fmt.Sprintf("failed to obtain tls config")}, err}
 		}
 		tlsCon := tls.Client(conn, tlsCfg)
 		if err = tlsCon.Handshake(); err != nil {
-			return nil, fmt.Errorf("tls handshake failed: %w", err)
+			return nil, &ClientConnectionError{ClientError{Message: fmt.Sprintf("tls handshake failed")}, err}
 		}
 		conn = tlsCon
 	}
-	ch := Channel{
+	ch := tcpChannel{
+		addr:              addr,
 		socket:            conn,
 		pendingCh:         make(chan int64, 1024),
 		doneCh:            make(chan struct{}),
@@ -590,6 +602,7 @@ func CreateChannel(cfg *ClientConfiguration) (*Channel, error) {
 	ch.supportedVersions[V1_5_0] = true
 	ch.supportedVersions[V1_6_0] = true
 	ch.supportedVersions[V1_7_0] = true
+	ch.idGen.Store(1)
 	ch.closeWg.Add(1)
 	go ch.writeLoop()
 	ch.closeWg.Add(1)

@@ -8,10 +8,10 @@ import (
 	"unsafe"
 )
 
-type Marshaller interface {
-	Marshal(ctx context.Context, writer BinaryWriter, payload interface{}) error
-	Unmarshall(ctx context.Context, reader BinaryReader) (interface{}, error)
-	ProtocolContext() ProtocolContext
+type marshaller interface {
+	marshal(ctx context.Context, writer BinaryWriter, payload interface{}) error
+	unmarshall(ctx context.Context, reader BinaryReader) (interface{}, error)
+	protocolContext() ProtocolContext
 }
 
 type typeDesc = int8
@@ -64,17 +64,17 @@ type marshallerImpl struct {
 	cli *clientImpl
 }
 
-func NewMarshaller(cli *clientImpl) Marshaller {
+func newMarshaller(cli *clientImpl) marshaller {
 	return &marshallerImpl{
 		cli: cli,
 	}
 }
 
-func (m *marshallerImpl) ProtocolContext() ProtocolContext {
+func (m *marshallerImpl) protocolContext() ProtocolContext {
 	return m.cli.ch.ProtocolContext()
 }
 
-func (m *marshallerImpl) Marshal(ctx context.Context, writer BinaryWriter, payload interface{}) error {
+func (m *marshallerImpl) marshal(ctx context.Context, writer BinaryWriter, payload interface{}) error {
 	if payload == nil {
 		writer.WriteInt8(nullType)
 		return nil
@@ -159,7 +159,7 @@ func (m *marshallerImpl) Marshal(ctx context.Context, writer BinaryWriter, paylo
 	return nil
 }
 
-func (m *marshallerImpl) Unmarshall(_ context.Context, reader BinaryReader) (interface{}, error) {
+func (m *marshallerImpl) unmarshall(_ context.Context, reader BinaryReader) (interface{}, error) {
 	err := ensureAvailable(reader, 1)
 	if err != nil {
 		return nil, err

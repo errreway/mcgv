@@ -31,11 +31,13 @@ type Client interface {
 
 type ClientConfiguration struct {
 	addressesSupplier func() ([]string, error)
+	shuffleAddresses  bool
 	user              string
 	password          string
 	attrs             map[string]string
 	tlsConfigSupplier func() (*tls.Config, error)
 	requestTimeout    time.Duration
+	retryLimit        int
 }
 
 func WithAddressSupplier(supplier func() ([]string, error)) func(config *ClientConfiguration) error {
@@ -44,6 +46,13 @@ func WithAddressSupplier(supplier func() ([]string, error)) func(config *ClientC
 			return errors.New("nil address supplier")
 		}
 		config.addressesSupplier = supplier
+		return nil
+	}
+}
+
+func WithShuffleAddresses(shuffle bool) func(config *ClientConfiguration) error {
+	return func(config *ClientConfiguration) error {
+		config.shuffleAddresses = shuffle
 		return nil
 	}
 }
@@ -111,9 +120,16 @@ func WithClientAttribute(key string, value string) func(config *ClientConfigurat
 	}
 }
 
+const (
+	defaultTimeout    = 1 * time.Second
+	defaultRetryLimit = 0
+)
+
 func Start(opts ...func(options *ClientConfiguration) error) (Client, error) {
 	cfg := ClientConfiguration{
-		requestTimeout: 1 * time.Second,
+		requestTimeout:   defaultTimeout,
+		retryLimit:       defaultRetryLimit,
+		shuffleAddresses: true,
 	}
 	if len(opts) > 0 {
 		for _, opt := range opts {
