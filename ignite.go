@@ -15,17 +15,12 @@ const (
 
 type Client interface {
 	Version() (string, error)
-
 	Close() error
-
 	CacheNames(ctx context.Context) ([]string, error)
-
 	CreateCache(ctx context.Context, name string) (Cache, error)
-
-	CreateCacheWithConfiguration(ctx context.Context, ccfg CacheConfiguration) (Cache, error)
-
+	CreateCacheWithConfiguration(ctx context.Context, config CacheConfiguration) (Cache, error)
 	GetOrCreateCache(ctx context.Context, name string) (Cache, error)
-
+	GetOrCreateCacheWithConfiguration(ctx context.Context, config CacheConfiguration) (Cache, error)
 	DestroyCache(ctx context.Context, name string) error
 }
 

@@ -177,8 +177,9 @@ func StartIgnite(opts ...func(params *IgniteParams)) (IgniteInstance, error) {
 	cmd := exec.Command(runner, configPath)
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	cmd.Env = os.Environ()
-	cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", "JVM_OPTS", "-Djava.net.preferIPv4Stack=true -Xdebug "+
-		"-Xnoagent -Djava.compiler=NONE -agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=10500"))
+	cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", "JVM_OPTS",
+		fmt.Sprintf("-Djava.net.preferIPv4Stack=true -Xdebug -Xnoagent -Djava.compiler=NONE "+
+			"-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=%d", 10500+params.InstanceIdx)))
 	cmd.Dir = getTestDir()
 
 	if err = cmd.Start(); err != nil {

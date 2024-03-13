@@ -14,7 +14,7 @@ type TtlTestSuite struct {
 	grids []testing2.IgniteInstance
 }
 
-func TestSuite(t *testing.T) {
+func TestTtlTestSuite(t *testing.T) {
 	suite.Run(t, new(TtlTestSuite))
 }
 

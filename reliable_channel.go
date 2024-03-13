@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math/rand"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -96,13 +97,18 @@ func (r *reliableChannel) initConnection() error {
 		})
 	}
 	oldCh := r.currCh.Load()
-	var connErr *ClientConnectionError
+	var cliConnErr *ClientConnectionError
 	for i := 0; i < len(addresses); i++ {
 		if oldCh != nil && oldCh.(*tcpChannel).addr == addresses[i] {
-			continue
+			if i == len(addresses)-1 {
+				break
+			} else {
+				continue
+			}
 		}
-		ch, err0 := createTcpChannel(addresses[i], r.cfg)
-		if err0 == nil {
+		var ch *tcpChannel = nil
+		ch, err = createTcpChannel(addresses[i], r.cfg)
+		if err == nil {
 			if r.cfg.retryLimit > 0 {
 				r.attemptsLimit = min(r.cfg.retryLimit, len(addresses))
 			} else {
@@ -110,11 +116,17 @@ func (r *reliableChannel) initConnection() error {
 			}
 			r.currCh.Store(ch)
 			return nil
-		} else if i == len(addresses)-1 || !errors.As(err0, &connErr) {
-			return err0
+		} else if i == len(addresses)-1 || !errors.As(err, &cliConnErr) {
+			break
 		}
 	}
-	return nil
+	if err != nil && errors.As(err, &cliConnErr) {
+		return err
+	} else {
+		return &ClientConnectionError{ClientError{
+			Message: fmt.Sprintf("connection failed to channels [%s]", strings.Join(addresses, ", ")),
+		}, err}
+	}
 }
 
 func CreateReliableChannel(cfg *ClientConfiguration) (Channel, error) {

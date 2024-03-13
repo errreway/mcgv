@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"github.com/google/uuid"
 	"gitverse.ru/sbertech/ignite-go-client/internal/bitset"
-	"io"
 	"net"
 	"sync"
 	"sync/atomic"
@@ -101,6 +100,10 @@ func (err *ClientConnectionError) Error() string {
 	return msg
 }
 
+func createClientConnectionError(msg string, err error) *ClientConnectionError {
+	return &ClientConnectionError{ClientError{msg}, err}
+}
+
 type Channel interface {
 	Send(ctx context.Context, opCode int16, requestWriter func(output BinaryWriter) error, responseReader func(input BinaryReader, err error))
 	ProtocolContext() ProtocolContext
@@ -172,7 +175,7 @@ func newRequest(id int64, opCode int16, requestWriter func(input BinaryWriter) e
 	return &pendingRequest{
 		id:          id,
 		requestData: reqInput.Data(),
-		doneCh:      make(chan struct{}, 1),
+		doneCh:      make(chan struct{}),
 	}, nil
 }
 
@@ -343,48 +346,44 @@ func (ch *tcpChannel) readLoop() {
 			if errors.As(err, &netErr) && netErr.Timeout() {
 				continue
 			}
-			if errors.Is(err, io.EOF) {
-				continue
-			}
 			break
 		}
-		if n == 0 {
+		if n <= 0 {
 			continue
 		}
 		packetAcc.append(buf[:n])
-		for {
-			data := packetAcc.data()
-			if data == nil {
+		data := packetAcc.data()
+		if data == nil {
+			continue
+		}
+		if !handshakeDone {
+			if ch.ProtocolContext() != nil {
+				handshakeDone = true
+			}
+		}
+		var id int64
+		if !handshakeDone {
+			id = -1
+		} else {
+			var ok bool
+			id, ok = responseId(data)
+			if !ok {
+				err = createClientConnectionError("failed to parse response id", nil)
 				break
 			}
-			if !handshakeDone {
-				if ch.ProtocolContext() != nil {
-					handshakeDone = true
-				}
-			}
-			var id int64
-			if !handshakeDone {
-				id = -1
-			} else {
-				var ok bool
-				id, ok = responseId(data)
-				if !ok {
-					break
-				}
-			}
-			val, ok := ch.pendingRequests.Load(id)
-			if !ok {
-				break
-			}
-			req, ok := val.(*pendingRequest)
-			if !ok {
-				panic("invalid data in pending requests")
-			}
-			req.responseData = data
-			req.doneCh <- struct{}{}
-			close(req.doneCh)
+		}
+		val, ok := ch.pendingRequests.Load(id)
+		if !ok {
+			err = createClientConnectionError(fmt.Sprintf("failed to load request with id %d", id), nil)
 			break
 		}
+		req, ok := val.(*pendingRequest)
+		if !ok {
+			err = createClientConnectionError("invalid data in pending requests", nil)
+			break
+		}
+		req.responseData = data
+		close(req.doneCh)
 	}
 	ch.beginClose(err)
 }
@@ -412,8 +411,9 @@ func (pa *packetAccumulator) data() []byte {
 	// prepare result
 	size := int(pa.currentSize + intBytes)
 	result := make([]byte, size)
-	copy(result, pa.buf.Next(size))
-	// copy remained data, reinitialize buffer.
+	// read pa.currentSize since buffer is on position 4
+	copy(result, pa.buf.Next(int(pa.currentSize)))
+	// copy remained data, reinitialize buffer
 	remainDataSlice := pa.buf.Next(pa.buf.Len())
 	remainData := make([]byte, len(remainDataSlice))
 	copy(remainData, remainDataSlice)
@@ -573,16 +573,16 @@ func (ch *tcpChannel) requestId() int64 {
 func createTcpChannel(addr string, cfg *ClientConfiguration) (*tcpChannel, error) {
 	conn, err := net.Dial("tcp", addr)
 	if err != nil {
-		return nil, &ClientConnectionError{ClientError{Message: fmt.Sprintf("failed to connect to %s", addr)}, err}
+		return nil, createClientConnectionError(fmt.Sprintf("failed to connect to %s", addr), err)
 	}
 	if cfg.tlsConfigSupplier != nil {
 		tlsCfg, err := cfg.tlsConfigSupplier()
 		if err != nil {
-			return nil, &ClientConnectionError{ClientError{Message: fmt.Sprintf("failed to obtain tls config")}, err}
+			return nil, createClientConnectionError(fmt.Sprintf("failed to obtain tls config"), err)
 		}
 		tlsCon := tls.Client(conn, tlsCfg)
 		if err = tlsCon.Handshake(); err != nil {
-			return nil, &ClientConnectionError{ClientError{Message: fmt.Sprintf("tls handshake failed")}, err}
+			return nil, createClientConnectionError(fmt.Sprintf("tls handshake failed"), err)
 		}
 		conn = tlsCon
 	}

@@ -106,7 +106,7 @@ func (cli *clientImpl) GetOrCreateCache(ctx context.Context, name string) (Cache
 	return cli.newCache(name), nil
 }
 
-func (cli *clientImpl) GetOrCreateCacheWithConfig(ctx context.Context, config CacheConfiguration) (Cache, error) {
+func (cli *clientImpl) GetOrCreateCacheWithConfiguration(ctx context.Context, config CacheConfiguration) (Cache, error) {
 	var err error
 	cli.ch.Send(ctx, opCacheGetOrCreateWithConfig, func(output BinaryWriter) error {
 		if err0 := config.marshall(ctx, cli.marsh, output); err0 != nil {
