@@ -37,7 +37,7 @@ func (suite *BasicTestSuite) TearDownSuite() {
 		for _, ign := range suite.grids {
 			_ = ign.Kill()
 		}
-		clear(suite.grids)
+		suite.grids = nil
 	}
 }
 
@@ -147,7 +147,9 @@ func (suite *BasicTestSuite) TestCacheNames() {
 
 func (suite *BasicTestSuite) TestDestroyCache() {
 	cli, err := Start(WithAddresses(defaultAddress))
-	assert.Nil(suite.T(), err)
+	if err != nil {
+		suite.T().Fatal("failed to start client", err)
+	}
 	assert.NotNil(suite.T(), cli)
 	defer func() {
 		_ = cli.Close()
@@ -155,29 +157,40 @@ func (suite *BasicTestSuite) TestDestroyCache() {
 
 	ctx := context.Background()
 	namesBefore, err := cli.CacheNames(ctx)
+	if err != nil {
+		suite.T().Fatal(err)
+	}
 
 	toDestroy := "to-destroy"
 
 	var cache Cache
 	cache, err = cli.CreateCache(ctx, toDestroy)
+	if err != nil {
+		suite.T().Fatal(err)
+	}
 
-	assert.Nil(suite.T(), err)
 	assert.NotNil(suite.T(), cache)
 	assert.Equal(suite.T(), toDestroy, cache.Name())
 
 	err = cli.DestroyCache(ctx, toDestroy)
-	assert.Nil(suite.T(), err)
+	if err != nil {
+		suite.T().Fatal(err)
+	}
 
 	var names []string
 	names, err = cli.CacheNames(ctx)
+	if err != nil {
+		suite.T().Fatal(err)
+	}
 
-	assert.Nil(suite.T(), err)
 	assert.Equal(suite.T(), len(namesBefore), len(names))
 }
 
 func (suite *BasicTestSuite) TestCacheConfig() {
 	cli, err := Start(WithAddresses(defaultAddress))
-	assert.Nil(suite.T(), err)
+	if err != nil {
+		suite.T().Fatal("failed to start client", err)
+	}
 	assert.NotNil(suite.T(), cli)
 	defer func() {
 		_ = cli.Close()
@@ -187,12 +200,15 @@ func (suite *BasicTestSuite) TestCacheConfig() {
 	cfgTest := "config-test"
 
 	cache, err := cli.CreateCache(ctx, cfgTest)
-	assert.Nil(suite.T(), err)
+	if err != nil {
+		suite.T().Fatal(err)
+	}
 	assert.NotNil(suite.T(), cache)
 
 	readCcfg, err := cache.Configuration(ctx)
-
-	assert.Nil(suite.T(), err)
+	if err != nil {
+		suite.T().Fatal(err)
+	}
 	assert.Equal(suite.T(), cfgTest, readCcfg.Name())
 	assert.Equal(suite.T(), 0, readCcfg.Backups())
 
@@ -207,10 +223,15 @@ func (suite *BasicTestSuite) TestCacheConfig() {
 	)
 
 	cache, err = cli.CreateCacheWithConfiguration(ctx, ccfg)
-	assert.Nil(suite.T(), err)
+	if err != nil {
+		suite.T().Fatal(err)
+	}
 	assert.NotNil(suite.T(), cache)
 
 	readCcfg, err = cache.Configuration(ctx)
+	if err != nil {
+		suite.T().Fatal(err)
+	}
 
 	assert.Equal(suite.T(), cfgTest, readCcfg.Name())
 	assert.Equal(suite.T(), 1, readCcfg.Backups())

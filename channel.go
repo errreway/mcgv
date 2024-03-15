@@ -38,7 +38,7 @@ const (
 	Default = V1_7_0
 )
 
-//go:generate stringer -type=ErrorCode
+//go:generate go run golang.org/x/tools/cmd/stringer -type=ErrorCode
 type ErrorCode uint
 
 const (
@@ -136,20 +136,8 @@ type pendingRequest struct {
 	doneCh       chan struct{}
 }
 
-func (req *pendingRequest) responseLength() (int, bool) {
-	if req.responseData != nil && len(req.responseData) >= intBytes {
-		res := binary.LittleEndian.Uint32(req.responseData)
-		return int(res), true
-	}
-	return 0, false
-}
-
-func (req *pendingRequest) responseId() (int64, bool) {
-	return responseId(req.responseData)
-}
-
 func responseId(packet []byte) (int64, bool) {
-	if packet != nil && len(packet) >= longBytes {
+	if len(packet) >= longBytes {
 		res := binary.LittleEndian.Uint64(packet)
 		return int64(res), true
 	}
@@ -245,14 +233,16 @@ func (ch *tcpChannel) send(ctx context.Context, id int64, opCode int16, requestW
 			if checkFlag(flags, ErrorFlag) {
 				statusCode := int(input.ReadInt32())
 				var errMsg string
-				if errMsg, err = unmarshalString(input, false); err != nil {
-					err = fmt.Errorf("broken output from server: %w", err)
-				}
-				req.err = &ClientServerError{
-					ClientError{
-						Message: errMsg,
-					},
-					ErrorCode(statusCode),
+				errMsg, err = unmarshalString(input, false)
+				if err != nil {
+					req.err = createClientConnectionError("broken output from server", err)
+				} else {
+					req.err = &ClientServerError{
+						ClientError{
+							Message: errMsg,
+						},
+						ErrorCode(statusCode),
+					}
 				}
 			}
 			responseReader(input, req.err)
@@ -442,10 +432,7 @@ func (pa *packetAccumulator) processData() bool {
 	}
 	if pa.currentSize > 0 {
 		size := int(pa.currentSize)
-		if pa.buf.Len() < size {
-			return false
-		}
-		return true
+		return pa.buf.Len() >= size
 	}
 	return false
 }
@@ -578,11 +565,11 @@ func createTcpChannel(addr string, cfg *ClientConfiguration) (*tcpChannel, error
 	if cfg.tlsConfigSupplier != nil {
 		tlsCfg, err := cfg.tlsConfigSupplier()
 		if err != nil {
-			return nil, createClientConnectionError(fmt.Sprintf("failed to obtain tls config"), err)
+			return nil, createClientConnectionError("failed to obtain tls config", err)
 		}
 		tlsCon := tls.Client(conn, tlsCfg)
 		if err = tlsCon.Handshake(); err != nil {
-			return nil, createClientConnectionError(fmt.Sprintf("tls handshake failed"), err)
+			return nil, createClientConnectionError("tls handshake failed", err)
 		}
 		conn = tlsCon
 	}

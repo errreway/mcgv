@@ -214,10 +214,6 @@ func (br *binaryReaderImpl) ReadBool() bool {
 	return ret
 }
 
-func (br *binaryReaderImpl) ReadByte() byte {
-	return br.ReadUInt8()
-}
-
 func (br *binaryReaderImpl) ReadUInt8() uint8 {
 	ret := br.buffer[br.position]
 	br.position += byteBytes

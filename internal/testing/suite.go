@@ -16,7 +16,7 @@ func (suite *IgniteTestSuite) KillAllGrids() {
 	for _, ign := range suite.grids {
 		_ = ign.Kill()
 	}
-	clear(suite.grids)
+	suite.grids = nil
 }
 
 func (suite *IgniteTestSuite) StartIgnite(opts ...func(params *IgniteParams)) (IgniteInstance, error) {

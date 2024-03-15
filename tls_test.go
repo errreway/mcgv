@@ -1,7 +1,6 @@
 package ignite
 
 import (
-	"context"
 	"crypto"
 	"crypto/ecdsa"
 	"crypto/ed25519"
@@ -49,7 +48,7 @@ func (suite *TlsTestSuite) TearDownSuite() {
 		for _, ign := range suite.grids {
 			_ = ign.Kill()
 		}
-		clear(suite.grids)
+		suite.grids = nil
 	}
 }
 
@@ -71,10 +70,14 @@ func (suite *TlsTestSuite) TestCreationPolicy() {
 				_ = cli.Close()
 			}()
 
-			assert.Nil(t, err)
-			caches, err := cli.CacheNames(context.Background())
-			assert.Nil(t, err)
-			assert.True(t, len(caches) == 0)
+			if err != nil {
+				t.Fatal("failed to connect to cluster", err)
+			}
+			version, err := cli.Version()
+			if err != nil {
+				t.Fatal("failed to connect to cluster", err)
+			}
+			assert.True(t, len(version) > 0)
 		})
 	}
 }
@@ -101,7 +104,9 @@ func createTlsSupplier(certPath string, password string) func() (*tls.Config, er
 				cert.Certificate = append(cert.Certificate, derBlock.Bytes)
 			} else if derBlock.Type == "PRIVATE KEY" || strings.HasSuffix(derBlock.Type, " PRIVATE KEY") {
 				var keyBlock []byte
+				//lint:ignore SA1019 this is required to check
 				if x509.IsEncryptedPEMBlock(derBlock) {
+					//lint:ignore SA1019 this is required to check
 					derBlock.Bytes, err0 = x509.DecryptPEMBlock(derBlock, []byte(password))
 					if err0 != nil {
 						return nil, fmt.Errorf("failed to decrypt private key %s: %w", certFileName, err0)

@@ -34,7 +34,7 @@ func (suite *TtlTestSuite) TearDownSuite() {
 		for _, ign := range suite.grids {
 			_ = ign.Kill()
 		}
-		clear(suite.grids)
+		suite.grids = nil
 	}
 }
 

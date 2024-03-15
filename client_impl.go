@@ -35,11 +35,16 @@ func (cli *clientImpl) CacheNames(ctx context.Context) ([]string, error) {
 	var names []string
 	cli.ch.Send(ctx, opCacheGetNames, func(output BinaryWriter) error {
 		return nil
-	}, func(input BinaryReader, err error) {
+	}, func(input BinaryReader, err0 error) {
+		if err0 != nil {
+			err = err0
+			return
+		}
 		sz := int(input.ReadInt32())
 		names = make([]string, sz)
 		for i := 0; i < sz; i++ {
-			name, err0 := unmarshalString(input, false)
+			var name string
+			name, err0 = unmarshalString(input, false)
 			if err0 != nil {
 				err = err0
 				return

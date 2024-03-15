@@ -16,7 +16,7 @@ type marshaller interface {
 
 type typeDesc = int8
 type mapTypeDesc = int8
-type collectionTypeDesc = int8
+type collectionTypeDesc = int8 //lint:ignore U1000 reserved for future
 
 const (
 	byteType typeDesc = iota + 1
@@ -29,35 +29,35 @@ const (
 	boolType
 	stringType
 	uuidType
-	dateType
+	dateType //lint:ignore U1000 reserved for future
 	byteArrayType
-	shortArrayType
-	intArrayType
-	longArrayType
-	floatArrayType
-	doubleArrayType
-	charArrayType
-	boolArrayType
-	stringArrayType
-	uuidArrayType
-	dateArrayType
-	objectArrayType
-	collectionType
+	shortArrayType  //lint:ignore U1000 reserved for future
+	intArrayType    //lint:ignore U1000 reserved for future
+	longArrayType   //lint:ignore U1000 reserved for future
+	floatArrayType  //lint:ignore U1000 reserved for future
+	doubleArrayType //lint:ignore U1000 reserved for future
+	charArrayType   //lint:ignore U1000 reserved for future
+	boolArrayType   //lint:ignore U1000 reserved for future
+	stringArrayType //lint:ignore U1000 reserved for future
+	uuidArrayType   //lint:ignore U1000 reserved for future
+	dateArrayType   //lint:ignore U1000 reserved for future
+	objectArrayType //lint:ignore U1000 reserved for future
+	collectionType  //lint:ignore U1000 reserved for future
 	mapType
 	nullType typeDesc = 101
 )
 
 const (
-	hashMap mapTypeDesc = iota + 1
-	linkedHashMap
+	hashMap       mapTypeDesc = iota + 1
+	linkedHashMap             //lint:ignore U1000 reserved for future
 )
 
 const (
-	arrayList collectionTypeDesc = iota + 1
-	linkedList
-	hashSet
-	linkedHashSet
-	singletonList
+	arrayList     collectionTypeDesc = iota + 1 //lint:ignore U1000 reserved for future
+	linkedList                                  //lint:ignore U1000 reserved for future
+	hashSet                                     //lint:ignore U1000 reserved for future
+	linkedHashSet                               //lint:ignore U1000 reserved for future
+	singletonList                               //lint:ignore U1000 reserved for future
 )
 
 type marshallerImpl struct {
@@ -362,7 +362,9 @@ func unmarshalUuid(reader BinaryReader, skipHeader bool) (uuid.UUID, error) {
 	if err = ensureAvailable(reader, 16); err != nil {
 		return uuid.Nil, err
 	}
-	return uuid.UUID(reader.ReadBytes(16)), nil
+	ret := uuid.UUID{}
+	copy(ret[:], reader.ReadBytes(16))
+	return ret, nil
 }
 
 func ensureAvailable(reader BinaryReader, nBytes int32) error {

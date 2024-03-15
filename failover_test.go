@@ -8,7 +8,6 @@ import (
 	"math/rand"
 	"sync/atomic"
 	"testing"
-	_ "testing"
 	"time"
 )
 

@@ -109,8 +109,8 @@ func (r *reliableChannel) initConnection() error {
 		var ch *tcpChannel = nil
 		ch, err = createTcpChannel(addresses[i], r.cfg)
 		if err == nil {
-			if r.cfg.retryLimit > 0 {
-				r.attemptsLimit = min(r.cfg.retryLimit, len(addresses))
+			if r.cfg.retryLimit > 0 && r.cfg.retryLimit < len(addresses) {
+				r.attemptsLimit = r.cfg.retryLimit
 			} else {
 				r.attemptsLimit = len(addresses)
 			}
