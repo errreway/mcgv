@@ -149,19 +149,15 @@ func StartIgnite(opts ...func(params *IgniteParams)) (IgniteInstance, error) {
 	params := &IgniteParams{
 		InstanceIdx: 0,
 	}
-
 	if len(opts) > 0 {
 		for _, opt := range opts {
 			opt(params)
 		}
 	}
-
 	if params.ClientPort == 0 {
 		params.ClientPort = uint16(10800 + params.InstanceIdx)
 	}
-
 	ClearLogs(params.InstanceIdx)
-
 	var runner string
 	var err error
 	if runner, err = getIgniteRunner(); err != nil {
@@ -181,20 +177,16 @@ func StartIgnite(opts ...func(params *IgniteParams)) (IgniteInstance, error) {
 		fmt.Sprintf("-Djava.net.preferIPv4Stack=true -Xdebug -Xnoagent -Djava.compiler=NONE "+
 			"-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=%d", 10500+params.InstanceIdx)))
 	cmd.Dir = getTestDir()
-
 	if err = cmd.Start(); err != nil {
 		return nil, err
 	}
-
 	ignInstance := &igniteInstanceImpl{
 		cmd:    cmd,
 		params: *params,
 		doneCh: make(chan interface{}, 1),
 	}
-
 	sigs := make(chan os.Signal, 1024)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
-
 	go func() {
 		select {
 		case sig := <-sigs:
@@ -209,18 +201,15 @@ func StartIgnite(opts ...func(params *IgniteParams)) (IgniteInstance, error) {
 			return
 		}
 	}()
-
 	res := WaitForCondition(func() bool {
 		logFiles, err := GetLogFiles(params.InstanceIdx)
 		if err != nil {
 			panic(fmt.Sprintf("Cannot find log files: %s", err.Error()))
 		}
-
 		reg, err := regexp.Compile("^Topology snapshot.*")
 		if err != nil {
 			panic(fmt.Sprintf("Invalid regex: %s", err.Error()))
 		}
-
 		res := false
 		for _, logFile := range logFiles {
 			res, err = MatchLog(reg, logFile)
@@ -231,15 +220,12 @@ func StartIgnite(opts ...func(params *IgniteParams)) (IgniteInstance, error) {
 				break
 			}
 		}
-
 		return res
 	}, 60*time.Second)
-
 	if !res {
 		ignInstance.doneCh <- nil
 		return nil, errors.New("failed to start ignite instance")
 	}
-
 	return ignInstance, nil
 }
 
@@ -251,35 +237,29 @@ func MatchLog(regExp *regexp.Regexp, file string) (bool, error) {
 	defer func() {
 		_ = f.Close()
 	}()
-
 	scanner := bufio.NewScanner(f)
-
 	for scanner.Scan() {
 		if regExp.MatchString(scanner.Text()) {
 			return true, nil
 		}
 	}
-
 	return false, nil
 }
 
 func createLogConfigFile(params *IgniteParams) (string, error) {
 	logTpl := path.Join(getTestDir(), "config/log4j.xml.tmpl")
 	logPath := path.Join(getTestDir(), fmt.Sprintf("config/log4j-%d.xml", params.InstanceIdx))
-
 	return createTemplate(logPath, logTpl, params)
 }
 
 func createConfigFile(params *IgniteParams) (string, error) {
 	logTpl := path.Join(getTestDir(), "config/ignite-config.xml.tmpl")
 	logPath := path.Join(getTestDir(), fmt.Sprintf("config/ignite-config-%d.xml", params.InstanceIdx))
-
 	return createTemplate(logPath, logTpl, params)
 }
 
 func createTemplate(resPath string, tmplPath string, data interface{}) (string, error) {
 	tpl, _ := template.ParseFiles(tmplPath)
-
 	f, err := os.Create(resPath)
 	if err != nil {
 		return "", err
@@ -287,7 +267,6 @@ func createTemplate(resPath string, tmplPath string, data interface{}) (string, 
 	defer func() {
 		_ = f.Close()
 	}()
-
 	w := bufio.NewWriter(f)
 	if err = tpl.Execute(w, data); err != nil {
 		return "", err
@@ -303,7 +282,7 @@ func WaitForCondition(condition func() bool, timeout time.Duration) bool {
 	defer cancel()
 
 	doneCh := make(chan bool, 1)
-	var cancelFlag int32 = 0
+	var cancelFlag atomic.Bool
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
@@ -315,12 +294,10 @@ func WaitForCondition(condition func() bool, timeout time.Duration) bool {
 				doneCh <- res
 				return
 			}
-
-			if atomic.LoadInt32(&cancelFlag) > 0 {
+			if cancelFlag.Load() {
 				doneCh <- false
 				return
 			}
-
 			runtime.Gosched()
 		}
 	}()
@@ -329,7 +306,7 @@ func WaitForCondition(condition func() bool, timeout time.Duration) bool {
 		select {
 		case <-ctx.Done():
 			{
-				atomic.StoreInt32(&cancelFlag, 1)
+				cancelFlag.Store(true)
 			}
 		case res := <-doneCh:
 			{

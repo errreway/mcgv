@@ -11,15 +11,16 @@ generate:
 	go generate $(PACKAGES)
 
 lint:
-	go get .
-	go run honnef.co/go/tools/cmd/staticcheck --tags=testing $(PACKAGES)
+	go install honnef.co/go/tools/cmd/staticcheck@v0.4.7
+	staticcheck --tags=testing $(PACKAGES)
 	go vet --tags=testing $(PACKAGES)
 
 test: build
-	go test --tags=testing $(TEST_FLAGS) $(PACKAGES) ./...
+	go test -v --tags=testing $(TEST_FLAGS) $(PACKAGES) ./...
 
 test-ci: build
-	go test --tags=testing $(TEST_FLAGS) $(PACKAGES) ./...  2>&1 | go run github.com/jstemmer/go-junit-report/v2 -set-exit-code > test-report.xml
+	go install github.com/jstemmer/go-junit-report/v2@v2.1.0
+	go test -v --tags=testing $(TEST_FLAGS) $(PACKAGES) ./...  2>&1 | go-junit-report -set-exit-code > test-report.xml
 
 clean:
 	find . -name 'ignite-config-*.xml' -delete

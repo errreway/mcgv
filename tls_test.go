@@ -25,8 +25,7 @@ const (
 )
 
 type TlsTestSuite struct {
-	suite.Suite
-	grids []testing2.IgniteInstance
+	testing2.IgniteTestSuite
 }
 
 func TestTlsTestSuite(t *testing.T) {
@@ -34,22 +33,14 @@ func TestTlsTestSuite(t *testing.T) {
 }
 
 func (suite *TlsTestSuite) SetupSuite() {
-	var err error
-	suite.grids = make([]testing2.IgniteInstance, 0)
-	ign, err := testing2.StartIgnite(testing2.WithSsl(), testing2.WithAuth())
+	_, err := suite.StartIgnite(testing2.WithSsl(), testing2.WithAuth())
 	if err != nil {
-		suite.T().Errorf("Failed to startClient suite: %s", err.Error())
+		suite.T().Fatal("Failed to startClient suite", err)
 	}
-	suite.grids = append(suite.grids, ign)
 }
 
 func (suite *TlsTestSuite) TearDownSuite() {
-	if suite.grids != nil {
-		for _, ign := range suite.grids {
-			_ = ign.Kill()
-		}
-		suite.grids = nil
-	}
+	suite.KillAllGrids()
 }
 
 func (suite *TlsTestSuite) TestCreationPolicy() {

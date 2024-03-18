@@ -22,11 +22,6 @@ const (
 )
 
 const (
-	open int32 = iota
-	closed
-)
-
-const (
 	V1_0_0  = "1.0.0"
 	V1_1_0  = "1.0.0"
 	V1_2_0  = "1.2.0"
@@ -108,6 +103,7 @@ type Channel interface {
 	Send(ctx context.Context, opCode int16, requestWriter func(output BinaryWriter) error, responseReader func(input BinaryReader, err error))
 	ProtocolContext() ProtocolContext
 	Close()
+	Closed() bool
 }
 
 type tcpChannel struct {
@@ -121,7 +117,7 @@ type tcpChannel struct {
 	pendingRequests   sync.Map
 	doneCh            chan struct{}
 	serverId          uuid.UUID
-	status            int32
+	closed            atomic.Bool
 	supportedVersions map[string]bool
 	closeErr          atomic.Value
 	closeWg           sync.WaitGroup
@@ -180,6 +176,9 @@ func (ch *tcpChannel) Send(ctx context.Context, opCode int16, requestWriter func
 }
 
 func (ch *tcpChannel) send(ctx context.Context, id int64, opCode int16, requestWriter func(output BinaryWriter) error, responseReader func(input BinaryReader, err error)) {
+	if ch.closed.Load() {
+		responseReader(nil, createClientConnectionError("channel is closed", nil))
+	}
 	req, err := newRequest(id, opCode, requestWriter)
 	if err != nil {
 		responseReader(nil, err)
@@ -260,12 +259,22 @@ func (ch *tcpChannel) processCloseError(defaultMsg string) error {
 }
 
 func (ch *tcpChannel) beginClose(err error) {
-	if !atomic.CompareAndSwapInt32(&ch.status, open, closed) {
+	if !ch.closed.CompareAndSwap(false, true) {
 		return
 	}
 	if err != nil {
 		ch.closeErr.Store(err)
 	}
+	ch.pendingRequests.Range(func(id, val any) bool {
+		req, ok := val.(*pendingRequest)
+		if !ok {
+			return true
+		}
+		req.err = createClientConnectionError("connection closed", err)
+		close(req.doneCh)
+		ch.pendingRequests.Delete(id)
+		return true
+	})
 	close(ch.doneCh)
 	_ = ch.socket.Close()
 }
@@ -273,6 +282,10 @@ func (ch *tcpChannel) beginClose(err error) {
 func (ch *tcpChannel) Close() {
 	ch.beginClose(nil)
 	ch.closeWg.Wait()
+}
+
+func (ch *tcpChannel) Closed() bool {
+	return ch.closed.Load()
 }
 
 func (ch *tcpChannel) writeLoop() {

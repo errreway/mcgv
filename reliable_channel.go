@@ -20,6 +20,10 @@ type reliableChannel struct {
 }
 
 func (r *reliableChannel) Send(ctx context.Context, opCode int16, requestWriter func(output BinaryWriter) error, responseReader func(input BinaryReader, err error)) {
+	if r.closed.Load() {
+		responseReader(nil, createClientConnectionError("channel is closed", nil))
+		return
+	}
 	connectFailed := false
 	attemptsCnt := 0
 	for {
@@ -51,7 +55,7 @@ func (r *reliableChannel) currentChannel() (*tcpChannel, error) {
 	}
 	for {
 		currCh := r.currCh.Load()
-		if currCh != nil && currCh.(*tcpChannel).status != closed {
+		if currCh != nil && !currCh.(*tcpChannel).Closed() {
 			return currCh.(*tcpChannel), nil
 		}
 		if err := r.initConnection(); err != nil {
@@ -80,9 +84,17 @@ func (r *reliableChannel) Close() {
 	}
 }
 
+func (r *reliableChannel) Closed() bool {
+	return r.closed.Load()
+}
+
 func (r *reliableChannel) initConnection() error {
 	r.mux.Lock()
 	defer r.mux.Unlock()
+	oldCh := r.currCh.Load()
+	if oldCh != nil && !oldCh.(*tcpChannel).Closed() {
+		return nil
+	}
 	addresses, err := r.cfg.addressesSupplier()
 	if err != nil {
 		return fmt.Errorf("failed to obtain addresses: %w", err)
@@ -96,7 +108,6 @@ func (r *reliableChannel) initConnection() error {
 			addresses[i], addresses[j] = addresses[j], addresses[i]
 		})
 	}
-	oldCh := r.currCh.Load()
 	var cliConnErr *ClientConnectionError
 	for i := 0; i < len(addresses); i++ {
 		if oldCh != nil && oldCh.(*tcpChannel).addr == addresses[i] {

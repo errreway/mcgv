@@ -50,8 +50,8 @@ func (suite *FailoverTestSuite) TestFailover() {
 		suite.T().Fatal("Failed to create cache", err)
 		return
 	}
-	var errCnt int64
-	var successCnt int64
+	var errCnt atomic.Int64
+	var successCnt atomic.Int64
 	stopCh := make(chan struct{})
 	for i := 0; i < 10; i++ {
 		go func() {
@@ -65,9 +65,10 @@ func (suite *FailoverTestSuite) TestFailover() {
 					key := rnd.Int63n(1 << 15)
 					err := cache.Put(context.Background(), fmt.Sprintf("key-%d", key), "test")
 					if err != nil {
-						atomic.AddInt64(&errCnt, 1)
+						suite.T().Log("put failed", err)
+						errCnt.Add(1)
 					} else {
-						atomic.AddInt64(&successCnt, 1)
+						successCnt.Add(1)
 					}
 					continue LOOP
 				}
@@ -75,14 +76,15 @@ func (suite *FailoverTestSuite) TestFailover() {
 		}()
 	}
 	testing2.WaitForCondition(func() bool {
-		return atomic.LoadInt64(&successCnt) >= 1000
+		return successCnt.Load() >= 1000
 	}, 3*time.Second)
 	_ = suite.KillIgnite(0)
-	currOk := atomic.LoadInt64(&successCnt)
+	currOk := successCnt.Load()
 	testing2.WaitForCondition(func() bool {
-		return atomic.LoadInt64(&successCnt) > 2*currOk
+		return successCnt.Load() > 2*currOk
 	}, 3*time.Second)
 	close(stopCh)
-	suite.Assert().True(atomic.LoadInt64(&errCnt) <= 10,
-		fmt.Sprintf("Total errors %d, total ok %d", atomic.LoadInt64(&errCnt), atomic.LoadInt64(&successCnt)))
+	suite.T().Logf("Total errors %d, total ok %d", errCnt.Load(), successCnt.Load())
+	suite.Assert().True(errCnt.Load() == 0,
+		fmt.Sprintf("Total errors %d, total ok %d", errCnt.Load(), successCnt.Load()))
 }
