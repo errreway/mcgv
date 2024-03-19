@@ -1,6 +1,7 @@
 package ignite
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"crypto/tls"
@@ -178,6 +179,7 @@ func (ch *tcpChannel) Send(ctx context.Context, opCode int16, requestWriter func
 func (ch *tcpChannel) send(ctx context.Context, id int64, opCode int16, requestWriter func(output BinaryWriter) error, responseReader func(input BinaryReader, err error)) {
 	if ch.closed.Load() {
 		responseReader(nil, createClientConnectionError("channel is closed", nil))
+		return
 	}
 	req, err := newRequest(id, opCode, requestWriter)
 	if err != nil {
@@ -292,14 +294,23 @@ func (ch *tcpChannel) writeLoop() {
 	defer func() {
 		ch.closeWg.Done()
 	}()
+	writer := bufio.NewWriterSize(ch.socket, writeBufferSize)
+LOOP:
 	for {
 		select {
-		case id := <-ch.pendingCh:
+		case id, ok := <-ch.pendingCh:
+			if !ok {
+				return
+			}
 			req, ok := ch.pendingRequests.Load(id)
 			if !ok {
-				panic("invalid request id")
+				continue LOOP
 			}
-			if err := ch.writeFully(req.(*pendingRequest).requestData); err != nil {
+			_, err := writer.Write(req.(*pendingRequest).requestData)
+			if err == nil && len(ch.pendingCh) == 0 {
+				err = writer.Flush()
+			}
+			if err != nil {
 				ch.beginClose(err)
 				return
 			}
@@ -309,37 +320,29 @@ func (ch *tcpChannel) writeLoop() {
 	}
 }
 
-func (ch *tcpChannel) writeFully(data []byte) error {
-	total, err := ch.socket.Write(data)
-	if err != nil {
-		return fmt.Errorf("failed to write to socket: %w", err)
-	}
-	for total < len(data) {
-		n := 0
-		n, err = ch.socket.Write(data[total:])
-		if err != nil {
-			return fmt.Errorf("failed to write to socket: %w", err)
-		}
-		total += n
-	}
-	return nil
-}
-
 const (
 	messageBufferSize = 128 * 1024
+	writeBufferSize   = 16 * 1024
 )
 
 func (ch *tcpChannel) readLoop() {
 	var err error
 	var n int
 	defer func() {
+		if r := recover(); r != nil {
+			ch.beginClose(fmt.Errorf("failed to process data: %s", err))
+		}
 		ch.closeWg.Done()
 	}()
 
 	buf := make([]byte, messageBufferSize)
 	packetAcc := newPacketAccumulator()
 	handshakeDone := false
+LOOP:
 	for {
+		if ch.closed.Load() {
+			break
+		}
 		if err = ch.socket.SetReadDeadline(time.Now().Add(1 * time.Second)); err != nil {
 			break
 		}
@@ -355,38 +358,37 @@ func (ch *tcpChannel) readLoop() {
 			continue
 		}
 		packetAcc.append(buf[:n])
-		data := packetAcc.data()
-		if data == nil {
-			continue
-		}
-		if !handshakeDone {
-			if ch.ProtocolContext() != nil {
+		for {
+			data := packetAcc.data()
+			if data == nil {
+				continue LOOP
+			}
+			if !handshakeDone && ch.ProtocolContext() != nil {
 				handshakeDone = true
 			}
-		}
-		var id int64
-		if !handshakeDone {
-			id = -1
-		} else {
-			var ok bool
-			id, ok = responseId(data)
-			if !ok {
-				err = createClientConnectionError("failed to parse response id", nil)
-				break
+			var id int64
+			if !handshakeDone {
+				id = -1
+			} else {
+				var ok bool
+				id, ok = responseId(data)
+				if !ok {
+					err = createClientConnectionError("failed to parse response id", nil)
+					break LOOP
+				}
 			}
+			val, ok := ch.pendingRequests.Load(id)
+			if !ok {
+				continue
+			}
+			req, ok := val.(*pendingRequest)
+			if !ok {
+				err = createClientConnectionError("invalid data in pending requests", nil)
+				break LOOP
+			}
+			req.responseData = data
+			close(req.doneCh)
 		}
-		val, ok := ch.pendingRequests.Load(id)
-		if !ok {
-			err = createClientConnectionError(fmt.Sprintf("failed to load request with id %d", id), nil)
-			break
-		}
-		req, ok := val.(*pendingRequest)
-		if !ok {
-			err = createClientConnectionError("invalid data in pending requests", nil)
-			break
-		}
-		req.responseData = data
-		close(req.doneCh)
 	}
 	ch.beginClose(err)
 }
@@ -412,11 +414,11 @@ func (pa *packetAccumulator) data() []byte {
 		return nil
 	}
 	// prepare result
-	size := int(pa.currentSize + intBytes)
+	size := int(pa.currentSize)
 	result := make([]byte, size)
 	// read pa.currentSize since buffer is on position 4
-	copy(result, pa.buf.Next(int(pa.currentSize)))
-	// copy remained data, reinitialize buffer
+	copy(result, pa.buf.Next(size))
+	// copy remaining data, reinitialize buffer
 	remainDataSlice := pa.buf.Next(pa.buf.Len())
 	remainData := make([]byte, len(remainDataSlice))
 	copy(remainData, remainDataSlice)

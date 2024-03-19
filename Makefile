@@ -1,7 +1,9 @@
 .PHONY: generate build lint test test-ci clean
 
-PACKAGES = $(go list ./...)
+PACKAGES = $(shell go list ./... | grep -v benchmarks)
 TEST_FLAGS ?= -v
+GOPATH=$(shell go env GOPATH)
+BENCH="."
 
 build: generate lint
 	go build $(PACKAGES)
@@ -11,16 +13,19 @@ generate:
 	go generate $(PACKAGES)
 
 lint:
-	go install honnef.co/go/tools/cmd/staticcheck@v0.4.7
-	staticcheck --tags=testing $(PACKAGES)
+	go install honnef.co/go/tools/cmd/staticcheck@v0.4.7;
+	$(GOPATH)/bin/staticcheck --tags=testing ./...
 	go vet --tags=testing $(PACKAGES)
 
 test: build
-	go test -v --tags=testing $(TEST_FLAGS) $(PACKAGES) ./...
+	go test --tags=testing $(TEST_FLAGS) $(PACKAGES)
 
 test-ci: build
 	go install github.com/jstemmer/go-junit-report/v2@v2.1.0
-	go test -v --tags=testing $(TEST_FLAGS) $(PACKAGES) ./...  2>&1 | go-junit-report -set-exit-code > test-report.xml
+	go test --tags=testing $(TEST_FLAGS) $(PACKAGES)  2>&1 | $(GOPATH)/bin/go-junit-report -set-exit-code > test-report.xml
+
+bench: build
+	go test -bench=$(BENCH) -test.benchtime=10s -timeout=40m --tags=testing $(TEST_FLAGS) ./benchmarks
 
 clean:
 	find . -name 'ignite-config-*.xml' -delete
