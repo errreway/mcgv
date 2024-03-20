@@ -4,8 +4,8 @@ package testing
 
 import (
 	"bufio"
+	"bytes"
 	"context"
-	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -14,12 +14,15 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"syscall"
 	"text/template"
 	"time"
 )
+
+const IgniteStartTimeout = "IGNITE_START_TIMEOUT"
 
 type IgniteParams struct {
 	InstanceIdx    int
@@ -76,7 +79,6 @@ func GetIgnitePath() string {
 	if len(igniteHome) > 0 {
 		return igniteHome
 	}
-
 	parentDir := path.Dir(path.Join(getTestDir(), "..", ".."))
 	return path.Join(parentDir, "ignite")
 }
@@ -158,6 +160,7 @@ func StartIgnite(opts ...func(params *IgniteParams)) (IgniteInstance, error) {
 		params.ClientPort = uint16(10800 + params.InstanceIdx)
 	}
 	ClearLogs(params.InstanceIdx)
+
 	var runner string
 	var err error
 	if runner, err = getIgniteRunner(); err != nil {
@@ -177,8 +180,12 @@ func StartIgnite(opts ...func(params *IgniteParams)) (IgniteInstance, error) {
 		fmt.Sprintf("-Djava.net.preferIPv4Stack=true -Xdebug -Xnoagent -Djava.compiler=NONE "+
 			"-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=%d", 10500+params.InstanceIdx)))
 	cmd.Dir = getTestDir()
+	var outBuf bytes.Buffer
+	cmd.Stdout = &outBuf
+	cmd.Stderr = &outBuf
+
 	if err = cmd.Start(); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to start ignite instance: %w\n\toutput:\n:\t%s", err, outBuf.Bytes())
 	}
 	ignInstance := &igniteInstanceImpl{
 		cmd:    cmd,
@@ -221,10 +228,10 @@ func StartIgnite(opts ...func(params *IgniteParams)) (IgniteInstance, error) {
 			}
 		}
 		return res
-	}, 60*time.Second)
+	}, waitTimeout())
 	if !res {
 		ignInstance.doneCh <- nil
-		return nil, errors.New("failed to start ignite instance")
+		return nil, fmt.Errorf("failed to start ignite instance:\n\toutput:\n:\t%s", outBuf.Bytes())
 	}
 	return ignInstance, nil
 }
@@ -275,6 +282,17 @@ func createTemplate(resPath string, tmplPath string, data interface{}) (string, 
 		return "", err
 	}
 	return resPath, nil
+}
+
+func waitTimeout() time.Duration {
+	if s := os.Getenv(IgniteStartTimeout); s != "" {
+		if i, err := strconv.ParseInt(s, 10, 32); err != nil {
+			panic(err)
+		} else {
+			return time.Duration(i) * time.Second
+		}
+	}
+	return 30 * time.Second
 }
 
 func WaitForCondition(condition func() bool, timeout time.Duration) bool {

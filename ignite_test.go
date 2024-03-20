@@ -2,7 +2,7 @@ package ignite
 
 import (
 	"context"
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 	testing2 "gitverse.ru/sbertech/ignite-go-client/internal/testing"
 	"testing"
@@ -14,8 +14,7 @@ const (
 )
 
 type BasicTestSuite struct {
-	suite.Suite
-	grids []testing2.IgniteInstance
+	testing2.IgniteTestSuite
 }
 
 func TestBasicTestSuite(t *testing.T) {
@@ -23,56 +22,48 @@ func TestBasicTestSuite(t *testing.T) {
 }
 
 func (suite *BasicTestSuite) SetupSuite() {
-	var err error
-	suite.grids = make([]testing2.IgniteInstance, 0)
-	ign, err := testing2.StartIgnite()
+	_, err := suite.StartIgnite()
 	if err != nil {
-		suite.T().Errorf("Failed to startClient suite: %s", err.Error())
+		suite.T().Fatal("Failed to start ignite instance", err)
 	}
-	suite.grids = append(suite.grids, ign)
 }
 
 func (suite *BasicTestSuite) TearDownSuite() {
-	if suite.grids != nil {
-		for _, ign := range suite.grids {
-			_ = ign.Kill()
-		}
-		suite.grids = nil
-	}
+	suite.KillAllGrids()
 }
 
 func (suite *BasicTestSuite) TearDownTest() {
 	cli, err := Start(WithAddresses(defaultAddress))
-	assert.Nil(suite.T(), err)
+	if err != nil {
+		suite.T().Fatal("failed to start client", err)
+	}
 	defer func() {
 		_ = cli.Close()
 	}()
 	ctx := context.Background()
 	caches, err := cli.CacheNames(ctx)
-	assert.Nil(suite.T(), err)
+	require.Nil(suite.T(), err)
 	for _, cache := range caches {
 		err = cli.DestroyCache(ctx, cache)
-		assert.Nil(suite.T(), err)
+		require.Nil(suite.T(), err)
 	}
 }
 
 func (suite *BasicTestSuite) TestCorrectAddresses() {
 	cli, err := Start()
-
-	assert.Nil(suite.T(), cli)
-	assert.Error(suite.T(), err, "address supplier is nil")
+	require.Nil(suite.T(), cli)
+	require.Error(suite.T(), err, "address supplier is nil")
 
 	cli, err = Start(WithAddresses())
-
-	assert.Nil(suite.T(), cli)
-	assert.Error(suite.T(), err, "addresses are empty")
+	require.Nil(suite.T(), cli)
+	require.Error(suite.T(), err, "addresses are empty")
 }
 
 func (suite *BasicTestSuite) TestCacheSize() {
 	cli, err := Start(WithAddresses(defaultAddress))
-
-	assert.Nil(suite.T(), err)
-	assert.NotNil(suite.T(), cli)
+	if err != nil {
+		suite.T().Fatal("failed to start client", err)
+	}
 	defer func() {
 		_ = cli.Close()
 	}()
@@ -80,27 +71,29 @@ func (suite *BasicTestSuite) TestCacheSize() {
 	var cache Cache
 	ctx := context.Background()
 	cache, err = cli.GetOrCreateCache(ctx, cacheName)
-	assert.Nil(suite.T(), err)
+	if err != nil {
+		suite.T().Fatal("failed to obtain cache", err)
+	}
 
 	var cacheSz uint64
 	cacheSz, err = cache.Size(ctx)
-	assert.Nil(suite.T(), err)
-	assert.Equal(suite.T(), uint64(0), cacheSz)
+	require.Nil(suite.T(), err)
+	require.Equal(suite.T(), uint64(0), cacheSz)
 	err = cache.Put(ctx, "test", "test")
-	assert.Nil(suite.T(), err)
+	require.Nil(suite.T(), err)
 	val, err := cache.Get(ctx, "test")
-	assert.Nil(suite.T(), err)
-	assert.Equal(suite.T(), "test", val)
+	require.Nil(suite.T(), err)
+	require.Equal(suite.T(), "test", val)
 	cacheSz, err = cache.Size(ctx)
-	assert.Nil(suite.T(), err)
-	assert.Equal(suite.T(), uint64(1), cacheSz)
+	require.Nil(suite.T(), err)
+	require.Equal(suite.T(), uint64(1), cacheSz)
 }
 
 func (suite *BasicTestSuite) TestCacheNames() {
 	cli, err := Start(WithAddresses(defaultAddress))
-
-	assert.Nil(suite.T(), err)
-	assert.NotNil(suite.T(), cli)
+	if err != nil {
+		suite.T().Fatal("failed to start client", err)
+	}
 	defer func() {
 		_ = cli.Close()
 	}()
@@ -109,40 +102,41 @@ func (suite *BasicTestSuite) TestCacheNames() {
 	ctx := context.Background()
 	names, err = cli.CacheNames(ctx)
 
-	assert.Nil(suite.T(), err)
-	assert.Equal(suite.T(), 0, len(names))
+	require.Nil(suite.T(), err)
+	require.Equal(suite.T(), 0, len(names))
 
 	var cache Cache
 	cache, err = cli.CreateCache(ctx, cacheName)
 
-	assert.Nil(suite.T(), err)
-	assert.NotNil(suite.T(), cache)
-	assert.Equal(suite.T(), cacheName, cache.Name())
+	require.Nil(suite.T(), err)
+	require.NotNil(suite.T(), cache)
+	require.Equal(suite.T(), cacheName, cache.Name())
 
 	var cli0 Client
 	cli0, err = Start(WithAddresses(defaultAddress))
+	if err != nil {
+		suite.T().Fatal("failed to start client", err)
+	}
 
-	assert.Nil(suite.T(), err)
-	assert.NotNil(suite.T(), cli0)
 	defer func() {
 		_ = cli0.Close()
 	}()
 
 	cache, err = cli0.CreateCache(ctx, cacheName)
 
-	assert.NotNil(suite.T(), err)
-	assert.Nil(suite.T(), cache)
+	require.NotNil(suite.T(), err)
+	require.Nil(suite.T(), cache)
 
 	cache, err = cli0.GetOrCreateCache(ctx, cacheName)
 
-	assert.Nil(suite.T(), err)
-	assert.NotNil(suite.T(), cache)
+	require.Nil(suite.T(), err)
+	require.NotNil(suite.T(), cache)
 
 	names, err = cli.CacheNames(ctx)
 
-	assert.Nil(suite.T(), err)
-	assert.Equal(suite.T(), 1, len(names))
-	assert.Equal(suite.T(), cacheName, (names)[0])
+	require.Nil(suite.T(), err)
+	require.Equal(suite.T(), 1, len(names))
+	require.Equal(suite.T(), cacheName, (names)[0])
 }
 
 func (suite *BasicTestSuite) TestDestroyCache() {
@@ -150,7 +144,7 @@ func (suite *BasicTestSuite) TestDestroyCache() {
 	if err != nil {
 		suite.T().Fatal("failed to start client", err)
 	}
-	assert.NotNil(suite.T(), cli)
+	require.NotNil(suite.T(), cli)
 	defer func() {
 		_ = cli.Close()
 	}()
@@ -169,8 +163,8 @@ func (suite *BasicTestSuite) TestDestroyCache() {
 		suite.T().Fatal(err)
 	}
 
-	assert.NotNil(suite.T(), cache)
-	assert.Equal(suite.T(), toDestroy, cache.Name())
+	require.NotNil(suite.T(), cache)
+	require.Equal(suite.T(), toDestroy, cache.Name())
 
 	err = cli.DestroyCache(ctx, toDestroy)
 	if err != nil {
@@ -183,7 +177,7 @@ func (suite *BasicTestSuite) TestDestroyCache() {
 		suite.T().Fatal(err)
 	}
 
-	assert.Equal(suite.T(), len(namesBefore), len(names))
+	require.Equal(suite.T(), len(namesBefore), len(names))
 }
 
 func (suite *BasicTestSuite) TestCacheConfig() {
@@ -191,7 +185,7 @@ func (suite *BasicTestSuite) TestCacheConfig() {
 	if err != nil {
 		suite.T().Fatal("failed to start client", err)
 	}
-	assert.NotNil(suite.T(), cli)
+	require.NotNil(suite.T(), cli)
 	defer func() {
 		_ = cli.Close()
 	}()
@@ -203,14 +197,14 @@ func (suite *BasicTestSuite) TestCacheConfig() {
 	if err != nil {
 		suite.T().Fatal(err)
 	}
-	assert.NotNil(suite.T(), cache)
+	require.NotNil(suite.T(), cache)
 
 	readCcfg, err := cache.Configuration(ctx)
 	if err != nil {
 		suite.T().Fatal(err)
 	}
-	assert.Equal(suite.T(), cfgTest, readCcfg.Name())
-	assert.Equal(suite.T(), 0, readCcfg.Backups())
+	require.Equal(suite.T(), cfgTest, readCcfg.Name())
+	require.Equal(suite.T(), 0, readCcfg.Backups())
 
 	cfgTest += "-1"
 	grpTest := "my-group"
@@ -226,27 +220,27 @@ func (suite *BasicTestSuite) TestCacheConfig() {
 	if err != nil {
 		suite.T().Fatal(err)
 	}
-	assert.NotNil(suite.T(), cache)
+	require.NotNil(suite.T(), cache)
 
 	readCcfg, err = cache.Configuration(ctx)
 	if err != nil {
 		suite.T().Fatal(err)
 	}
 
-	assert.Equal(suite.T(), cfgTest, readCcfg.Name())
-	assert.Equal(suite.T(), 1, readCcfg.Backups())
-	assert.Equal(suite.T(), Atomic, readCcfg.CacheAtomicityMode())
-	assert.Equal(suite.T(), grpTest, readCcfg.CacheGroupName())
+	require.Equal(suite.T(), cfgTest, readCcfg.Name())
+	require.Equal(suite.T(), 1, readCcfg.Backups())
+	require.Equal(suite.T(), Atomic, readCcfg.CacheAtomicityMode())
+	require.Equal(suite.T(), grpTest, readCcfg.CacheGroupName())
 }
 
 func (suite *BasicTestSuite) TestQueryEntitiesConfig() {
 	cli, err := Start(WithAddresses(defaultAddress))
+	if err != nil {
+		suite.T().Fatal("failed to start client", err)
+	}
 	defer func() {
 		_ = cli.Close()
 	}()
-	if !assert.Nil(suite.T(), err) || !assert.NotNil(suite.T(), cli) {
-		suite.T().FailNow()
-	}
 
 	ctx := context.Background()
 	testName := "qry-cache"
@@ -270,13 +264,12 @@ func (suite *BasicTestSuite) TestQueryEntitiesConfig() {
 			WithIndex("NAME_IDX", WithIndexField(IndexField{Name: "NAME", Asc: true})),
 		))
 	cache, err := cli.CreateCacheWithConfiguration(ctx, cfg)
-	if !assert.Nil(suite.T(), err) || !assert.NotNil(suite.T(), cache) {
-		suite.T().FailNow()
-	}
+	require.Nil(suite.T(), err)
+	require.NotNil(suite.T(), cache)
 	cfg1, err := cache.Configuration(ctx)
-	if !assert.Nil(suite.T(), err) || !assert.Equal(suite.T(), cfg.Name(), cfg1.Name()) {
-		suite.T().FailNow()
-	}
+	require.Nil(suite.T(), err)
+	require.Equal(suite.T(), cfg.Name(), cfg1.Name())
+
 	cfg2 := cfg1.Copy(WithCacheName("test"))
-	assert.Equal(suite.T(), cfg2.CacheGroupName(), cfg1.CacheGroupName())
+	require.Equal(suite.T(), cfg2.CacheGroupName(), cfg1.CacheGroupName())
 }

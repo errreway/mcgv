@@ -2,7 +2,7 @@ package ignite
 
 import (
 	"context"
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 	testing2 "gitverse.ru/sbertech/ignite-go-client/internal/testing"
 	"testing"
@@ -10,8 +10,7 @@ import (
 )
 
 type TtlTestSuite struct {
-	suite.Suite
-	grids []testing2.IgniteInstance
+	testing2.IgniteTestSuite
 }
 
 func TestTtlTestSuite(t *testing.T) {
@@ -19,43 +18,38 @@ func TestTtlTestSuite(t *testing.T) {
 }
 
 func (suite *TtlTestSuite) SetupSuite() {
-	var err error
-	suite.grids = make([]testing2.IgniteInstance, 0)
-	ign, err := testing2.StartIgnite()
+	_, err := suite.StartIgnite(testing2.WithInstanceIndex(0))
 	if err != nil {
-		suite.T().Errorf("Failed to startClient suite: %s", err.Error())
-		return
+		suite.T().Fatal("Failed to start ignite instance", err)
 	}
-	suite.grids = append(suite.grids, ign)
 }
 
 func (suite *TtlTestSuite) TearDownSuite() {
-	if suite.grids != nil {
-		for _, ign := range suite.grids {
-			_ = ign.Kill()
-		}
-		suite.grids = nil
-	}
+	suite.KillAllGrids()
 }
 
 func (suite *TtlTestSuite) TearDownTest() {
 	cli, err := Start(WithAddresses(defaultAddress))
-	assert.Nil(suite.T(), err)
+	if err != nil {
+		suite.T().Fatal("failed to start client", err)
+	}
 	defer func() {
 		_ = cli.Close()
 	}()
 	ctx := context.Background()
 	caches, err := cli.CacheNames(ctx)
-	assert.Nil(suite.T(), err)
+	require.Nil(suite.T(), err)
 	for _, cache := range caches {
 		err = cli.DestroyCache(ctx, cache)
-		assert.Nil(suite.T(), err)
+		require.Nil(suite.T(), err)
 	}
 }
 
 func (suite *TtlTestSuite) TestCreationPolicy() {
 	cli, err := Start(WithAddresses(defaultAddress))
-	assert.Nil(suite.T(), err)
+	if err != nil {
+		suite.T().Fatal("failed to start client", err)
+	}
 	defer func() {
 		_ = cli.Close()
 	}()
@@ -91,16 +85,16 @@ func (suite *TtlTestSuite) TestCreationPolicy() {
 		suite.T().Run(fixture.name, func(t *testing.T) {
 			ctx := context.Background()
 			cache, err := fixture.supplier()
-			assert.Nil(suite.T(), err)
+			require.Nil(suite.T(), err)
 			err = cache.Put(ctx, "test", "test")
 			defer func() {
 				_ = cli.DestroyCache(ctx, "test")
 			}()
-			assert.Nil(suite.T(), err)
+			require.Nil(suite.T(), err)
 			<-time.After(1200 * time.Millisecond)
 			contains, err := cache.ContainsKey(ctx, "test")
-			assert.Nil(suite.T(), err)
-			assert.False(suite.T(), contains)
+			require.Nil(suite.T(), err)
+			require.False(suite.T(), contains)
 		})
 	}
 }

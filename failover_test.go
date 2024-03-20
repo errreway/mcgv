@@ -34,7 +34,7 @@ func (suite *FailoverTestSuite) TestFailover() {
 	}
 	_, err = suite.StartIgnite()
 	if err != nil {
-		suite.T().Fatalf("failed to start second grid")
+		suite.T().Fatal("failed to start second grid", err)
 	}
 
 	cli, err := Start(WithAddresses(defaultAddress+":10800", defaultAddress+":10801"), WithShuffleAddresses(false))
@@ -48,7 +48,6 @@ func (suite *FailoverTestSuite) TestFailover() {
 	cache, err := cli.GetOrCreateCache(context.Background(), "test")
 	if err != nil {
 		suite.T().Fatal("Failed to create cache", err)
-		return
 	}
 	var errCnt atomic.Int64
 	var successCnt atomic.Int64

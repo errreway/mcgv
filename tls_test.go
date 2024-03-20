@@ -35,7 +35,7 @@ func TestTlsTestSuite(t *testing.T) {
 func (suite *TlsTestSuite) SetupSuite() {
 	_, err := suite.StartIgnite(testing2.WithSsl(), testing2.WithAuth())
 	if err != nil {
-		suite.T().Fatal("Failed to startClient suite", err)
+		suite.T().Fatal("Failed start ignite", err)
 	}
 }
 
