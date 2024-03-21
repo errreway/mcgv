@@ -170,6 +170,14 @@ func (m *marshallerImpl) unmarshall(_ context.Context, reader BinaryReader) (int
 		{
 			return nil, nil
 		}
+	case boolType:
+		{
+			err = ensureAvailable(reader, 1)
+			if err != nil {
+				return nil, err
+			}
+			return reader.ReadBool(), nil
+		}
 	case byteType:
 		{
 			err = ensureAvailable(reader, 1)

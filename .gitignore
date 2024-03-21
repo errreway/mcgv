@@ -4,3 +4,4 @@
 **/ignite-log*.txt
 **/ignite-config*.xml
 test-report.xml
+coverage.out

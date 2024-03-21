@@ -73,7 +73,7 @@ func (r *reliableChannel) ProtocolContext() ProtocolContext {
 }
 
 func (r *reliableChannel) Close() {
-	if r.closed.Load() {
+	if r.closed.CompareAndSwap(false, true) {
 		r.mux.Lock()
 		defer r.mux.Unlock()
 		currCh := r.currCh.Load()
@@ -133,11 +133,19 @@ func (r *reliableChannel) initConnection() error {
 	}
 	if err != nil && errors.As(err, &cliConnErr) {
 		return err
+	} else if isHandshakeError(err) {
+		return err
 	} else {
 		return &ClientConnectionError{ClientError{
 			Message: fmt.Sprintf("connection failed to channels [%s]", strings.Join(addresses, ", ")),
 		}, err}
 	}
+}
+
+func isHandshakeError(err error) bool {
+	var cliAuthErr *ClientAuthenticationError
+	var protoErr *ClientProtocolError
+	return err != nil && (errors.As(err, &cliAuthErr) || errors.As(err, &protoErr))
 }
 
 func CreateReliableChannel(cfg *ClientConfiguration) (Channel, error) {

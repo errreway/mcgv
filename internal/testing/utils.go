@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"math/rand"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -332,4 +333,23 @@ func WaitForCondition(condition func() bool, timeout time.Duration) bool {
 			}
 		}
 	}
+}
+
+func MakeByteArrayPayload(size int) []byte {
+	payload := make([]byte, size)
+	for i := 0; i < len(payload); i++ {
+		payload[i] = byte(i)
+	}
+	return payload
+}
+
+var letterRunes = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
+
+func MakeRandomString(n int) string {
+	rand.Seed(time.Now().UnixNano())
+	b := make([]rune, n)
+	for i := range b {
+		b[i] = letterRunes[rand.Intn(len(letterRunes))]
+	}
+	return string(b)
 }

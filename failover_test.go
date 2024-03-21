@@ -15,7 +15,7 @@ type FailoverTestSuite struct {
 	testing2.IgniteTestSuite
 }
 
-func TestFailoverTestSuiteSuite(t *testing.T) {
+func TestFailoverTestSuite(t *testing.T) {
 	suite.Run(t, new(FailoverTestSuite))
 }
 

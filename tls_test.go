@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 	testing2 "gitverse.ru/sbertech/ignite-go-client/internal/testing"
 	"os"
@@ -60,15 +61,20 @@ func (suite *TlsTestSuite) TestCreationPolicy() {
 			defer func() {
 				_ = cli.Close()
 			}()
-
-			if err != nil {
-				t.Fatal("failed to connect to cluster", err)
-			}
+			require.Nil(t, err)
 			version, err := cli.Version()
-			if err != nil {
-				t.Fatal("failed to connect to cluster", err)
-			}
+			require.Nil(t, err)
 			assert.True(t, len(version) > 0)
+		})
+
+		suite.T().Run(fmt.Sprintf("invalid_creds_%s", fixture.name), func(t *testing.T) {
+			_, err := Start(WithAddresses(defaultAddress), WithTls(fixture.supplier),
+				WithClientAttribute("clientName", "ignite-go"),
+				WithCredentials("invalid", "invalid"))
+
+			require.NotNil(t, err)
+			var authErr *ClientAuthenticationError
+			require.True(t, errors.As(err, &authErr))
 		})
 	}
 }

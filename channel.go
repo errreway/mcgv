@@ -81,6 +81,14 @@ func (err *ClientError) Error() string {
 	return err.Message
 }
 
+func (err *ClientProtocolError) Error() string {
+	return err.Message
+}
+
+func (err *ClientAuthenticationError) Error() string {
+	return err.Message
+}
+
 func (err *ClientServerError) Error() string {
 	return fmt.Sprintf("%s: %s", err.Code, err.Message)
 }
@@ -272,13 +280,26 @@ func (ch *tcpChannel) beginClose(err error) {
 		if !ok {
 			return true
 		}
-		req.err = createClientConnectionError("connection closed", err)
-		close(req.doneCh)
+		safeClose(req, createClientConnectionError("connection closed", err))
 		ch.pendingRequests.Delete(id)
 		return true
 	})
 	close(ch.doneCh)
 	_ = ch.socket.Close()
+}
+
+func safeClose(req *pendingRequest, err error) (closed bool) {
+	defer func() {
+		if recover() != nil {
+			closed = false
+		}
+	}()
+	if req == nil {
+		return false
+	}
+	req.err = err
+	close(req.doneCh)
+	return true
 }
 
 func (ch *tcpChannel) Close() {
@@ -387,7 +408,7 @@ LOOP:
 				break LOOP
 			}
 			req.responseData = data
-			close(req.doneCh)
+			safeClose(req, nil)
 		}
 	}
 	ch.beginClose(err)

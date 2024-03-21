@@ -56,11 +56,3 @@ func warmupCount() int {
 	}
 	return 3
 }
-
-func makeByteArrayPayload(size int) []byte {
-	payload := make([]byte, size)
-	for i := 0; i < len(payload); i++ {
-		payload[i] = byte(i)
-	}
-	return payload
-}
