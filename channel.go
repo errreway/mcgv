@@ -593,8 +593,23 @@ func (ch *tcpChannel) requestId() int64 {
 	return ch.idGen.Add(1)
 }
 
+func dial(addr string, cfg *ClientConfiguration) (net.Conn, error) {
+	var dialTimeout time.Duration
+	if cfg.requestTimeout > 0 {
+		dialTimeout = cfg.requestTimeout
+	} else {
+		dialTimeout = defaultTimeout
+	}
+	dialCtx, cancel := context.WithTimeout(context.Background(), dialTimeout)
+	defer func() {
+		cancel()
+	}()
+	var d net.Dialer
+	return d.DialContext(dialCtx, "tcp", addr)
+}
+
 func createTcpChannel(addr string, cfg *ClientConfiguration) (*tcpChannel, error) {
-	conn, err := net.Dial("tcp", addr)
+	conn, err := dial(addr, cfg)
 	if err != nil {
 		return nil, createClientConnectionError(fmt.Sprintf("failed to connect to %s", addr), err)
 	}
