@@ -6,6 +6,7 @@ import (
 	"github.com/stretchr/testify/suite"
 	testing2 "gitverse.ru/sbertech/ignite-go-client/internal/testing"
 	"math/rand"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -52,8 +53,13 @@ func (suite *FailoverTestSuite) TestFailover() {
 	var errCnt atomic.Int64
 	var successCnt atomic.Int64
 	stopCh := make(chan struct{})
+	var wg sync.WaitGroup
 	for i := 0; i < 10; i++ {
+		wg.Add(1)
 		go func() {
+			defer func() {
+				wg.Done()
+			}()
 			rnd := rand.New(rand.NewSource(time.Now().UnixNano()))
 		LOOP:
 			for {
@@ -83,7 +89,7 @@ func (suite *FailoverTestSuite) TestFailover() {
 		return successCnt.Load() > 2*currOk
 	}, 3*time.Second)
 	close(stopCh)
+	wg.Wait()
 	suite.T().Logf("Total errors %d, total ok %d", errCnt.Load(), successCnt.Load())
-	suite.Assert().True(errCnt.Load() == 0,
-		fmt.Sprintf("Total errors %d, total ok %d", errCnt.Load(), successCnt.Load()))
+	suite.Assert().True(errCnt.Load() == 0, fmt.Sprintf("Total errors %d, total ok %d", errCnt.Load(), successCnt.Load()))
 }

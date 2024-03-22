@@ -24,11 +24,11 @@ kill-ignite:
 
 test: build kill-ignite
 	@echo "IGNITE_HOME="$(IGNITE_HOME)
-	IGNITE_START_TIMEOUT=$(IGNITE_START_TIMEOUT) go test --tags=testing $(TEST_FLAGS) $(PACKAGES)
+	IGNITE_START_TIMEOUT=$(IGNITE_START_TIMEOUT) go test -race --tags=testing $(TEST_FLAGS) $(PACKAGES)
 
 test-ci: build kill-ignite
 	go install github.com/jstemmer/go-junit-report/v2@v2.1.0
-	IGNITE_START_TIMEOUT=$(IGNITE_START_TIMEOUT) go test --tags=testing -coverprofile=coverage.out $(TEST_FLAGS) $(PACKAGES)  2>&1 | $(GOPATH)/bin/go-junit-report -set-exit-code > test-report.xml
+	IGNITE_START_TIMEOUT=$(IGNITE_START_TIMEOUT) go test -race --tags=testing -coverprofile=coverage.out $(TEST_FLAGS) $(PACKAGES)  2>&1 | $(GOPATH)/bin/go-junit-report -set-exit-code > test-report.xml
 
 bench: build kill-ignite
 	IGNITE_START_TIMEOUT=$(IGNITE_START_TIMEOUT) WARMUPS=$(WARMUPS) go test -bench=$(BENCH) -test.benchtime=10s -timeout=40m --tags=testing $(TEST_FLAGS) ./benchmarks
