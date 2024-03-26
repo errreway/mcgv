@@ -29,7 +29,7 @@ func (suite *TtlTestSuite) TearDownSuite() {
 }
 
 func (suite *TtlTestSuite) TearDownTest() {
-	cli, err := Start(WithAddresses(defaultAddress))
+	cli, err := StartTestClient()
 	if err != nil {
 		suite.T().Fatal("failed to start client", err)
 	}
@@ -46,7 +46,7 @@ func (suite *TtlTestSuite) TearDownTest() {
 }
 
 func (suite *TtlTestSuite) TestCreationPolicy() {
-	cli, err := Start(WithAddresses(defaultAddress))
+	cli, err := StartTestClient()
 	if err != nil {
 		suite.T().Fatal("failed to start client", err)
 	}

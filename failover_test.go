@@ -38,7 +38,7 @@ func (suite *FailoverTestSuite) TestFailover() {
 		suite.T().Fatal("failed to start second grid", err)
 	}
 
-	cli, err := Start(WithAddresses(defaultAddress+":10800", defaultAddress+":10801"), WithShuffleAddresses(false))
+	cli, err := StartTestClient(WithAddresses(defaultAddress+":10800", defaultAddress+":10801"), WithShuffleAddresses(false))
 	if err != nil {
 		suite.T().Fatal("Failed to start client", err)
 		return

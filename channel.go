@@ -10,7 +10,9 @@ import (
 	"fmt"
 	"github.com/google/uuid"
 	"gitverse.ru/sbertech/ignite-go-client/internal/bitset"
+	"gitverse.ru/sbertech/ignite-go-client/logger"
 	"net"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -125,12 +127,13 @@ type tcpChannel struct {
 	pendingCh         chan int64
 	pendingRequests   sync.Map
 	doneCh            chan struct{}
-	serverId          uuid.UUID
+	serverId          *uuid.UUID
 	closed            atomic.Bool
 	supportedVersions map[string]bool
 	closeErr          atomic.Value
 	closeWg           sync.WaitGroup
 	clientCfg         *ClientConfiguration
+	log               *logger.Logger
 }
 
 type pendingRequest struct {
@@ -181,7 +184,22 @@ func (ch *tcpChannel) ProtocolContext() ProtocolContext {
 }
 
 func (ch *tcpChannel) Send(ctx context.Context, opCode int16, requestWriter func(output BinaryWriter) error, responseReader func(input BinaryReader, err error)) {
-	ch.send(ctx, ch.requestId(), opCode, requestWriter, responseReader)
+	reqId := ch.requestId()
+	ch.log.Trace(func() string {
+		return fmt.Sprintf("start performing request[id=%d, op=%d] on %s", reqId, opCode, ch)
+	})
+	if ch.log.Level() <= logger.TraceLevel {
+		responseReader = func(input BinaryReader, err error) {
+			ch.log.Trace(func() string {
+				if err != nil {
+					return fmt.Sprintf("request[id=%d, op=%d] failed on %s: %s", reqId, opCode, ch, err.Error())
+				}
+				return fmt.Sprintf("request[id=%d, op=%d] succeeded on %s", reqId, opCode, ch)
+			})
+			responseReader(input, err)
+		}
+	}
+	ch.send(ctx, reqId, opCode, requestWriter, responseReader)
 }
 
 func (ch *tcpChannel) send(ctx context.Context, id int64, opCode int16, requestWriter func(output BinaryWriter) error, responseReader func(input BinaryReader, err error)) {
@@ -273,6 +291,7 @@ func (ch *tcpChannel) beginClose(err error) {
 		return
 	}
 	if err != nil {
+		ch.log.Errorf("%s closed with error: %w", ch, err)
 		ch.closeErr.Store(err)
 	}
 	ch.pendingRequests.Range(func(id, val any) bool {
@@ -309,6 +328,24 @@ func (ch *tcpChannel) Close() {
 
 func (ch *tcpChannel) Closed() bool {
 	return ch.closed.Load()
+}
+
+func (ch *tcpChannel) String() string {
+	var sb strings.Builder
+	sb.WriteString("tcpChannel[addr=")
+	sb.WriteString(ch.addr)
+	ctx := ch.protocolCtx.Load()
+	if ctx != nil {
+		version := ctx.(ProtocolContext).Version()
+		sb.WriteString(", protoVer=")
+		sb.WriteString(version.String())
+	}
+	if ch.serverId != nil {
+		sb.WriteString(", serverId=")
+		sb.WriteString(ch.serverId.String())
+	}
+	sb.WriteRune(']')
+	return sb.String()
 }
 
 func (ch *tcpChannel) writeLoop() {
@@ -480,6 +517,10 @@ func (ch *tcpChannel) handshake(ver ProtocolVersion) error {
 		cancel()
 	}()
 	for {
+		ch.log.Debug(func() string {
+			ver := cliProtoCtx.Version()
+			return fmt.Sprintf("connecting to %s, performing handshake with version=%s", ch, ver.String())
+		})
 		srvCtx, err := ch.handshakeRound(ctx, cliProtoCtx, ch.clientCfg)
 		if err != nil {
 			return err
@@ -541,7 +582,7 @@ func (ch *tcpChannel) handshakeRound(ctx context.Context, cliProtoCtx ProtocolCo
 					err = fmt.Errorf("broken output from server: %w", err)
 					return
 				}
-				ch.serverId = serverId
+				ch.serverId = &serverId
 			}
 			ch.protocolCtx.Store(cliProtoCtx)
 		} else {
@@ -631,6 +672,7 @@ func createTcpChannel(addr string, cfg *ClientConfiguration) (*tcpChannel, error
 		doneCh:            make(chan struct{}),
 		supportedVersions: make(map[string]bool),
 		clientCfg:         cfg,
+		log:               cfg.logger,
 	}
 	ch.supportedVersions[V1_0_0] = true
 	ch.supportedVersions[V1_1_0] = true

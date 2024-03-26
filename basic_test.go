@@ -5,6 +5,9 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 	testing2 "gitverse.ru/sbertech/ignite-go-client/internal/testing"
+	"gitverse.ru/sbertech/ignite-go-client/logger"
+	"log"
+	"os"
 	"testing"
 )
 
@@ -15,6 +18,21 @@ const (
 
 type BasicTestSuite struct {
 	testing2.IgniteTestSuite
+}
+
+func StartTestClient(opts ...func(options *ClientConfiguration) error) (Client, error) {
+	dummyCfg := ClientConfiguration{}
+	for _, opt := range opts {
+		_ = opt(&dummyCfg)
+	}
+	if dummyCfg.addressesSupplier == nil {
+		opts = append(opts, WithAddresses(defaultAddress))
+	}
+	if dummyCfg.logger == nil {
+		sink, _ := logger.NewSink(log.New(os.Stderr, "", log.LstdFlags|log.Lmicroseconds), logger.DebugLevel) // level is ok, error can be ignored.
+		opts = append(opts, WithLoggingSink(sink))
+	}
+	return Start(opts...)
 }
 
 func TestBasicTestSuite(t *testing.T) {
@@ -33,7 +51,7 @@ func (suite *BasicTestSuite) TearDownSuite() {
 }
 
 func (suite *BasicTestSuite) TearDownTest() {
-	cli, err := Start(WithAddresses(defaultAddress))
+	cli, err := StartTestClient()
 	if err != nil {
 		suite.T().Fatal("failed to start client", err)
 	}
@@ -60,7 +78,7 @@ func (suite *BasicTestSuite) TestCorrectAddresses() {
 }
 
 func (suite *BasicTestSuite) TestCacheSize() {
-	cli, err := Start(WithAddresses(defaultAddress))
+	cli, err := StartTestClient()
 	if err != nil {
 		suite.T().Fatal("failed to start client", err)
 	}
@@ -90,7 +108,7 @@ func (suite *BasicTestSuite) TestCacheSize() {
 }
 
 func (suite *BasicTestSuite) TestCacheNames() {
-	cli, err := Start(WithAddresses(defaultAddress))
+	cli, err := StartTestClient()
 	if err != nil {
 		suite.T().Fatal("failed to start client", err)
 	}
@@ -113,7 +131,7 @@ func (suite *BasicTestSuite) TestCacheNames() {
 	require.Equal(suite.T(), cacheName, cache.Name())
 
 	var cli0 Client
-	cli0, err = Start(WithAddresses(defaultAddress))
+	cli0, err = StartTestClient()
 	if err != nil {
 		suite.T().Fatal("failed to start client", err)
 	}
@@ -140,7 +158,7 @@ func (suite *BasicTestSuite) TestCacheNames() {
 }
 
 func (suite *BasicTestSuite) TestDestroyCache() {
-	cli, err := Start(WithAddresses(defaultAddress))
+	cli, err := StartTestClient()
 	if err != nil {
 		suite.T().Fatal("failed to start client", err)
 	}
@@ -181,7 +199,7 @@ func (suite *BasicTestSuite) TestDestroyCache() {
 }
 
 func (suite *BasicTestSuite) TestCacheConfig() {
-	cli, err := Start(WithAddresses(defaultAddress))
+	cli, err := StartTestClient()
 	if err != nil {
 		suite.T().Fatal("failed to start client", err)
 	}
@@ -234,7 +252,7 @@ func (suite *BasicTestSuite) TestCacheConfig() {
 }
 
 func (suite *BasicTestSuite) TestQueryEntitiesConfig() {
-	cli, err := Start(WithAddresses(defaultAddress))
+	cli, err := StartTestClient()
 	if err != nil {
 		suite.T().Fatal("failed to start client", err)
 	}

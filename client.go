@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"errors"
+	"gitverse.ru/sbertech/ignite-go-client/logger"
 	"net"
 	"strconv"
 	"time"
@@ -33,6 +34,7 @@ type ClientConfiguration struct {
 	tlsConfigSupplier func() (*tls.Config, error)
 	requestTimeout    time.Duration
 	retryLimit        int
+	logger            *logger.Logger
 }
 
 func WithAddressSupplier(supplier func() ([]string, error)) func(config *ClientConfiguration) error {
@@ -115,6 +117,16 @@ func WithClientAttribute(key string, value string) func(config *ClientConfigurat
 	}
 }
 
+func WithLoggingSink(sink logger.Sink) func(config *ClientConfiguration) error {
+	return func(config *ClientConfiguration) error {
+		if sink == nil {
+			return nil
+		}
+		config.logger = &logger.Logger{Sink: sink}
+		return nil
+	}
+}
+
 const (
 	defaultTimeout    = 1 * time.Second
 	defaultRetryLimit = 0
@@ -132,6 +144,10 @@ func Start(opts ...func(options *ClientConfiguration) error) (Client, error) {
 				return nil, err
 			}
 		}
+	}
+	if cfg.logger == nil {
+		dfltSink, _ := logger.NewSink(nil, logger.OffLevel)
+		cfg.logger = &logger.Logger{Sink: dfltSink}
 	}
 	return startClient(cfg)
 }

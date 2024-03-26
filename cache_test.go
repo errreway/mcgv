@@ -27,7 +27,7 @@ func (suite *CacheTestSuite) SetupSuite() {
 	if err != nil {
 		suite.T().Fatal("Failed to start ignite instance", err)
 	}
-	suite.client, err = Start(WithAddresses(defaultAddress))
+	suite.client, err = StartTestClient(WithAddresses(defaultAddress))
 	if err != nil {
 		suite.T().Fatal("failed to start client", err)
 	}

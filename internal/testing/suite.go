@@ -33,6 +33,12 @@ func (suite *IgniteTestSuite) StartIgnite(opts ...func(params *IgniteParams)) (I
 	return ign, nil
 }
 
+//func (suite *IgniteTestSuite) StartClient(opts ...func(options *ignite.ClientConfiguration) error) (ignite.Client, error) {
+//	sink, _ := logger.NewStdErrSink(logger.DebugLevel) // level is ok, error ignored.
+//	opts = append(opts, ignite.WithLoggingSink(sink))
+//	return ignite.Start(opts...)
+//}
+
 func (suite *IgniteTestSuite) GetIgnite(idx int) IgniteInstance {
 	if idx >= len(suite.grids) {
 		return nil

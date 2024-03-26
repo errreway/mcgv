@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"gitverse.ru/sbertech/ignite-go-client/logger"
 	"math/rand"
 	"strings"
 	"sync"
@@ -17,6 +18,7 @@ type reliableChannel struct {
 	cfg           *ClientConfiguration
 	mux           sync.Mutex
 	closed        atomic.Bool
+	log           *logger.Logger
 }
 
 func (r *reliableChannel) Send(ctx context.Context, opCode int16, requestWriter func(output BinaryWriter) error, responseReader func(input BinaryReader, err error)) {
@@ -29,6 +31,7 @@ func (r *reliableChannel) Send(ctx context.Context, opCode int16, requestWriter 
 	for {
 		currCh, err := r.currentChannel()
 		if err != nil {
+			r.log.Errorf("connection failed: %s", err)
 			responseReader(NewBinaryReader(nil, 0), err)
 			return
 		}
@@ -46,6 +49,9 @@ func (r *reliableChannel) Send(ctx context.Context, opCode int16, requestWriter 
 		if !connectFailed || attemptsCnt == attemptsLimit {
 			return
 		}
+		r.log.Debug(func() string {
+			return fmt.Sprintf("retrying operation, retries left: %d", attemptsLimit-attemptsCnt)
+		})
 	}
 }
 
@@ -76,6 +82,7 @@ func (r *reliableChannel) Close() {
 	if r.closed.CompareAndSwap(false, true) {
 		r.mux.Lock()
 		defer r.mux.Unlock()
+		r.log.Infof("closing connection to %s", r.currCh.Load())
 		currCh := r.currCh.Load()
 		if currCh != nil {
 			currCh.(*tcpChannel).Close()
@@ -117,6 +124,9 @@ func (r *reliableChannel) initConnection() error {
 				continue
 			}
 		}
+		r.log.Debug(func() string {
+			return fmt.Sprintf("trying to init connection to %s", addresses[i])
+		})
 		var ch *tcpChannel = nil
 		ch, err = createTcpChannel(addresses[i], r.cfg)
 		if err == nil {
@@ -126,6 +136,9 @@ func (r *reliableChannel) initConnection() error {
 				r.attemptsLimit = len(addresses)
 			}
 			r.currCh.Store(ch)
+			r.log.Debug(func() string {
+				return fmt.Sprintf("successfully connected to %s", ch)
+			})
 			return nil
 		} else if i == len(addresses)-1 || !errors.As(err, &cliConnErr) {
 			break
@@ -154,8 +167,10 @@ func CreateReliableChannel(cfg *ClientConfiguration) (Channel, error) {
 	}
 	ret := &reliableChannel{
 		cfg: cfg,
+		log: cfg.logger,
 	}
 	if err := ret.initConnection(); err != nil {
+		ret.log.Errorf("connection failed: %s", err)
 		return nil, err
 	}
 	return ret, nil
