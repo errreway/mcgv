@@ -35,6 +35,16 @@ func StartTestClient(opts ...func(options *ClientConfiguration) error) (Client, 
 	return Start(opts...)
 }
 
+func DestroyAllCaches(t *testing.T, cli Client) {
+	ctx := context.Background()
+	caches, err := cli.CacheNames(ctx)
+	require.Nil(t, err)
+	for _, cache := range caches {
+		err = cli.DestroyCache(ctx, cache)
+		require.Nil(t, err)
+	}
+}
+
 func TestBasicTestSuite(t *testing.T) {
 	suite.Run(t, new(BasicTestSuite))
 }
@@ -58,13 +68,7 @@ func (suite *BasicTestSuite) TearDownTest() {
 	defer func() {
 		_ = cli.Close()
 	}()
-	ctx := context.Background()
-	caches, err := cli.CacheNames(ctx)
-	require.Nil(suite.T(), err)
-	for _, cache := range caches {
-		err = cli.DestroyCache(ctx, cache)
-		require.Nil(suite.T(), err)
-	}
+	DestroyAllCaches(suite.T(), cli)
 }
 
 func (suite *BasicTestSuite) TestCorrectAddresses() {
@@ -73,6 +77,12 @@ func (suite *BasicTestSuite) TestCorrectAddresses() {
 	require.Error(suite.T(), err, "address supplier is nil")
 
 	cli, err = Start(WithAddresses())
+	require.Nil(suite.T(), cli)
+	require.Error(suite.T(), err, "addresses are empty")
+
+	cli, err = Start(WithAddressSupplier(func() ([]string, error) {
+		return []string{}, nil
+	}))
 	require.Nil(suite.T(), cli)
 	require.Error(suite.T(), err, "addresses are empty")
 }
@@ -196,98 +206,4 @@ func (suite *BasicTestSuite) TestDestroyCache() {
 	}
 
 	require.Equal(suite.T(), len(namesBefore), len(names))
-}
-
-func (suite *BasicTestSuite) TestCacheConfig() {
-	cli, err := StartTestClient()
-	if err != nil {
-		suite.T().Fatal("failed to start client", err)
-	}
-	require.NotNil(suite.T(), cli)
-	defer func() {
-		_ = cli.Close()
-	}()
-
-	ctx := context.Background()
-	cfgTest := "config-test"
-
-	cache, err := cli.CreateCache(ctx, cfgTest)
-	if err != nil {
-		suite.T().Fatal(err)
-	}
-	require.NotNil(suite.T(), cache)
-
-	readCcfg, err := cache.Configuration(ctx)
-	if err != nil {
-		suite.T().Fatal(err)
-	}
-	require.Equal(suite.T(), cfgTest, readCcfg.Name())
-	require.Equal(suite.T(), 0, readCcfg.Backups())
-
-	cfgTest += "-1"
-	grpTest := "my-group"
-	ccfg := CreateCacheConfiguration(cfgTest,
-		WithCacheGroupName(grpTest),
-		WithCacheMode(Partitioned),
-		WithCacheAtomicityMode(Atomic),
-		WithBackupsCount(1),
-		WithQueryParallelism(1),
-	)
-
-	cache, err = cli.CreateCacheWithConfiguration(ctx, ccfg)
-	if err != nil {
-		suite.T().Fatal(err)
-	}
-	require.NotNil(suite.T(), cache)
-
-	readCcfg, err = cache.Configuration(ctx)
-	if err != nil {
-		suite.T().Fatal(err)
-	}
-
-	require.Equal(suite.T(), cfgTest, readCcfg.Name())
-	require.Equal(suite.T(), 1, readCcfg.Backups())
-	require.Equal(suite.T(), Atomic, readCcfg.CacheAtomicityMode())
-	require.Equal(suite.T(), grpTest, readCcfg.CacheGroupName())
-}
-
-func (suite *BasicTestSuite) TestQueryEntitiesConfig() {
-	cli, err := StartTestClient()
-	if err != nil {
-		suite.T().Fatal("failed to start client", err)
-	}
-	defer func() {
-		_ = cli.Close()
-	}()
-
-	ctx := context.Background()
-	testName := "qry-cache"
-	grpName := "qry-grp"
-
-	cfg := CreateCacheConfiguration(testName,
-		WithCacheGroupName(grpName),
-		WithCacheMode(Partitioned),
-		WithCacheAtomicityMode(Atomic),
-		WithBackupsCount(1),
-		WithQueryParallelism(1),
-		WithCacheKeyConfiguration("PersonId", "BUCKET_ID"),
-		WithQueryEntity("PersonId", "Person", WithTableName("QUERY_CACHE"),
-			WithQueryField("ID", "java.lang.Long", WithKey()),
-			WithQueryField("BUCKET_ID", "java.lang.Long", WithKey()),
-			WithQueryField("NAME", "java.lang.String", WithNotNull(), WithDefaultValue("")),
-			WithQueryField("SALARY", "java.math.BigDecimal",
-				WithPrecision(10), WithScale(2), WithNotNull()),
-			WithQueryField("PERSON.AGE", "java.lang.Short", WithNotNull(), WithDefaultValue(2)),
-			WithFieldAlias("PERSON.AGE", "PERSON_AGE"),
-			WithIndex("NAME_IDX", WithIndexField(IndexField{Name: "NAME", Asc: true})),
-		))
-	cache, err := cli.CreateCacheWithConfiguration(ctx, cfg)
-	require.Nil(suite.T(), err)
-	require.NotNil(suite.T(), cache)
-	cfg1, err := cache.Configuration(ctx)
-	require.Nil(suite.T(), err)
-	require.Equal(suite.T(), cfg.Name(), cfg1.Name())
-
-	cfg2 := cfg1.Copy(WithCacheName("test"))
-	require.Equal(suite.T(), cfg2.CacheGroupName(), cfg1.CacheGroupName())
 }

@@ -686,10 +686,8 @@ func (cache *cacheImpl) Size(ctx context.Context, peekModes ...CachePeekMode) (u
 		}
 		peekModesSz := int32(len(peekModes))
 		output.WriteInt32(peekModesSz)
-		if peekModesSz > 0 {
-			for _, peekMode := range peekModes {
-				output.WriteInt8(int8(peekMode))
-			}
+		for _, peekMode := range peekModes {
+			output.WriteInt8(int8(peekMode))
 		}
 		return nil
 	}, func(input BinaryReader, err0 error) {

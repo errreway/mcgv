@@ -6,21 +6,21 @@ import (
 	"time"
 )
 
-type CacheAtomicityMode = int32
+type CacheAtomicityMode int32
 
 const (
 	Transactional CacheAtomicityMode = 0
 	Atomic        CacheAtomicityMode = 1
 )
 
-type CacheMode = int32
+type CacheMode int32
 
 const (
 	Replicated  CacheMode = 1
 	Partitioned CacheMode = 2
 )
 
-type PartitionLossPolicy = int32
+type PartitionLossPolicy int32
 
 const (
 	ReadOnlySafe  PartitionLossPolicy = 0
@@ -30,7 +30,7 @@ const (
 	Ignore        PartitionLossPolicy = 4
 )
 
-type CacheWriteSynchronizationMode = int32
+type CacheWriteSynchronizationMode int32
 
 const (
 	FullSync    CacheWriteSynchronizationMode = 0
@@ -38,7 +38,7 @@ const (
 	PrimarySync CacheWriteSynchronizationMode = 2
 )
 
-type CacheRebalanceMode = int32
+type CacheRebalanceMode int32
 
 const (
 	Sync  CacheRebalanceMode = 0
@@ -116,8 +116,8 @@ func (q *QueryEntity) Copy() QueryEntity {
 		valFldName: q.valFldName,
 	}
 	if len(q.fields) > 0 {
-		ret.fields = make([]QueryField, len(ret.fields))
-		copy(q.fields, ret.fields)
+		ret.fields = make([]QueryField, len(q.fields))
+		copy(ret.fields, q.fields)
 	}
 	if len(q.aliases) > 0 {
 		ret.aliases = make(map[string]string, len(q.aliases))
@@ -173,7 +173,7 @@ func (q *QueryField) Scale() int {
 	return q.scale
 }
 
-type IndexType = int8
+type IndexType int8
 
 const (
 	Sorted     IndexType = 0
@@ -218,7 +218,7 @@ func (q *QueryIndex) Copy() QueryIndex {
 	szFlds := len(q.fields)
 	if szFlds > 0 {
 		ret.fields = make([]IndexField, szFlds)
-		copy(q.fields, ret.fields)
+		copy(ret.fields, q.fields)
 	}
 	return ret
 }
@@ -276,8 +276,6 @@ func (config *CacheConfiguration) marshall(ctx context.Context, marshaller marsh
 	for propCode, propValue := range config.props {
 		writer.WriteInt16(propCode)
 		switch val := propValue.(type) {
-		case time.Duration:
-			writer.WriteInt64(val.Milliseconds())
 		case string:
 			marshalString(writer, val)
 		case bool:
@@ -288,6 +286,16 @@ func (config *CacheConfiguration) marshall(ctx context.Context, marshaller marsh
 			writer.WriteInt32(val)
 		case int64:
 			writer.WriteInt64(val)
+		case CacheMode:
+			writer.WriteInt32(int32(val))
+		case CacheAtomicityMode:
+			writer.WriteInt32(int32(val))
+		case PartitionLossPolicy:
+			writer.WriteInt32(int32(val))
+		case CacheWriteSynchronizationMode:
+			writer.WriteInt32(int32(val))
+		case CacheRebalanceMode:
+			writer.WriteInt32(int32(val))
 		case ExpirePolicy:
 			{
 				if !protoCtx.SupportsExpiryPolicy() {
@@ -339,9 +347,9 @@ func unmarshall(ctx context.Context, marshaller marshaller, reader BinaryReader)
 	conf := CacheConfiguration{
 		props: props,
 	}
-	props[cacheAtomicityModeProp] = reader.ReadInt32()
+	props[cacheAtomicityModeProp] = CacheAtomicityMode(reader.ReadInt32())
 	props[backupsProp] = int(reader.ReadInt32())
-	props[cacheModeProp] = reader.ReadInt32()
+	props[cacheModeProp] = CacheMode(reader.ReadInt32())
 	props[copyOnReadProp] = reader.ReadBool()
 	if err = conf.setStringProperty(reader, dataRegionNameProp); err != nil {
 		return conf, err
@@ -358,14 +366,14 @@ func unmarshall(ctx context.Context, marshaller marshaller, reader BinaryReader)
 		return conf, err
 	}
 	props[onHeapCacheEnabledProp] = reader.ReadBool()
-	props[partitionLossPolicyProp] = reader.ReadInt32()
+	props[partitionLossPolicyProp] = PartitionLossPolicy(reader.ReadInt32())
 	props[queryDetailsMetricSizeProp] = int(reader.ReadInt32())
 	props[queryParallelismProp] = int(reader.ReadInt32())
 	props[readFromBackupProp] = reader.ReadBool()
 	reader.ReadInt32() // Skip deprecated RebalanceBatchSize
 	reader.ReadInt64() // Skip deprecated RebalanceBatchesPrefetchCount
 	reader.ReadInt64() // Skip deprecated RebalanceDelay
-	props[rebalanceModeProp] = reader.ReadInt32()
+	props[rebalanceModeProp] = CacheRebalanceMode(reader.ReadInt32())
 	props[rebalanceOrderProp] = int(reader.ReadInt32())
 	reader.ReadInt64() // Skip deprecated RebalanceThrottle
 	reader.ReadInt64() // Skip deprecated RebalanceTimeout
@@ -374,7 +382,7 @@ func unmarshall(ctx context.Context, marshaller marshaller, reader BinaryReader)
 	if err = conf.setStringProperty(reader, sqlSchemaProp); err != nil {
 		return conf, err
 	}
-	props[writeSyncModeProp] = reader.ReadInt32()
+	props[writeSyncModeProp] = CacheWriteSynchronizationMode(reader.ReadInt32())
 	err = setCollectionProperty(&conf, reader, cacheKeyConfigProp, func(reader BinaryReader) (CacheKeyConfig, error) {
 		typeName, err0 := unmarshalString(reader, false)
 		if err0 != nil {
@@ -426,11 +434,9 @@ func marshalQueryEntity(ctx context.Context, marshaller marshaller) func(writer 
 			return err
 		}
 		writer.WriteInt32(int32(len(entity.Aliases())))
-		if len(entity.Aliases()) > 0 {
-			for orig, alias := range entity.Aliases() {
-				marshalString(writer, orig)
-				marshalString(writer, alias)
-			}
+		for orig, alias := range entity.Aliases() {
+			marshalString(writer, orig)
+			marshalString(writer, alias)
 		}
 		if err := writeCollection(writer, entity.Indexes(), marshalQueryIndex); err != nil {
 			return err
@@ -462,7 +468,7 @@ func marshalQueryField(ctx context.Context, marshaller marshaller) func(writer B
 
 func marshalQueryIndex(writer BinaryWriter, index QueryIndex) error {
 	marshalString(writer, index.Name())
-	writer.WriteInt8(index.Type())
+	writer.WriteInt8(int8(index.Type()))
 	writer.WriteInt32(int32(index.InlineSize()))
 	err := writeCollection(writer, index.Fields(), func(writer0 BinaryWriter, field IndexField) error {
 		marshalString(writer0, field.Name)
@@ -562,7 +568,7 @@ func unmarshallQueryIndex(reader BinaryReader) (QueryIndex, error) {
 		return idx, err
 	}
 	idx.name = name
-	idx.idxType = reader.ReadInt8()
+	idx.idxType = IndexType(reader.ReadInt8())
 	idx.inlineSz = int(reader.ReadInt32())
 	idx.fields, err = readCollection(reader, func(reader0 BinaryReader) (IndexField, error) {
 		fldName, err0 := unmarshalString(reader0, false)
@@ -611,7 +617,7 @@ func (config *CacheConfiguration) Copy(opts ...func(*CacheConfiguration)) CacheC
 				szVal := len(val)
 				if szVal > 0 {
 					cpKeyCfg := make([]CacheKeyConfig, szVal)
-					copy(val, cpKeyCfg)
+					copy(cpKeyCfg, val)
 					newConfig.props[code] = cpKeyCfg
 				}
 			}
@@ -619,10 +625,8 @@ func (config *CacheConfiguration) Copy(opts ...func(*CacheConfiguration)) CacheC
 			newConfig.props[code] = val
 		}
 	}
-	if len(opts) > 0 {
-		for _, opt := range opts {
-			opt(config)
-		}
+	for _, opt := range opts {
+		opt(&newConfig)
 	}
 	return newConfig
 }
@@ -916,11 +920,9 @@ func WithCacheKeyConfiguration(typeName string, affinityKeyField string) func(*C
 		} else {
 			keyConfigs = val.([]CacheKeyConfig)
 		}
-		if len(keyConfigs) > 0 {
-			for _, keyConfig := range keyConfigs {
-				if keyConfig.AffinityKeyFieldName() == affinityKeyField {
-					return
-				}
+		for _, keyConfig := range keyConfigs {
+			if keyConfig.AffinityKeyFieldName() == affinityKeyField {
+				return
 			}
 		}
 		keyConfigs = append(keyConfigs, &cacheKeyConfig{typeName: typeName, affKeyFldName: affinityKeyField})
@@ -937,21 +939,17 @@ func WithQueryEntity(keyType string, valueType string, opts ...func(*QueryEntity
 		} else {
 			queryEntities = val.([]QueryEntity)
 		}
-		if len(queryEntities) > 0 {
-			for _, ent := range queryEntities {
-				if valueType == ent.ValueType() {
-					return
-				}
+		for _, ent := range queryEntities {
+			if valueType == ent.ValueType() {
+				return
 			}
 		}
 		entity := QueryEntity{
 			keyType: keyType,
 			valType: valueType,
 		}
-		if len(opts) > 0 {
-			for _, opt := range opts {
-				opt(&entity)
-			}
+		for _, opt := range opts {
+			opt(&entity)
 		}
 		queryEntities = append(queryEntities, entity)
 		config.props[queryEntitiesProp] = queryEntities
@@ -996,10 +994,8 @@ func WithQueryField(name string, typeName string, opts ...func(field *QueryField
 			scale:     -1,
 			dfltVal:   nil,
 		}
-		if len(opts) > 0 {
-			for _, opt := range opts {
-				opt(&field)
-			}
+		for _, opt := range opts {
+			opt(&field)
 		}
 		entity.fields = append(entity.fields, field)
 	}
@@ -1055,10 +1051,8 @@ func WithIndex(name string, opts ...func(index *QueryIndex)) func(entity *QueryE
 			}
 		}
 		idx := QueryIndex{name: name, inlineSz: -1, idxType: Sorted, fields: make([]IndexField, 0)}
-		if len(opts) > 0 {
-			for _, opt := range opts {
-				opt(&idx)
-			}
+		for _, opt := range opts {
+			opt(&idx)
 		}
 		entity.indexes = append(entity.indexes, idx)
 	}

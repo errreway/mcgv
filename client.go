@@ -138,11 +138,9 @@ func Start(opts ...func(options *ClientConfiguration) error) (Client, error) {
 		retryLimit:       defaultRetryLimit,
 		shuffleAddresses: true,
 	}
-	if len(opts) > 0 {
-		for _, opt := range opts {
-			if err := opt(&cfg); err != nil {
-				return nil, err
-			}
+	for _, opt := range opts {
+		if err := opt(&cfg); err != nil {
+			return nil, err
 		}
 	}
 	if cfg.logger == nil {

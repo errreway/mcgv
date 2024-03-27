@@ -3,14 +3,18 @@
 package benchmarks
 
 import (
-	"context"
 	"gitverse.ru/sbertech/ignite-go-client"
 	"os"
 	"strconv"
+	"strings"
 	"testing"
 )
 
-const EnvWarmupCount = "WARMUPS"
+const (
+	EnvWarmupCount   = "WARMUPS"
+	EnvIgniteHosts   = "IGNITE_HOSTS"
+	defaultWarmupCnt = 3
+)
 
 func CacheBenchmarker(b *testing.B, cliCreate func() (ignite.Client, ignite.Cache), fixture func(c ignite.Cache), f func(b *testing.B, c ignite.Cache)) {
 	warmups := warmupCount()
@@ -38,21 +42,33 @@ func CacheBenchmarker(b *testing.B, cliCreate func() (ignite.Client, ignite.Cach
 		for i := 0; i < warmups; i++ {
 			f(b, cache)
 		}
-		if err := cache.RemoveAll(context.Background()); err != nil {
-			b.Error("failed to remove all data")
-		}
 	}
 	warmJvmUp()
 	runner(b, true)
 }
 
 func warmupCount() int {
-	if s := os.Getenv(EnvWarmupCount); s != "" {
+	if s := getEnv(EnvWarmupCount); len(s) > 0 {
 		if i, err := strconv.ParseInt(s, 10, 32); err != nil {
 			panic(err)
 		} else {
 			return int(i)
 		}
 	}
-	return 3
+	return defaultWarmupCnt
+}
+
+func IgniteHosts() []string {
+	if s := getEnv(EnvIgniteHosts); len(s) > 0 {
+		return strings.Split(s, ";")
+	}
+	return []string{"localhost"}
+}
+
+func getEnv(name string) string {
+	if s := os.Getenv(name); len(s) > 0 {
+		s = strings.TrimSpace(s)
+		return s
+	}
+	return ""
 }

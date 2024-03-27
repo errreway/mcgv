@@ -32,15 +32,8 @@ func Benchmark_PutGet_Bytearray_Large(b *testing.B) {
 }
 
 func benchBinaryPutGet(b *testing.B, payloadSz int) {
-	cluster, err := testing2.StartIgnite()
-	if err != nil {
-		b.Fatal("Failed to startClient suite", err)
-	}
-	defer func() {
-		_ = cluster.Kill()
-	}()
 	cliCreate := func() (ignite.Client, ignite.Cache) {
-		cli, err := ignite.Start(ignite.WithAddresses("localhost"))
+		cli, err := ignite.Start(ignite.WithAddresses(IgniteHosts()...))
 		if err != nil {
 			b.Fatalf("failed to connect to cluster")
 		}

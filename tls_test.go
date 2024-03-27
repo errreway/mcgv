@@ -44,7 +44,7 @@ func (suite *TlsTestSuite) TearDownSuite() {
 	suite.KillAllGrids()
 }
 
-func (suite *TlsTestSuite) TestCreationPolicy() {
+func (suite *TlsTestSuite) TestTlsConnection() {
 	fixtures := []struct {
 		name     string
 		supplier func() (*tls.Config, error)

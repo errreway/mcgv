@@ -11,6 +11,7 @@ import (
 
 type TtlTestSuite struct {
 	testing2.IgniteTestSuite
+	cli Client
 }
 
 func TestTtlTestSuite(t *testing.T) {
@@ -22,38 +23,18 @@ func (suite *TtlTestSuite) SetupSuite() {
 	if err != nil {
 		suite.T().Fatal("Failed to start ignite instance", err)
 	}
+	suite.cli, err = StartTestClient()
+	if err != nil {
+		suite.T().Fatal("failed to start client", err)
+	}
 }
 
 func (suite *TtlTestSuite) TearDownSuite() {
+	_ = suite.cli.Close()
 	suite.KillAllGrids()
 }
 
-func (suite *TtlTestSuite) TearDownTest() {
-	cli, err := StartTestClient()
-	if err != nil {
-		suite.T().Fatal("failed to start client", err)
-	}
-	defer func() {
-		_ = cli.Close()
-	}()
-	ctx := context.Background()
-	caches, err := cli.CacheNames(ctx)
-	require.Nil(suite.T(), err)
-	for _, cache := range caches {
-		err = cli.DestroyCache(ctx, cache)
-		require.Nil(suite.T(), err)
-	}
-}
-
 func (suite *TtlTestSuite) TestCreationPolicy() {
-	cli, err := StartTestClient()
-	if err != nil {
-		suite.T().Fatal("failed to start client", err)
-	}
-	defer func() {
-		_ = cli.Close()
-	}()
-
 	fixtures := []struct {
 		name     string
 		supplier func() (Cache, error)
@@ -64,7 +45,7 @@ func (suite *TtlTestSuite) TestCreationPolicy() {
 			defer func() {
 				cancel()
 			}()
-			cache, err0 := cli.GetOrCreateCache(ctx, "test")
+			cache, err0 := suite.cli.GetOrCreateCache(ctx, cacheName)
 			if err0 != nil {
 				return nil, err0
 			}
@@ -76,8 +57,8 @@ func (suite *TtlTestSuite) TestCreationPolicy() {
 			defer func() {
 				cancel()
 			}()
-			return cli.CreateCacheWithConfiguration(ctx,
-				CreateCacheConfiguration("test", WithExpirePolicy(1*time.Second, DurationZero, DurationZero)))
+			return suite.cli.CreateCacheWithConfiguration(ctx,
+				CreateCacheConfiguration(cacheName, WithExpirePolicy(1*time.Second, DurationZero, DurationZero)))
 		}},
 	}
 
@@ -86,10 +67,11 @@ func (suite *TtlTestSuite) TestCreationPolicy() {
 			ctx := context.Background()
 			cache, err := fixture.supplier()
 			require.Nil(suite.T(), err)
-			err = cache.Put(ctx, "test", "test")
 			defer func() {
-				_ = cli.DestroyCache(ctx, "test")
+				_ = suite.cli.DestroyCache(ctx, cacheName)
 			}()
+
+			err = cache.Put(ctx, "test", "test")
 			require.Nil(suite.T(), err)
 			<-time.After(1200 * time.Millisecond)
 			contains, err := cache.ContainsKey(ctx, "test")
