@@ -3,6 +3,7 @@
 package benchmarks
 
 import (
+	"context"
 	"gitverse.ru/sbertech/ignite-go-client"
 	"os"
 	"strconv"
@@ -16,7 +17,7 @@ const (
 	defaultWarmupCnt = 3
 )
 
-func CacheBenchmarker(b *testing.B, cliCreate func() (ignite.Client, ignite.Cache), fixture func(c ignite.Cache), f func(b *testing.B, c ignite.Cache)) {
+func CacheBenchmarker(b *testing.B, cliCreate func() (*ignite.Client, *ignite.Cache), fixture func(c *ignite.Cache), f func(b *testing.B, c *ignite.Cache)) {
 	warmups := warmupCount()
 	if warmups > 0 {
 		b.Logf("Warmups: %d", warmups)
@@ -24,7 +25,7 @@ func CacheBenchmarker(b *testing.B, cliCreate func() (ignite.Client, ignite.Cach
 	runner := func(b *testing.B, smart bool) {
 		cli, cache := cliCreate()
 		defer func() {
-			if err := cli.Close(); err != nil {
+			if err := cli.Close(context.Background()); err != nil {
 				b.Log("Test warning, client not shutdown", err)
 			}
 		}()
@@ -37,7 +38,7 @@ func CacheBenchmarker(b *testing.B, cliCreate func() (ignite.Client, ignite.Cach
 	warmJvmUp := func() {
 		client, cache := cliCreate()
 		defer func() {
-			_ = client.Close()
+			_ = client.Close(context.Background())
 		}()
 		for i := 0; i < warmups; i++ {
 			f(b, cache)

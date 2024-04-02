@@ -109,7 +109,7 @@ func TestDefaultSink_Basic(t *testing.T) {
 
 func TestDefaultSinkCreationError(t *testing.T) {
 	_, err := NewSink(nil, _minLevel-1)
-	require.NotNil(t, err)
+	require.Error(t, err)
 	_, err = NewSink(nil, _maxLevel+1)
-	require.NotNil(t, err)
+	require.Error(t, err)
 }

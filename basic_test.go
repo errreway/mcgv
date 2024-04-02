@@ -2,6 +2,7 @@ package ignite
 
 import (
 	"context"
+	"fmt"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 	testing2 "gitverse.ru/sbertech/ignite-go-client/internal/testing"
@@ -9,6 +10,7 @@ import (
 	"log"
 	"os"
 	"testing"
+	"time"
 )
 
 const (
@@ -20,8 +22,11 @@ type BasicTestSuite struct {
 	testing2.IgniteTestSuite
 }
 
-func StartTestClient(opts ...func(options *ClientConfiguration) error) (Client, error) {
-	dummyCfg := ClientConfiguration{}
+func StartTestClient(ctx context.Context, opts ...ClientConfigurationOption) (*Client, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	dummyCfg := clientConfiguration{}
 	for _, opt := range opts {
 		_ = opt(&dummyCfg)
 	}
@@ -32,10 +37,10 @@ func StartTestClient(opts ...func(options *ClientConfiguration) error) (Client, 
 		sink, _ := logger.NewSink(log.New(os.Stderr, "", log.LstdFlags|log.Lmicroseconds), logger.DebugLevel) // level is ok, error can be ignored.
 		opts = append(opts, WithLoggingSink(sink))
 	}
-	return Start(opts...)
+	return Start(ctx, opts...)
 }
 
-func DestroyAllCaches(t *testing.T, cli Client) {
+func DestroyAllCaches(t *testing.T, cli *Client) {
 	ctx := context.Background()
 	caches, err := cli.CacheNames(ctx)
 	require.Nil(t, err)
@@ -61,42 +66,59 @@ func (suite *BasicTestSuite) TearDownSuite() {
 }
 
 func (suite *BasicTestSuite) TearDownTest() {
-	cli, err := StartTestClient()
+	cli, err := StartTestClient(context.Background())
 	if err != nil {
 		suite.T().Fatal("failed to start client", err)
 	}
 	defer func() {
-		_ = cli.Close()
+		_ = cli.Close(context.Background())
 	}()
 	DestroyAllCaches(suite.T(), cli)
 }
 
 func (suite *BasicTestSuite) TestCorrectAddresses() {
-	cli, err := Start()
+	cli, err := Start(context.Background())
 	require.Nil(suite.T(), cli)
 	require.Error(suite.T(), err, "address supplier is nil")
 
-	cli, err = Start(WithAddresses())
+	cli, err = Start(context.Background(), WithAddresses())
 	require.Nil(suite.T(), cli)
 	require.Error(suite.T(), err, "addresses are empty")
 
-	cli, err = Start(WithAddressSupplier(func() ([]string, error) {
+	cli, err = Start(context.Background(), WithAddressSupplier(func(_ context.Context) ([]string, error) {
 		return []string{}, nil
 	}))
 	require.Nil(suite.T(), cli)
 	require.Error(suite.T(), err, "addresses are empty")
 }
 
+func (suite *BasicTestSuite) TestSettingProtocol() {
+	for _, protoVer := range []ProtocolVersion{{0, 9, 0}, {1, 8, 0}, {1, 9, 0}} {
+		_, err := StartTestClient(context.Background(), WithProtocolContext(protoVer))
+		require.Error(suite.T(), err, fmt.Sprintf("version %s is not supported", protoVer.String()))
+	}
+
+	correctVer := ProtocolVersion{1, 0, 0}
+	cli, err := StartTestClient(context.Background(), WithProtocolContext(correctVer))
+	defer func() {
+		_ = cli.Close(context.Background())
+	}()
+	require.Nil(suite.T(), err)
+	ver, err := cli.Version()
+	require.Nil(suite.T(), err)
+	require.Equal(suite.T(), correctVer.String(), ver)
+}
+
 func (suite *BasicTestSuite) TestCacheSize() {
-	cli, err := StartTestClient()
+	cli, err := StartTestClient(context.Background())
 	if err != nil {
 		suite.T().Fatal("failed to start client", err)
 	}
 	defer func() {
-		_ = cli.Close()
+		_ = cli.Close(context.Background())
 	}()
 
-	var cache Cache
+	var cache *Cache
 	ctx := context.Background()
 	cache, err = cli.GetOrCreateCache(ctx, cacheName)
 	if err != nil {
@@ -118,12 +140,12 @@ func (suite *BasicTestSuite) TestCacheSize() {
 }
 
 func (suite *BasicTestSuite) TestCacheNames() {
-	cli, err := StartTestClient()
+	cli, err := StartTestClient(context.Background())
 	if err != nil {
 		suite.T().Fatal("failed to start client", err)
 	}
 	defer func() {
-		_ = cli.Close()
+		_ = cli.Close(context.Background())
 	}()
 
 	var names []string
@@ -133,26 +155,26 @@ func (suite *BasicTestSuite) TestCacheNames() {
 	require.Nil(suite.T(), err)
 	require.Equal(suite.T(), 0, len(names))
 
-	var cache Cache
+	var cache *Cache
 	cache, err = cli.CreateCache(ctx, cacheName)
 
 	require.Nil(suite.T(), err)
 	require.NotNil(suite.T(), cache)
 	require.Equal(suite.T(), cacheName, cache.Name())
 
-	var cli0 Client
-	cli0, err = StartTestClient()
+	var cli0 *Client
+	cli0, err = StartTestClient(context.Background())
 	if err != nil {
 		suite.T().Fatal("failed to start client", err)
 	}
 
 	defer func() {
-		_ = cli0.Close()
+		_ = cli0.Close(context.Background())
 	}()
 
 	cache, err = cli0.CreateCache(ctx, cacheName)
 
-	require.NotNil(suite.T(), err)
+	require.Error(suite.T(), err)
 	require.Nil(suite.T(), cache)
 
 	cache, err = cli0.GetOrCreateCache(ctx, cacheName)
@@ -168,13 +190,13 @@ func (suite *BasicTestSuite) TestCacheNames() {
 }
 
 func (suite *BasicTestSuite) TestDestroyCache() {
-	cli, err := StartTestClient()
+	cli, err := StartTestClient(context.Background())
 	if err != nil {
 		suite.T().Fatal("failed to start client", err)
 	}
 	require.NotNil(suite.T(), cli)
 	defer func() {
-		_ = cli.Close()
+		_ = cli.Close(context.Background())
 	}()
 
 	ctx := context.Background()
@@ -185,7 +207,7 @@ func (suite *BasicTestSuite) TestDestroyCache() {
 
 	toDestroy := "to-destroy"
 
-	var cache Cache
+	var cache *Cache
 	cache, err = cli.CreateCache(ctx, toDestroy)
 	if err != nil {
 		suite.T().Fatal(err)
@@ -206,4 +228,28 @@ func (suite *BasicTestSuite) TestDestroyCache() {
 	}
 
 	require.Equal(suite.T(), len(namesBefore), len(names))
+}
+
+func (suite *BasicTestSuite) TestTimeouts() {
+	cli, err := StartTestClient(context.Background(), WithRequestTimeout(10*time.Second))
+	require.Nil(suite.T(), err)
+	defer func() {
+		_ = cli.Close(context.Background())
+	}()
+
+	cache, err := cli.GetOrCreateCache(context.Background(), cacheName)
+	require.Nil(suite.T(), err)
+
+	// Put large entry that causes cancelling
+	largeEntry := testing2.MakeByteArrayPayload(10 * 1024 * 1024)
+
+	// Should cancel because timeout is too small
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
+	defer cancel()
+	err = cache.Put(ctx, "key", largeEntry)
+	require.Error(suite.T(), err)
+
+	// Retry with default large timeout
+	err = cache.Put(context.Background(), "key", largeEntry)
+	require.Nil(suite.T(), err)
 }

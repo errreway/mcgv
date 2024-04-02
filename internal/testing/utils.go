@@ -200,7 +200,8 @@ func StartIgnite(opts ...func(params *IgniteParams)) (IgniteInstance, error) {
 		case sig := <-sigs:
 			_ = ignInstance.Kill()
 			signal.Reset(syscall.SIGINT, syscall.SIGTERM)
-			if proc, err := os.FindProcess(syscall.Getpid()); err != nil {
+			var proc *os.Process
+			if proc, err = os.FindProcess(syscall.Getpid()); err != nil {
 				_ = proc.Signal(sig)
 			}
 			return
@@ -210,11 +211,13 @@ func StartIgnite(opts ...func(params *IgniteParams)) (IgniteInstance, error) {
 		}
 	}()
 	res := WaitForCondition(func() bool {
-		logFiles, err := GetLogFiles(params.InstanceIdx)
+		var logFiles []string
+		logFiles, err = GetLogFiles(params.InstanceIdx)
 		if err != nil {
 			panic(fmt.Sprintf("Cannot find log files: %s", err.Error()))
 		}
-		reg, err := regexp.Compile("^Topology snapshot.*")
+		var reg *regexp.Regexp
+		reg, err = regexp.Compile("^Topology snapshot.*")
 		if err != nil {
 			panic(fmt.Sprintf("Invalid regex: %s", err.Error()))
 		}

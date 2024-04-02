@@ -11,7 +11,7 @@ import (
 
 type CacheConfigTestSuite struct {
 	testing2.IgniteTestSuite
-	cli Client
+	cli *Client
 }
 
 func TestCacheConfigTestSuite(t *testing.T) {
@@ -23,7 +23,7 @@ func (suite *CacheConfigTestSuite) SetupSuite() {
 	if err != nil {
 		suite.T().Fatal("Failed to start ignite instance", err)
 	}
-	suite.cli, err = StartTestClient()
+	suite.cli, err = StartTestClient(context.Background())
 	if err != nil {
 		suite.T().Fatal("failed to start client", err)
 	}
@@ -34,14 +34,14 @@ func (suite *CacheConfigTestSuite) TearDownTest() {
 }
 
 func (suite *CacheConfigTestSuite) TearDownSuite() {
-	_ = suite.cli.Close()
+	_ = suite.cli.Close(context.Background())
 	suite.KillAllGrids()
 }
 
-var testCacheCfg CacheConfiguration = CreateCacheConfiguration(cacheName,
+var testCacheCfg = CreateCacheConfiguration(cacheName,
 	WithBackupsCount(2),
-	WithCacheMode(Partitioned),
-	WithCacheAtomicityMode(Transactional),
+	WithCacheMode(PartitionedCacheMode),
+	WithCacheAtomicityMode(TransactionalAtomicityMode),
 	WithCopyOnRead(true),
 	WithDataRegionName("default"),
 	WithEagerTtl(false),
@@ -49,18 +49,18 @@ var testCacheCfg CacheConfiguration = CreateCacheConfiguration(cacheName,
 	WithMaxConcurrentAsyncOperations(100),
 	WithMaxQueryIteratorsCount(100),
 	WithOnHeapCacheEnabled(true),
-	WithPartitionLossPolicy(ReadWriteSafe),
+	WithPartitionLossPolicy(ReadWriteSafeLossPolicy),
 	WithQueryDetailsMetricsSize(100),
 	WithQueryParallelism(20),
 	WithReadFromBackup(true),
-	WithRebalanceMode(Sync),
+	WithRebalanceMode(SyncRebalanceMode),
 	WithRebalanceOrder(2),
 	WithSqlEscapeAll(true),
 	WithStatsEnabled(true),
 	WithSqlIndexMaxInlineSize(200),
 	WithSqlSchema("PUBLIC"),
-	WithWriteSynchronizationMode(FullSync),
-	WithExpirePolicy(1*time.Second, 2*time.Second, 3*time.Second),
+	WithWriteSynchronizationMode(FullSyncSynchronizationMode),
+	WithExpiryPolicy(1*time.Second, 2*time.Second, 3*time.Second),
 	WithCacheKeyConfiguration("PersonId", "BUCKET_ID"),
 	WithQueryEntity("PersonId", "Person", WithTableName("QUERY_CACHE"),
 		WithKeyFieldName("KEY"),
@@ -82,18 +82,18 @@ var testCacheCfg CacheConfiguration = CreateCacheConfiguration(cacheName,
 func (suite *CacheConfigTestSuite) TestCacheConfig() {
 	fixtures := []struct {
 		name          string
-		cacheCreation func() (Cache, error)
+		cacheCreation func() (*Cache, error)
 	}{
 		{
 			"CreateWithConfiguration",
-			func() (Cache, error) {
+			func() (*Cache, error) {
 				ctx := context.Background()
 				return suite.cli.CreateCacheWithConfiguration(ctx, testCacheCfg)
 			},
 		},
 		{
 			"GetOrCreateWithConfiguration",
-			func() (Cache, error) {
+			func() (*Cache, error) {
 				ctx := context.Background()
 				_, err := suite.cli.GetOrCreateCacheWithConfiguration(ctx, testCacheCfg)
 				require.Nil(suite.T(), err)
@@ -162,7 +162,7 @@ func requireEqualsCacheConfiguration(t *testing.T, c1 *CacheConfiguration, c2 *C
 	requireSliceEquals(t, c1.QueryEntities(), c2.QueryEntities(), requireEqualsQueryEntity)
 }
 
-func requireEqualsExpiryPolicy(t *testing.T, p1 ExpirePolicy, p2 ExpirePolicy) {
+func requireEqualsExpiryPolicy(t *testing.T, p1 *ExpiryPolicy, p2 *ExpiryPolicy) {
 	if p1 == nil && p2 == nil {
 		return
 	}
@@ -172,16 +172,12 @@ func requireEqualsExpiryPolicy(t *testing.T, p1 ExpirePolicy, p2 ExpirePolicy) {
 	require.Equal(t, p1.Creation(), p2.Creation())
 }
 
-func requireEqualsKeyConfig(t *testing.T, k1 CacheKeyConfig, k2 CacheKeyConfig) {
-	if k1 == nil && k2 == nil {
-		return
-	}
-	require.True(t, k1 != nil || k2 != nil)
+func requireEqualsKeyConfig(t *testing.T, k1 *CacheKeyConfig, k2 *CacheKeyConfig) {
 	require.Equal(t, k1.TypeName(), k2.TypeName())
 	require.Equal(t, k1.AffinityKeyFieldName(), k2.AffinityKeyFieldName())
 }
 
-func requireEqualsQueryEntity(t *testing.T, e1 QueryEntity, e2 QueryEntity) {
+func requireEqualsQueryEntity(t *testing.T, e1 *QueryEntity, e2 *QueryEntity) {
 	require.Equal(t, e1.KeyType(), e2.KeyType())
 	require.Equal(t, e1.ValueType(), e2.ValueType())
 	require.Equal(t, e1.TableName(), e2.TableName())
@@ -208,7 +204,7 @@ func requireEqualsQueryEntity(t *testing.T, e1 QueryEntity, e2 QueryEntity) {
 	}
 }
 
-func requireEqualsQueryField(t *testing.T, f1 QueryField, f2 QueryField) {
+func requireEqualsQueryField(t *testing.T, f1 *QueryField, f2 *QueryField) {
 	require.Equal(t, f1.Name(), f2.Name())
 	require.Equal(t, f1.TypeName(), f2.TypeName())
 	require.Equal(t, f1.IsKey(), f2.IsKey())
@@ -218,19 +214,19 @@ func requireEqualsQueryField(t *testing.T, f1 QueryField, f2 QueryField) {
 	require.Equal(t, f1.Scale(), f2.Scale())
 }
 
-func requireEqualsQueryIndex(t *testing.T, q1 QueryIndex, q2 QueryIndex) {
+func requireEqualsQueryIndex(t *testing.T, q1 *QueryIndex, q2 *QueryIndex) {
 	require.Equal(t, q1.Name(), q2.Name())
 	require.Equal(t, q1.Type(), q2.Type())
 	require.Equal(t, q1.InlineSize(), q2.InlineSize())
-	requireSliceEquals(t, q1.Fields(), q2.Fields(), func(t *testing.T, f1 IndexField, f2 IndexField) {
+	requireSliceEquals(t, q1.Fields(), q2.Fields(), func(t *testing.T, f1 *IndexField, f2 *IndexField) {
 		require.Equal(t, f1.Name, f2.Name)
 		require.Equal(t, f1.Asc, f2.Asc)
 	})
 }
 
-func requireSliceEquals[T any](t *testing.T, s1 []T, s2 []T, eq func(t *testing.T, el1 T, el2 T)) {
+func requireSliceEquals[T any](t *testing.T, s1 []T, s2 []T, eq func(t *testing.T, el1 *T, el2 *T)) {
 	require.Equal(t, len(s1), len(s2))
 	for i := 0; i < len(s1); i++ {
-		eq(t, s1[i], s2[i])
+		eq(t, &s1[i], &s2[i])
 	}
 }

@@ -11,7 +11,7 @@ import (
 
 type TtlTestSuite struct {
 	testing2.IgniteTestSuite
-	cli Client
+	cli *Client
 }
 
 func TestTtlTestSuite(t *testing.T) {
@@ -23,23 +23,23 @@ func (suite *TtlTestSuite) SetupSuite() {
 	if err != nil {
 		suite.T().Fatal("Failed to start ignite instance", err)
 	}
-	suite.cli, err = StartTestClient()
+	suite.cli, err = StartTestClient(context.Background())
 	if err != nil {
 		suite.T().Fatal("failed to start client", err)
 	}
 }
 
 func (suite *TtlTestSuite) TearDownSuite() {
-	_ = suite.cli.Close()
+	_ = suite.cli.Close(context.Background())
 	suite.KillAllGrids()
 }
 
 func (suite *TtlTestSuite) TestCreationPolicy() {
 	fixtures := []struct {
 		name     string
-		supplier func() (Cache, error)
+		supplier func() (*Cache, error)
 	}{
-		{"cache_config", func() (Cache, error) {
+		{"cache_config", func() (*Cache, error) {
 			ctx := context.Background()
 			ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 			defer func() {
@@ -49,16 +49,16 @@ func (suite *TtlTestSuite) TestCreationPolicy() {
 			if err0 != nil {
 				return nil, err0
 			}
-			return cache.WithExpirePolicy(1*time.Second, DurationZero, DurationZero), nil
+			return cache.WithExpiryPolicy(1*time.Second, DurationZero, DurationZero), nil
 		}},
-		{"cache_decorator", func() (Cache, error) {
+		{"cache_decorator", func() (*Cache, error) {
 			ctx := context.Background()
 			ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 			defer func() {
 				cancel()
 			}()
 			return suite.cli.CreateCacheWithConfiguration(ctx,
-				CreateCacheConfiguration(cacheName, WithExpirePolicy(1*time.Second, DurationZero, DurationZero)))
+				CreateCacheConfiguration(cacheName, WithExpiryPolicy(1*time.Second, DurationZero, DurationZero)))
 		}},
 	}
 

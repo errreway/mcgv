@@ -19,102 +19,13 @@ import (
 )
 
 const (
-	ErrorFlag                   = 1
-	AffinityTopologyChangedFlag = 1 << 1
-	NotificationFlag            = 1 << 2
+	errorFlag                   = 1
+	affinityTopologyChangedFlag = 1 << 1
+	notificationFlag            = 1 << 2
 )
-
-const (
-	V1_0_0  = "1.0.0"
-	V1_1_0  = "1.0.0"
-	V1_2_0  = "1.2.0"
-	V1_3_0  = "1.3.0"
-	V1_4_0  = "1.4.0"
-	V1_5_0  = "1.5.0"
-	V1_6_0  = "1.6.0"
-	V1_7_0  = "1.7.0"
-	Default = V1_7_0
-)
-
-//go:generate go run golang.org/x/tools/cmd/stringer -type=ErrorCode
-type ErrorCode uint
-
-const (
-	Success               ErrorCode = 0
-	Failed                ErrorCode = 1
-	InvalidOpCode         ErrorCode = 2
-	InvalidNodeState      ErrorCode = 10
-	FunctionalityDisabled ErrorCode = 100
-	CacheDoesNotExists    ErrorCode = 1000
-	CacheExists           ErrorCode = 1001
-	CacheConfigInvalid    ErrorCode = 1002
-	TooManyCursors        ErrorCode = 1010
-	ResourceDoesNotExists ErrorCode = 1011
-	SecurityViolation     ErrorCode = 1012
-	TxLimitExceeded       ErrorCode = 1020
-	TxNotFound            ErrorCode = 1021
-	TooManyComputeTasks   ErrorCode = 1030
-	AuthFailed            ErrorCode = 2000
-)
-
-type ClientError struct {
-	Message string
-}
-
-type ClientConnectionError struct {
-	ClientError
-	err error
-}
-
-type ClientProtocolError struct {
-	ClientError
-}
-
-type ClientAuthenticationError struct {
-	ClientError
-}
-
-type ClientServerError struct {
-	ClientError
-	Code ErrorCode
-}
-
-func (err *ClientError) Error() string {
-	return err.Message
-}
-
-func (err *ClientProtocolError) Error() string {
-	return err.Message
-}
-
-func (err *ClientAuthenticationError) Error() string {
-	return err.Message
-}
-
-func (err *ClientServerError) Error() string {
-	return fmt.Sprintf("%s: %s", err.Code, err.Message)
-}
-
-func (err *ClientConnectionError) Error() string {
-	msg := err.Message
-	if len(msg) == 0 {
-		msg = "connection failed"
-	}
-	if err.err != nil {
-		return fmt.Sprintf("%s: %s", msg, err.err)
-	}
-	return msg
-}
 
 func createClientConnectionError(msg string, err error) *ClientConnectionError {
 	return &ClientConnectionError{ClientError{msg}, err}
-}
-
-type Channel interface {
-	Send(ctx context.Context, opCode int16, requestWriter func(output BinaryWriter) error, responseReader func(input BinaryReader, err error))
-	ProtocolContext() ProtocolContext
-	Close()
-	Closed() bool
 }
 
 type tcpChannel struct {
@@ -129,10 +40,10 @@ type tcpChannel struct {
 	doneCh            chan struct{}
 	serverId          *uuid.UUID
 	closed            atomic.Bool
-	supportedVersions map[string]bool
+	supportedVersions map[ProtocolVersion]bool
 	closeErr          atomic.Value
 	closeWg           sync.WaitGroup
-	clientCfg         *ClientConfiguration
+	clientCfg         *clientConfiguration
 	log               *logger.Logger
 }
 
@@ -175,15 +86,15 @@ func newRequest(id int64, opCode int16, requestWriter func(input BinaryWriter) e
 	}, nil
 }
 
-func (ch *tcpChannel) ProtocolContext() ProtocolContext {
+func (ch *tcpChannel) protocolContext() *ProtocolContext {
 	res := ch.protocolCtx.Load()
 	if res == nil {
 		return nil
 	}
-	return res.(*protocolContextImpl)
+	return res.(*ProtocolContext)
 }
 
-func (ch *tcpChannel) Send(ctx context.Context, opCode int16, requestWriter func(output BinaryWriter) error, responseReader func(input BinaryReader, err error)) {
+func (ch *tcpChannel) send(ctx context.Context, opCode int16, requestWriter func(output BinaryWriter) error, responseReader func(input BinaryReader, err error)) {
 	reqId := ch.requestId()
 	ch.log.Trace(func() string {
 		return fmt.Sprintf("start performing request[id=%d, op=%d] on %s", reqId, opCode, ch)
@@ -199,82 +110,72 @@ func (ch *tcpChannel) Send(ctx context.Context, opCode int16, requestWriter func
 			responseReader(input, err)
 		}
 	}
-	ch.send(ctx, reqId, opCode, requestWriter, responseReader)
+	ch.send0(ctx, reqId, opCode, requestWriter, responseReader)
 }
 
-func (ch *tcpChannel) send(ctx context.Context, id int64, opCode int16, requestWriter func(output BinaryWriter) error, responseReader func(input BinaryReader, err error)) {
+func (ch *tcpChannel) send0(ctx context.Context, id int64, opCode int16, requestWriter func(output BinaryWriter) error, responseReader func(input BinaryReader, err error)) {
 	if ch.closed.Load() {
 		responseReader(nil, createClientConnectionError("channel is closed", nil))
 		return
 	}
+	ctx, cancel := setContextDeadline(ctx, ch.clientCfg.requestTimeout)
+	defer cancel()
+
 	req, err := newRequest(id, opCode, requestWriter)
 	if err != nil {
 		responseReader(nil, err)
 		return
 	}
-	var deadlineSet = false
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	if _, deadlineSet = ctx.Deadline(); !deadlineSet {
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, ch.clientCfg.requestTimeout)
-		defer func() {
-			cancel()
-		}()
-	}
+
 	reqId := req.id
 	ch.pendingRequests.Store(reqId, req)
 	ch.pendingCh <- reqId
-	defer func() {
-		ch.pendingRequests.Delete(reqId)
-	}()
-	for {
-		select {
-		case <-ctx.Done():
-			responseReader(nil, ch.processCloseError("request cancelled"))
-			return
-		case <-ch.doneCh:
-			responseReader(nil, ch.processCloseError("connection closed"))
-			return
-		case <-req.doneCh:
-			if req.err != nil {
-				responseReader(nil, req.err)
-				return
-			}
-			input := NewBinaryReader(req.responseData, 0)
-			// process handshake
-			if reqId == -1 {
-				responseReader(input, nil)
-				return
-			}
-			resId := input.ReadInt64()
-			if resId != reqId {
-				panic(fmt.Sprintf("reqId != resId %d, %d", reqId, resId))
-			}
-			flags := input.ReadInt16()
-			if checkFlag(flags, AffinityTopologyChangedFlag) {
-				ch.topVer = input.ReadInt64()
-				ch.minTopVer = input.ReadInt32()
-			}
-			if checkFlag(flags, ErrorFlag) {
-				statusCode := int(input.ReadInt32())
-				var errMsg string
-				errMsg, err = unmarshalString(input, false)
-				if err != nil {
-					req.err = createClientConnectionError("broken output from server", err)
-				} else {
-					req.err = &ClientServerError{
-						ClientError{
-							Message: errMsg,
-						},
-						ErrorCode(statusCode),
-					}
-				}
-			}
-			responseReader(input, req.err)
+	defer ch.pendingRequests.Delete(reqId)
+
+	select {
+	case <-ctx.Done():
+		responseReader(nil, ch.processCloseError("request cancelled"))
+		return
+	case <-ch.doneCh:
+		responseReader(nil, ch.processCloseError("connection closed"))
+		return
+	case <-req.doneCh:
+		if req.err != nil {
+			responseReader(nil, req.err)
 			return
 		}
+		input := NewBinaryReader(req.responseData, 0)
+		// process handshake
+		if reqId == -1 {
+			responseReader(input, nil)
+			return
+		}
+		resId := input.ReadInt64()
+		if resId != reqId {
+			panic(fmt.Sprintf("reqId != resId %d, %d", reqId, resId))
+		}
+		flags := input.ReadInt16()
+		if checkFlag(flags, affinityTopologyChangedFlag) {
+			ch.topVer = input.ReadInt64()
+			ch.minTopVer = input.ReadInt32()
+		}
+		if checkFlag(flags, errorFlag) {
+			statusCode := int(input.ReadInt32())
+			var errMsg string
+			errMsg, err = unmarshalString(input, false)
+			if err != nil {
+				req.err = createClientConnectionError("broken output from server", err)
+			} else {
+				req.err = &ClientServerError{
+					ClientError{
+						Message: errMsg,
+					},
+					ErrorCode(statusCode),
+				}
+			}
+		}
+		responseReader(input, req.err)
+		return
 	}
 }
 
@@ -321,12 +222,32 @@ func safeClose(req *pendingRequest, err error) (closed bool) {
 	return true
 }
 
-func (ch *tcpChannel) Close() {
+func (ch *tcpChannel) close(ctx context.Context) {
 	ch.beginClose(nil)
-	ch.closeWg.Wait()
+
+	ctx, cancel := setContextDeadline(ctx, ch.clientCfg.requestTimeout)
+	defer cancel()
+
+	_, deadlineSet := ctx.Deadline()
+	if deadlineSet {
+		waitCh := make(chan struct{})
+		go func() {
+			ch.closeWg.Wait()
+			close(waitCh)
+		}()
+		select {
+		case <-ctx.Done():
+			ch.log.Warnf("waiting for channel close timed out")
+			return
+		case <-waitCh:
+			return
+		}
+	} else {
+		ch.closeWg.Wait()
+	}
 }
 
-func (ch *tcpChannel) Closed() bool {
+func (ch *tcpChannel) isClosed() bool {
 	return ch.closed.Load()
 }
 
@@ -336,7 +257,7 @@ func (ch *tcpChannel) String() string {
 	sb.WriteString(ch.addr)
 	ctx := ch.protocolCtx.Load()
 	if ctx != nil {
-		version := ctx.(ProtocolContext).Version()
+		version := ctx.(*ProtocolContext).Version()
 		sb.WriteString(", protoVer=")
 		sb.WriteString(version.String())
 	}
@@ -349,9 +270,7 @@ func (ch *tcpChannel) String() string {
 }
 
 func (ch *tcpChannel) writeLoop() {
-	defer func() {
-		ch.closeWg.Done()
-	}()
+	defer ch.closeWg.Done()
 	writer := bufio.NewWriterSize(ch.socket, writeBufferSize)
 LOOP:
 	for {
@@ -421,7 +340,7 @@ LOOP:
 			if data == nil {
 				continue LOOP
 			}
-			if !handshakeDone && ch.ProtocolContext() != nil {
+			if !handshakeDone && ch.protocolContext() != nil {
 				handshakeDone = true
 			}
 			var id int64
@@ -510,12 +429,7 @@ func (pa *packetAccumulator) processData() bool {
 	return false
 }
 
-func (ch *tcpChannel) handshake(ver ProtocolVersion) error {
-	cliProtoCtx := NewProtocolContext(ver, UserAttributesFeature)
-	ctx, cancel := context.WithTimeout(context.Background(), ch.clientCfg.requestTimeout*3)
-	defer func() {
-		cancel()
-	}()
+func (ch *tcpChannel) handshake(ctx context.Context, cliProtoCtx *ProtocolContext) error {
 	for {
 		ch.log.Debug(func() string {
 			ver := cliProtoCtx.Version()
@@ -534,12 +448,12 @@ func (ch *tcpChannel) handshake(ver ProtocolVersion) error {
 	return nil
 }
 
-func (ch *tcpChannel) handshakeRound(ctx context.Context, cliProtoCtx ProtocolContext, cliCfg *ClientConfiguration) (ProtocolContext, error) {
+func (ch *tcpChannel) handshakeRound(ctx context.Context, cliProtoCtx *ProtocolContext, cliCfg *clientConfiguration) (*ProtocolContext, error) {
 	var err error = nil
-	var srvProtoCtx ProtocolContext = nil
+	var srvProtoCtx *ProtocolContext = nil
 	writer := func(bw BinaryWriter) error {
 		bw.WriteInt8(1)
-		cliProtoCtx.Marshall(bw)
+		cliProtoCtx.marshall(bw)
 		if cliProtoCtx.SupportsAttributeFeature(UserAttributesFeature) {
 			if len(cliCfg.attrs) == 0 {
 				bw.WriteNull()
@@ -567,13 +481,13 @@ func (ch *tcpChannel) handshakeRound(ctx context.Context, cliProtoCtx ProtocolCo
 		success := input.ReadBool()
 		if success {
 			if cliProtoCtx.SupportsBitmapFeatures() {
-				var bitMaskBytes []byte = nil
+				var bitMaskBytes []byte
 				if bitMaskBytes, err = unmarshalBytes(input, false); err != nil {
 					err = fmt.Errorf("broken output from server: %w", err)
 					return
 				}
 				if bitMaskBytes != nil {
-					cliProtoCtx.UpdateAttributeFeatures(bitset.FromBytes(bitMaskBytes))
+					cliProtoCtx.updateAttributeFeatures(bitset.FromBytes(bitMaskBytes))
 				}
 			}
 			if cliProtoCtx.SupportsPartitionAwareness() {
@@ -607,7 +521,7 @@ func (ch *tcpChannel) handshakeRound(ctx context.Context, cliProtoCtx ProtocolCo
 				err = &ClientProtocolError{
 					ClientError{errMsg},
 				}
-			} else if exists := ch.supportedVersions[cliVersion.String()]; !exists || (!cliProtoCtx.SupportsAuthorization() && len(cliCfg.user) > 0) {
+			} else if exists := ch.supportedVersions[cliVersion]; !exists || (!cliProtoCtx.SupportsAuthorization() && len(cliCfg.user) > 0) {
 				errMsg = fmt.Sprintf("Protocol version mismatch: client %v / server %v. Server details: %s",
 					cliVersion,
 					srvProtoCtx.Version(),
@@ -619,7 +533,7 @@ func (ch *tcpChannel) handshakeRound(ctx context.Context, cliProtoCtx ProtocolCo
 			}
 		}
 	}
-	ch.send(ctx, -1, 0, writer, reader)
+	ch.send0(ctx, -1, 0, writer, reader)
 	if err != nil {
 		return nil, err
 	}
@@ -634,34 +548,54 @@ func (ch *tcpChannel) requestId() int64 {
 	return ch.idGen.Add(1)
 }
 
-func dial(addr string, cfg *ClientConfiguration) (net.Conn, error) {
-	var dialTimeout time.Duration
-	if cfg.requestTimeout > 0 {
-		dialTimeout = cfg.requestTimeout
-	} else {
-		dialTimeout = defaultTimeout
+func createSupportedVersions() map[ProtocolVersion]bool {
+	supportedVersions := make(map[ProtocolVersion]bool)
+	for _, ver := range []ProtocolVersion{{1, 0, 0}, {1, 1, 0}, {1, 2, 0}, {1, 3, 0}, {1, 4, 0}, {1, 4, 0}, {1, 5, 0}, {1, 6, 0}, {1, 7, 0}} {
+		supportedVersions[ver] = true
 	}
-	dialCtx, cancel := context.WithTimeout(context.Background(), dialTimeout)
-	defer func() {
-		cancel()
-	}()
-	var d net.Dialer
-	return d.DialContext(dialCtx, "tcp", addr)
+	return supportedVersions
 }
 
-func createTcpChannel(addr string, cfg *ClientConfiguration) (*tcpChannel, error) {
-	conn, err := dial(addr, cfg)
+func setContextDeadline(ctx context.Context, defaultTimeout time.Duration) (context.Context, context.CancelFunc) {
+	retCancel := func() {}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if _, deadlineSet := ctx.Deadline(); !deadlineSet && defaultTimeout > 0 {
+		ctx, retCancel = context.WithTimeout(ctx, defaultTimeout)
+	}
+	return ctx, retCancel
+}
+
+func createTcpChannel(ctx context.Context, addr string, cfg *clientConfiguration) (*tcpChannel, error) {
+	ctx, cancel := setContextDeadline(ctx, cfg.requestTimeout)
+	defer cancel()
+	if cfg.protocolContext == nil {
+		return nil, &ClientProtocolError{
+			ClientError{"protocol context is not set"},
+		}
+	}
+	supportedVersions := createSupportedVersions()
+	if ok := supportedVersions[cfg.protocolContext.Version()]; !ok {
+		version := cfg.protocolContext.Version()
+		return nil, &ClientProtocolError{
+			ClientError{fmt.Sprintf("version %s is not supported", version.String())},
+		}
+	}
+	var d net.Dialer
+	conn, err := d.DialContext(ctx, "tcp", addr)
 	if err != nil {
 		return nil, createClientConnectionError(fmt.Sprintf("failed to connect to %s", addr), err)
 	}
 	if cfg.tlsConfigSupplier != nil {
-		tlsCfg, err := cfg.tlsConfigSupplier()
+		var tlsCfg *tls.Config
+		tlsCfg, err = cfg.tlsConfigSupplier()
 		if err != nil {
-			return nil, createClientConnectionError("failed to obtain tls config", err)
+			return nil, fmt.Errorf("failed to obtain tls config: %w", err)
 		}
 		tlsCon := tls.Client(conn, tlsCfg)
-		if err = tlsCon.Handshake(); err != nil {
-			return nil, createClientConnectionError("tls handshake failed", err)
+		if err = tlsCon.HandshakeContext(ctx); err != nil {
+			return nil, fmt.Errorf("tls handshake failed: %w", err)
 		}
 		conn = tlsCon
 	}
@@ -670,25 +604,16 @@ func createTcpChannel(addr string, cfg *ClientConfiguration) (*tcpChannel, error
 		socket:            conn,
 		pendingCh:         make(chan int64, 1024),
 		doneCh:            make(chan struct{}),
-		supportedVersions: make(map[string]bool),
+		supportedVersions: supportedVersions,
 		clientCfg:         cfg,
 		log:               cfg.logger,
 	}
-	ch.supportedVersions[V1_0_0] = true
-	ch.supportedVersions[V1_1_0] = true
-	ch.supportedVersions[V1_2_0] = true
-	ch.supportedVersions[V1_3_0] = true
-	ch.supportedVersions[V1_4_0] = true
-	ch.supportedVersions[V1_5_0] = true
-	ch.supportedVersions[V1_6_0] = true
-	ch.supportedVersions[V1_7_0] = true
 	ch.idGen.Store(1)
 	ch.closeWg.Add(1)
 	go ch.writeLoop()
 	ch.closeWg.Add(1)
 	go ch.readLoop()
-	ver, _ := ParseVersion(Default)
-	err = ch.handshake(ver)
+	err = ch.handshake(ctx, cfg.protocolContext)
 	if err != nil {
 		return nil, err
 	}

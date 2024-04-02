@@ -11,7 +11,7 @@ import (
 type marshaller interface {
 	marshal(ctx context.Context, writer BinaryWriter, payload interface{}) error
 	unmarshall(ctx context.Context, reader BinaryReader) (interface{}, error)
-	protocolContext() ProtocolContext
+	protocolContext() *ProtocolContext
 }
 
 type typeDesc = int8
@@ -61,20 +61,20 @@ const (
 )
 
 type marshallerImpl struct {
-	cli *clientImpl
+	cli *Client
 }
 
-func newMarshaller(cli *clientImpl) marshaller {
+func newMarshaller(cli *Client) marshaller {
 	return &marshallerImpl{
 		cli: cli,
 	}
 }
 
-func (m *marshallerImpl) protocolContext() ProtocolContext {
-	return m.cli.ch.ProtocolContext()
+func (m *marshallerImpl) protocolContext() *ProtocolContext {
+	return m.cli.ch.protocolContext()
 }
 
-func (m *marshallerImpl) marshal(ctx context.Context, writer BinaryWriter, payload interface{}) error {
+func (m *marshallerImpl) marshal(_ context.Context, writer BinaryWriter, payload interface{}) error {
 	if payload == nil {
 		writer.WriteInt8(nullType)
 		return nil
@@ -237,7 +237,7 @@ func (m *marshallerImpl) unmarshall(_ context.Context, reader BinaryReader) (int
 		}
 	case byteArrayType:
 		{
-			var ret []byte = nil
+			var ret []byte
 			if ret, err = unmarshalBytes(reader, true); err != nil {
 				return nil, err
 			}

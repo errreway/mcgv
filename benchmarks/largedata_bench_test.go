@@ -32,8 +32,8 @@ func Benchmark_PutGet_Bytearray_Large(b *testing.B) {
 }
 
 func benchBinaryPutGet(b *testing.B, payloadSz int) {
-	cliCreate := func() (ignite.Client, ignite.Cache) {
-		cli, err := ignite.Start(ignite.WithAddresses(IgniteHosts()...))
+	cliCreate := func() (*ignite.Client, *ignite.Cache) {
+		cli, err := ignite.Start(context.Background(), ignite.WithAddresses(IgniteHosts()...))
 		if err != nil {
 			b.Fatalf("failed to connect to cluster")
 		}
@@ -44,7 +44,7 @@ func benchBinaryPutGet(b *testing.B, payloadSz int) {
 		return cli, cache
 	}
 
-	CacheBenchmarker(b, cliCreate, nil, func(b *testing.B, c ignite.Cache) {
+	CacheBenchmarker(b, cliCreate, nil, func(b *testing.B, c *ignite.Cache) {
 		payload := testing2.MakeByteArrayPayload(payloadSz)
 		b.RunParallel(func(pb *testing.PB) {
 			rnd := rand.New(rand.NewSource(time.Now().UnixNano()))

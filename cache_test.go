@@ -14,8 +14,8 @@ import (
 
 type CacheTestSuite struct {
 	testing2.IgniteTestSuite
-	client Client
-	cache  Cache
+	client *Client
+	cache  *Cache
 }
 
 func TestCacheTestSuite(t *testing.T) {
@@ -27,7 +27,7 @@ func (suite *CacheTestSuite) SetupSuite() {
 	if err != nil {
 		suite.T().Fatal("Failed to start ignite instance", err)
 	}
-	suite.client, err = StartTestClient(WithAddresses(defaultAddress))
+	suite.client, err = StartTestClient(context.Background(), WithAddresses(defaultAddress))
 	if err != nil {
 		suite.T().Fatal("failed to start client", err)
 	}
@@ -52,7 +52,7 @@ func (suite *CacheTestSuite) TearDownTest() {
 func (suite *CacheTestSuite) TearDownSuite() {
 	suite.KillAllGrids()
 	if suite.client != nil {
-		_ = suite.client.Close()
+		_ = suite.client.Close(context.Background())
 		suite.client = nil
 	}
 }

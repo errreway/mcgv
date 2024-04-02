@@ -15,13 +15,13 @@ import (
 type reliableChannel struct {
 	attemptsLimit int
 	currCh        atomic.Value
-	cfg           *ClientConfiguration
+	cfg           *clientConfiguration
 	mux           sync.Mutex
 	closed        atomic.Bool
 	log           *logger.Logger
 }
 
-func (r *reliableChannel) Send(ctx context.Context, opCode int16, requestWriter func(output BinaryWriter) error, responseReader func(input BinaryReader, err error)) {
+func (r *reliableChannel) send(ctx context.Context, opCode int16, requestWriter func(output BinaryWriter) error, responseReader func(input BinaryReader, err error)) {
 	if r.closed.Load() {
 		responseReader(nil, createClientConnectionError("channel is closed", nil))
 		return
@@ -29,7 +29,7 @@ func (r *reliableChannel) Send(ctx context.Context, opCode int16, requestWriter 
 	connectFailed := false
 	attemptsCnt := 0
 	for {
-		currCh, err := r.currentChannel()
+		currCh, err := r.currentChannel(ctx)
 		if err != nil {
 			r.log.Errorf("connection failed: %s", err)
 			responseReader(NewBinaryReader(nil, 0), err)
@@ -37,7 +37,7 @@ func (r *reliableChannel) Send(ctx context.Context, opCode int16, requestWriter 
 		}
 		attemptsLimit := r.attemptsLimit
 		attemptsCnt++
-		currCh.Send(ctx, opCode, requestWriter, func(input BinaryReader, err error) {
+		currCh.send(ctx, opCode, requestWriter, func(input BinaryReader, err error) {
 			var connErr *ClientConnectionError
 			if errors.As(err, &connErr) {
 				connectFailed = true
@@ -55,54 +55,54 @@ func (r *reliableChannel) Send(ctx context.Context, opCode int16, requestWriter 
 	}
 }
 
-func (r *reliableChannel) currentChannel() (*tcpChannel, error) {
+func (r *reliableChannel) currentChannel(ctx context.Context) (*tcpChannel, error) {
 	if r.closed.Load() {
 		return nil, errors.New("channel is closed")
 	}
 	for {
 		currCh := r.currCh.Load()
-		if currCh != nil && !currCh.(*tcpChannel).Closed() {
+		if currCh != nil && !currCh.(*tcpChannel).isClosed() {
 			return currCh.(*tcpChannel), nil
 		}
-		if err := r.initConnection(); err != nil {
+		if err := r.initConnection(ctx); err != nil {
 			return nil, err
 		}
 	}
 }
 
-func (r *reliableChannel) ProtocolContext() ProtocolContext {
+func (r *reliableChannel) protocolContext() *ProtocolContext {
 	currCh := r.currCh.Load()
 	if currCh != nil {
-		return currCh.(*tcpChannel).ProtocolContext()
+		return currCh.(*tcpChannel).protocolContext()
 	}
 	return nil
 }
 
-func (r *reliableChannel) Close() {
+func (r *reliableChannel) close(ctx context.Context) {
 	if r.closed.CompareAndSwap(false, true) {
 		r.mux.Lock()
 		defer r.mux.Unlock()
 		r.log.Infof("closing connection to %s", r.currCh.Load())
 		currCh := r.currCh.Load()
 		if currCh != nil {
-			currCh.(*tcpChannel).Close()
+			currCh.(*tcpChannel).close(ctx)
 		}
 		r.closed.Store(true)
 	}
 }
 
-func (r *reliableChannel) Closed() bool {
+func (r *reliableChannel) isClosed() bool {
 	return r.closed.Load()
 }
 
-func (r *reliableChannel) initConnection() error {
+func (r *reliableChannel) initConnection(ctx context.Context) error {
 	r.mux.Lock()
 	defer r.mux.Unlock()
 	oldCh := r.currCh.Load()
-	if oldCh != nil && !oldCh.(*tcpChannel).Closed() {
+	if oldCh != nil && !oldCh.(*tcpChannel).isClosed() {
 		return nil
 	}
-	addresses, err := r.cfg.addressesSupplier()
+	addresses, err := r.cfg.addressesSupplier(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to obtain addresses: %w", err)
 	}
@@ -127,8 +127,8 @@ func (r *reliableChannel) initConnection() error {
 		r.log.Debug(func() string {
 			return fmt.Sprintf("trying to init connection to %s", addresses[i])
 		})
-		var ch *tcpChannel = nil
-		ch, err = createTcpChannel(addresses[i], r.cfg)
+		var ch *tcpChannel
+		ch, err = createTcpChannel(ctx, addresses[i], r.cfg)
 		if err == nil {
 			if r.cfg.retryLimit > 0 && r.cfg.retryLimit < len(addresses) {
 				r.attemptsLimit = r.cfg.retryLimit
@@ -161,7 +161,7 @@ func isHandshakeError(err error) bool {
 	return err != nil && (errors.As(err, &cliAuthErr) || errors.As(err, &protoErr))
 }
 
-func CreateReliableChannel(cfg *ClientConfiguration) (Channel, error) {
+func createReliableChannel(ctx context.Context, cfg *clientConfiguration) (channel, error) {
 	if cfg.addressesSupplier == nil {
 		return nil, errors.New("address supplier is nil")
 	}
@@ -169,7 +169,7 @@ func CreateReliableChannel(cfg *ClientConfiguration) (Channel, error) {
 		cfg: cfg,
 		log: cfg.logger,
 	}
-	if err := ret.initConnection(); err != nil {
+	if err := ret.initConnection(ctx); err != nil {
 		ret.log.Errorf("connection failed: %s", err)
 		return nil, err
 	}

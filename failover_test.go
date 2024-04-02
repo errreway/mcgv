@@ -38,13 +38,13 @@ func (suite *FailoverTestSuite) TestFailover() {
 		suite.T().Fatal("failed to start second grid", err)
 	}
 
-	cli, err := StartTestClient(WithAddresses(defaultAddress+":10800", defaultAddress+":10801"), WithShuffleAddresses(false))
+	cli, err := StartTestClient(context.Background(), WithAddresses(defaultAddress+":10800", defaultAddress+":10801"), WithShuffleAddresses(false))
 	if err != nil {
 		suite.T().Fatal("Failed to start client", err)
 		return
 	}
 	defer func() {
-		_ = cli.Close()
+		_ = cli.Close(context.Background())
 	}()
 	cache, err := cli.GetOrCreateCache(context.Background(), "test")
 	if err != nil {
@@ -68,9 +68,9 @@ func (suite *FailoverTestSuite) TestFailover() {
 					return
 				default:
 					key := rnd.Int63n(1 << 15)
-					err := cache.Put(context.Background(), fmt.Sprintf("key-%d", key), "test")
-					if err != nil {
-						suite.T().Log("put failed", err)
+					err0 := cache.Put(context.Background(), fmt.Sprintf("key-%d", key), "test")
+					if err0 != nil {
+						suite.T().Log("put failed", err0)
 						errCnt.Add(1)
 					} else {
 						successCnt.Add(1)

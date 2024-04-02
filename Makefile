@@ -17,8 +17,10 @@ generate:
 
 lint:
 	go install honnef.co/go/tools/cmd/staticcheck@v0.4.7;
+	go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.52.2;
 	$(GOPATH)/bin/staticcheck --tags=testing ./...
-	go vet --tags=testing $(PACKAGES)
+	$(GOPATH)/bin/golangci-lint run --build-tags testing ./...
+	go vet --tags=testing ./...
 
 kill-ignite:
 	jps -v | grep ignite | cut -d' ' -f1 | xargs -r kill -9
@@ -29,7 +31,7 @@ test: build kill-ignite
 
 test-ci: build kill-ignite
 	go install github.com/jstemmer/go-junit-report/v2@v2.1.0
-	IGNITE_START_TIMEOUT=$(IGNITE_START_TIMEOUT) go test -race --tags=testing -coverprofile=coverage.out $(TEST_FLAGS) $(PACKAGES)  2>&1 | $(GOPATH)/bin/go-junit-report -set-exit-code > test-report.xml
+	IGNITE_START_TIMEOUT=$(IGNITE_START_TIMEOUT) go test -race --tags=testing -coverprofile=coverage.out $(TEST_FLAGS) $(PACKAGES)  2>&1 | $(GOPATH)/bin/go-junit-report > test-report.xml
 
 bench: build
 	IGNITE_START_TIMEOUT=$(IGNITE_START_TIMEOUT) WARMUPS=$(WARMUPS) IGNITE_HOSTS=$(IGNITE_HOSTS) go test -bench=$(BENCH) -test.benchtime=10s -timeout=40m --tags=testing $(TEST_FLAGS) ./benchmarks

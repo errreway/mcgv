@@ -7,7 +7,8 @@ import (
 	"strings"
 )
 
-type AttributeFeature = uint
+// AttributeFeature defines protocol specific feature flag.
+type AttributeFeature uint
 
 const (
 	UserAttributesFeature AttributeFeature = iota
@@ -20,60 +21,52 @@ const (
 	QueryPartitionsBatchSizeFeature
 	BinaryConfigurationFeature
 	GetServiceDescriptorsFeature
-	ServiceInvokeCallContextFature
+	ServiceInvokeCallContextFeature
 	HeartbeatFeature
 	DataReplicationOperationsFeature
 	AllAffinityMappingsFeature
 	IndexQueryFeature
 	IndexQueryLimitFeature
 	ServiceTopologyFeature
+	_minFeature = UserAttributesFeature
+	_maxFeature = ServiceTopologyFeature
 )
 
-type ProtocolContext interface {
-	Version() ProtocolVersion
-	SupportsAttributeFeature(f AttributeFeature) bool
-	SupportsAuthorization() bool
-	SupportsQueryEntityPrecisionAndScale() bool
-	SupportsPartitionAwareness() bool
-	SupportsTransactions() bool
-	SupportsExpiryPolicy() bool
-	SupportsClusterApi() bool
-	SupportsBitmapFeatures() bool
-	UpdateAttributeFeatures(bs *bitset.BitSet)
-	Marshall(writer BinaryWriter)
-}
-
+// ProtocolVersion defines a thin client protocol verison.
 type ProtocolVersion struct {
-	Major int16
-	Minor int16
-	Patch int16
+	Major int16 // Major version number.
+	Minor int16 // Minor version number
+	Patch int16 // Patch version number
 }
 
-type protocolContextImpl struct {
+// ProtocolContext is a set of current version and features flags.
+type ProtocolContext struct {
 	version  ProtocolVersion
 	features *bitset.BitSet
 }
 
-func NewProtocolContext(version ProtocolVersion, features ...AttributeFeature) ProtocolContext {
-	ctx := protocolContextImpl{
+// NewProtocolContext creates a new protocol context.
+func NewProtocolContext(version ProtocolVersion, features ...AttributeFeature) *ProtocolContext {
+	ctx := ProtocolContext{
 		version: version,
 	}
 
 	if ctx.SupportsBitmapFeatures() {
 		ctx.features = bitset.New()
 		for _, feature := range features {
-			ctx.features.Set(feature)
+			ctx.features.Set(uint(feature))
 		}
 	}
 
 	return &ctx
 }
 
-func (ctx *protocolContextImpl) Version() ProtocolVersion {
+// Version returns a thin client protocol version
+func (ctx *ProtocolContext) Version() ProtocolVersion {
 	return ctx.version
 }
 
-func (ctx *protocolContextImpl) Marshall(writer BinaryWriter) {
+func (ctx *ProtocolContext) marshall(writer BinaryWriter) {
 	writer.WriteInt16(ctx.version.Major)
 	writer.WriteInt16(ctx.version.Minor)
 	writer.WriteInt16(ctx.version.Patch)
@@ -83,47 +76,49 @@ func (ctx *protocolContextImpl) Marshall(writer BinaryWriter) {
 	}
 }
 
-func (ctx *protocolContextImpl) UpdateAttributeFeatures(bs *bitset.BitSet) {
+func (ctx *ProtocolContext) updateAttributeFeatures(bs *bitset.BitSet) {
 	if bs != nil {
 		ctx.features = bs
 	}
 }
 
-func (ctx *protocolContextImpl) SupportsAttributeFeature(f AttributeFeature) bool {
+// SupportsAttributeFeature checks whether the context supports specific feature.
+func (ctx *ProtocolContext) SupportsAttributeFeature(f AttributeFeature) bool {
 	if ctx.features == nil {
 		return false
 	}
-	return ctx.features.Test(f)
+	return ctx.features.Test(uint(f))
 }
 
-func (ctx *protocolContextImpl) SupportsAuthorization() bool {
+func (ctx *ProtocolContext) SupportsAuthorization() bool {
 	return ctx.version.Compare(ProtocolVersion{1, 1, 0}) >= 0
 }
 
-func (ctx *protocolContextImpl) SupportsQueryEntityPrecisionAndScale() bool {
+func (ctx *ProtocolContext) SupportsQueryEntityPrecisionAndScale() bool {
 	return ctx.version.Compare(ProtocolVersion{1, 2, 0}) >= 0
 }
 
-func (ctx *protocolContextImpl) SupportsPartitionAwareness() bool {
+func (ctx *ProtocolContext) SupportsPartitionAwareness() bool {
 	return ctx.version.Compare(ProtocolVersion{1, 4, 0}) >= 0
 }
 
-func (ctx *protocolContextImpl) SupportsTransactions() bool {
+func (ctx *ProtocolContext) SupportsTransactions() bool {
 	return ctx.version.Compare(ProtocolVersion{1, 5, 0}) >= 0
 }
 
-func (ctx *protocolContextImpl) SupportsExpiryPolicy() bool {
+func (ctx *ProtocolContext) SupportsExpiryPolicy() bool {
 	return ctx.version.Compare(ProtocolVersion{1, 6, 0}) >= 0
 }
 
-func (ctx *protocolContextImpl) SupportsClusterApi() bool {
+func (ctx *ProtocolContext) SupportsClusterApi() bool {
 	return ctx.version.Compare(ProtocolVersion{1, 6, 0}) >= 0
 }
 
-func (ctx *protocolContextImpl) SupportsBitmapFeatures() bool {
+func (ctx *ProtocolContext) SupportsBitmapFeatures() bool {
 	return ctx.version.Compare(ProtocolVersion{1, 7, 0}) >= 0
 }
 
+// ParseVersion parses [ProtocolVersion] from string, returns version and true if succeeded, otherwise returns invalid version and false.
 func ParseVersion(ver string) (ProtocolVersion, bool) {
 	res := ProtocolVersion{}
 	parts := strings.Split(ver, ".")
@@ -151,6 +146,7 @@ func (curr *ProtocolVersion) String() string {
 	return fmt.Sprintf("%d.%d.%d", curr.Major, curr.Minor, curr.Patch)
 }
 
+// Compare the version to the other. Returns 0 if equals, positive integer if the version is greater than the other, otherwise returns negative integer.
 func (curr *ProtocolVersion) Compare(other ProtocolVersion) int {
 	if diff := curr.Major - other.Major; diff != 0 {
 		return int(diff)

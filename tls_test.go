@@ -1,6 +1,7 @@
 package ignite
 
 import (
+	"context"
 	"crypto"
 	"crypto/ecdsa"
 	"crypto/ed25519"
@@ -34,9 +35,11 @@ func TestTlsTestSuite(t *testing.T) {
 }
 
 func (suite *TlsTestSuite) SetupSuite() {
-	_, err := suite.StartIgnite(testing2.WithSsl(), testing2.WithAuth())
-	if err != nil {
-		suite.T().Fatal("Failed start ignite", err)
+	for i := 0; i < 2; i++ {
+		_, err := suite.StartIgnite(testing2.WithSsl(), testing2.WithAuth())
+		if err != nil {
+			suite.T().Fatal("Failed start ignite", err)
+		}
 	}
 }
 
@@ -53,13 +56,21 @@ func (suite *TlsTestSuite) TestTlsConnection() {
 		{"basic", createTlsSupplier(certsPath, "")},
 	}
 
+	addressSupplier := func(_ context.Context) ([]string, error) {
+		addresses := make([]string, 0)
+		for i := 0; i < suite.GridsCount(); i++ {
+			addresses = append(addresses, fmt.Sprintf("%s:%d", defaultAddress, 10800+i))
+		}
+		return addresses, nil
+	}
+
 	for _, fixture := range fixtures {
 		suite.T().Run(fixture.name, func(t *testing.T) {
-			cli, err := StartTestClient(WithAddresses(defaultAddress), WithTls(fixture.supplier),
+			cli, err := StartTestClient(context.Background(), WithAddressSupplier(addressSupplier), WithTls(fixture.supplier),
 				WithClientAttribute("clientName", "ignite-go"),
 				WithCredentials("ignite", "ignite"))
 			defer func() {
-				_ = cli.Close()
+				_ = cli.Close(context.Background())
 			}()
 			require.Nil(t, err)
 			version, err := cli.Version()
@@ -68,11 +79,10 @@ func (suite *TlsTestSuite) TestTlsConnection() {
 		})
 
 		suite.T().Run(fmt.Sprintf("invalid_creds_%s", fixture.name), func(t *testing.T) {
-			_, err := StartTestClient(WithAddresses(defaultAddress), WithTls(fixture.supplier),
+			_, err := StartTestClient(context.Background(), WithAddressSupplier(addressSupplier), WithTls(fixture.supplier),
 				WithClientAttribute("clientName", "ignite-go"),
 				WithCredentials("invalid", "invalid"))
-
-			require.NotNil(t, err)
+			require.Error(t, err)
 			var authErr *ClientAuthenticationError
 			require.True(t, errors.As(err, &authErr))
 		})
@@ -102,6 +112,7 @@ func createTlsSupplier(certPath string, password string) func() (*tls.Config, er
 			} else if derBlock.Type == "PRIVATE KEY" || strings.HasSuffix(derBlock.Type, " PRIVATE KEY") {
 				var keyBlock []byte
 				//lint:ignore SA1019 this is required to check
+				//nolint:staticcheck
 				if x509.IsEncryptedPEMBlock(derBlock) {
 					//lint:ignore SA1019 this is required to check
 					derBlock.Bytes, err0 = x509.DecryptPEMBlock(derBlock, []byte(password))

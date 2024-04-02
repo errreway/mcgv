@@ -6,64 +6,96 @@ import (
 	"time"
 )
 
+// CacheAtomicityMode controls whether cache should maintain fully transactional semantics or more light-weight atomic behavior.
 type CacheAtomicityMode int32
 
 const (
-	Transactional CacheAtomicityMode = 0
-	Atomic        CacheAtomicityMode = 1
+	TransactionalAtomicityMode CacheAtomicityMode = 0 // Enables fully ACID-compliant transactional cache behavior.
+	AtomicAtomicityMode        CacheAtomicityMode = 1 // Enables atomic-only cache behaviour.
 )
 
+// CacheMode specifies caching modes.
 type CacheMode int32
 
 const (
-	Replicated  CacheMode = 1
-	Partitioned CacheMode = 2
+	ReplicatedCacheMode  CacheMode = 1 // Specifies fully replicated cache behaviour. In this mode all the keys are distributed to all participating nodes.
+	PartitionedCacheMode CacheMode = 2 // Specifies partitioned cache behaviour.
 )
 
+// PartitionLossPolicy defines how a cache will behave in a case when one or more partitions are lost because of a node(s) failure.
 type PartitionLossPolicy int32
 
 const (
-	ReadOnlySafe  PartitionLossPolicy = 0
-	ReadOnlyAll   PartitionLossPolicy = 1
-	ReadWriteSafe PartitionLossPolicy = 2
-	ReadWriteAll  PartitionLossPolicy = 3
-	Ignore        PartitionLossPolicy = 4
+	// ReadOnlySafeLossPolicy all writes to the cache will be failed with an exception, reads will only be allowed for keys in non-lost partitions.
+	// Reads from lost partitions will be failed with an exception.
+	ReadOnlySafeLossPolicy PartitionLossPolicy = 0
+	// ReadOnlyAllLossPolicy all writes to the cache will be failed with an exception. All reads will proceed as if all partitions were in a consistent state.
+	// The result of reading from a lost partition is undefined and may be different on different nodes in the cluster.
+	ReadOnlyAllLossPolicy PartitionLossPolicy = 1
+	// ReadWriteSafeLossPolicy all reads and writes will be allowed for keys in valid partitions. All reads and writes for keys
+	// in lost partitions will be failed with an exception.
+	ReadWriteSafeLossPolicy PartitionLossPolicy = 2
+	// ReadWriteAllLossPolicy all reads and writes will proceed as if all partitions were in a consistent state. The result of reading
+	// from a lost partition is undefined and may be different on different nodes in the cluste
+	ReadWriteAllLossPolicy PartitionLossPolicy = 3
+	// IgnoreLossPolicy if a partition was lost silently ignore it and allow any operations with a partition. Partition loss events are not fired if using this mode.
+	// For pure in-memory caches the policy will work only when baseline auto adjust is enabled with zero timeout.
+	// If persistence is enabled, the policy is always ignored. ReadWriteSafeLossPolicy is used instead.
+	IgnoreLossPolicy PartitionLossPolicy = 4
 )
 
+// CacheWriteSynchronizationMode indicates how Ignite should wait for write replies from other nodes. Default
+// value is PrimarySyncSynchronizationMode, which means that Ignite will wait for write or commit to complete on
+// primary node, but will not wait for backups to be updated.
 type CacheWriteSynchronizationMode int32
 
 const (
-	FullSync    CacheWriteSynchronizationMode = 0
-	FullAsync   CacheWriteSynchronizationMode = 1
-	PrimarySync CacheWriteSynchronizationMode = 2
+	// FullSyncSynchronizationMode indicates that Ignite should wait for write or commit replies from all nodes.
+	// This behavior guarantees that whenever any of the atomic or transactional writes
+	// complete, all other participating nodes which cache the written data have been updated.
+	FullSyncSynchronizationMode CacheWriteSynchronizationMode = 0
+	// FullAsyncSynchronizationMode indicates that Ignite will not wait for write or commit responses from participating nodes,
+	// which means that remote nodes may get their state updated a bit after any of the cache write methods
+	// complete, or after transaction commit completes.
+	FullAsyncSynchronizationMode CacheWriteSynchronizationMode = 1
+	// PrimarySyncSynchronizationMode only makes sense for PartitionedCacheMode and ReplicatedCacheMode.
+	// When enabled, Ignite will wait for write or commit to complete on primary node, but will not wait for
+	// backups to be updated.
+	PrimarySyncSynchronizationMode CacheWriteSynchronizationMode = 2
 )
 
+// CacheRebalanceMode specifies how distributed caches will attempt to rebalance all necessary values from other grid nodes.
 type CacheRebalanceMode int32
 
 const (
-	Sync  CacheRebalanceMode = 0
-	Async CacheRebalanceMode = 1
-	None  CacheRebalanceMode = 2
+	// SyncRebalanceMode means that distributed caches will not start until all necessary data
+	// is loaded from other available grid nodes.
+	SyncRebalanceMode CacheRebalanceMode = 0
+	// AsyncRebalanceMode means that distributed caches will start immediately and will load all necessary
+	// data from other available grid nodes in the background.
+	AsyncRebalanceMode CacheRebalanceMode = 1
+	// NoneRebalanceMode means that no rebalancing will take place which means that caches will be either loaded on
+	// demand from persistent store whenever data is accessed, or will be populated explicitly.
+	NoneRebalanceMode CacheRebalanceMode = 2
 )
 
-type CacheKeyConfig interface {
-	TypeName() string
-	AffinityKeyFieldName() string
-}
-
-type cacheKeyConfig struct {
+// CacheKeyConfig defines various aspects of cache keys without explicit usage of annotations on user classes.
+type CacheKeyConfig struct {
 	typeName      string
 	affKeyFldName string
 }
 
-func (c *cacheKeyConfig) TypeName() string {
+// TypeName returns affinity key type name.
+func (c *CacheKeyConfig) TypeName() string {
 	return c.typeName
 }
 
-func (c *cacheKeyConfig) AffinityKeyFieldName() string {
+// AffinityKeyFieldName returns affinity key field name.
+func (c *CacheKeyConfig) AffinityKeyFieldName() string {
 	return c.affKeyFldName
 }
 
+// QueryEntity is a description of [Cache] entry (composed of key and value) in a way of how it must be indexed and can be queried.
 type QueryEntity struct {
 	keyType    string
 	valType    string
@@ -75,34 +107,43 @@ type QueryEntity struct {
 	indexes    []QueryIndex
 }
 
+// KeyType returns key type for this query pair.
 func (q *QueryEntity) KeyType() string {
 	return q.keyType
 }
 
+// ValueType returns value type for this query pair.
 func (q *QueryEntity) ValueType() string {
 	return q.valType
 }
 
+// TableName returns table name for this query entity.
 func (q *QueryEntity) TableName() string {
 	return q.tblName
 }
 
+// KeyFieldName returns key field name.
 func (q *QueryEntity) KeyFieldName() string {
 	return q.keyFldName
 }
 
+// ValueFieldName returns value field name.
 func (q *QueryEntity) ValueFieldName() string {
 	return q.valFldName
 }
 
+// Fields returns query fields for this query pair. The order of fields is important as it defines the order
+// of columns returned by the 'select *' queries.
 func (q *QueryEntity) Fields() []QueryField {
 	return q.fields
 }
 
+// Aliases returns aliases map.
 func (q *QueryEntity) Aliases() map[string]string {
 	return q.aliases
 }
 
+// Indexes returns index entities.
 func (q *QueryEntity) Indexes() []QueryIndex {
 	return q.indexes
 }
@@ -135,6 +176,7 @@ func (q *QueryEntity) Copy() QueryEntity {
 	return ret
 }
 
+// QueryField defines an index field in an indexed cache.
 type QueryField struct {
 	name      string
 	typeName  string
@@ -145,47 +187,57 @@ type QueryField struct {
 	dfltVal   interface{}
 }
 
+// Name returns field name.
 func (q *QueryField) Name() string {
 	return q.name
 }
 
+// TypeName returns field type name.
 func (q *QueryField) TypeName() string {
 	return q.typeName
 }
 
+// IsKey returns true if field belongs to the key.
 func (q *QueryField) IsKey() bool {
 	return q.isKey
 }
 
+// IsNotNull returns true if field is not nullable.
 func (q *QueryField) IsNotNull() bool {
 	return q.isNotNull
 }
 
+// DefaultValue returns a default value of the field.
 func (q *QueryField) DefaultValue() interface{} {
 	return q.dfltVal
 }
 
+// Precision returns precision of the field, default is -1
 func (q *QueryField) Precision() int {
 	return q.precision
 }
 
+// Scale returns scale of the field, default is -1
 func (q *QueryField) Scale() int {
 	return q.scale
 }
 
+// IndexType defines type of the query index.
 type IndexType int8
 
 const (
-	Sorted     IndexType = 0
-	FullText   IndexType = 1
-	GeoSpatial IndexType = 2
+	Sorted     IndexType = 0 // Sorted index, default.
+	FullText   IndexType = 1 // FullText index.
+	GeoSpatial IndexType = 2 // GeoSpatial index.
 )
 
+// IndexField defines field participating in index.
 type IndexField struct {
-	Name string
-	Asc  bool
+	Name string // Name field name.
+	Asc  bool   // Asc defines sort order, ascending if true, descending if false.
 }
 
+// QueryIndex defines query index metadata.
 type QueryIndex struct {
 	name     string
 	idxType  IndexType
@@ -193,18 +245,22 @@ type QueryIndex struct {
 	fields   []IndexField
 }
 
+// Name returns name of the index.
 func (q *QueryIndex) Name() string {
 	return q.name
 }
 
+// Type returns index type.
 func (q *QueryIndex) Type() IndexType {
 	return q.idxType
 }
 
+// InlineSize returns inline size of the index, -1 means that size is determined automatically, 0 means that inlining is disabled.
 func (q *QueryIndex) InlineSize() int {
 	return q.inlineSz
 }
 
+// Fields return indexed fields.
 func (q *QueryIndex) Fields() []IndexField {
 	return q.fields
 }
@@ -253,11 +309,15 @@ const (
 	expirePolicyProp           propertyCode = 407
 )
 
+// CacheConfiguration defines all configuration parameters of the ignite cache.
 type CacheConfiguration struct {
 	props map[int16]interface{}
 }
 
-func CreateCacheConfiguration(name string, opts ...func(*CacheConfiguration)) CacheConfiguration {
+type CacheConfigurationOption func(*CacheConfiguration)
+
+// CreateCacheConfiguration creates cache configuration, name specifies cache name, opts specify other cache parameters.
+func CreateCacheConfiguration(name string, opts ...CacheConfigurationOption) CacheConfiguration {
 	ret := CacheConfiguration{
 		props: make(map[int16]interface{}),
 	}
@@ -296,7 +356,7 @@ func (config *CacheConfiguration) marshall(ctx context.Context, marshaller marsh
 			writer.WriteInt32(int32(val))
 		case CacheRebalanceMode:
 			writer.WriteInt32(int32(val))
-		case ExpirePolicy:
+		case *ExpiryPolicy:
 			{
 				if !protoCtx.SupportsExpiryPolicy() {
 					return fmt.Errorf("expiry policies are not supported on protocol version %v", protoCtx.Version())
@@ -384,18 +444,17 @@ func unmarshall(ctx context.Context, marshaller marshaller, reader BinaryReader)
 	}
 	props[writeSyncModeProp] = CacheWriteSynchronizationMode(reader.ReadInt32())
 	err = setCollectionProperty(&conf, reader, cacheKeyConfigProp, func(reader BinaryReader) (CacheKeyConfig, error) {
-		typeName, err0 := unmarshalString(reader, false)
+		keyConfig := CacheKeyConfig{}
+		var err0 error
+		keyConfig.typeName, err0 = unmarshalString(reader, false)
 		if err0 != nil {
-			return nil, err0
+			return keyConfig, err0
 		}
-		affKeyFldName, err0 := unmarshalString(reader, false)
+		keyConfig.affKeyFldName, err0 = unmarshalString(reader, false)
 		if err0 != nil {
-			return nil, err0
+			return keyConfig, err0
 		}
-		return &cacheKeyConfig{
-			typeName:      typeName,
-			affKeyFldName: affKeyFldName,
-		}, nil
+		return keyConfig, nil
 	})
 	if err != nil {
 		return conf, err
@@ -405,7 +464,7 @@ func unmarshall(ctx context.Context, marshaller marshaller, reader BinaryReader)
 		return conf, err
 	}
 	if protoCtx.SupportsExpiryPolicy() && reader.ReadBool() {
-		expPolicy := &expirePolicyImpl{
+		expPolicy := &ExpiryPolicy{
 			creation: millisToDuration(reader.ReadInt64()),
 			update:   millisToDuration(reader.ReadInt64()),
 			access:   millisToDuration(reader.ReadInt64()),
@@ -595,7 +654,8 @@ func (config *CacheConfiguration) setStringProperty(reader BinaryReader, propCod
 	return nil
 }
 
-func (config *CacheConfiguration) Copy(opts ...func(*CacheConfiguration)) CacheConfiguration {
+// Copy creates full copy of the configuration, optional opts replace configuration parameters in a new copy if passed.
+func (config *CacheConfiguration) Copy(opts ...CacheConfigurationOption) CacheConfiguration {
 	newConfig := CacheConfiguration{
 		props: make(map[int16]interface{}),
 	}
@@ -631,102 +691,132 @@ func (config *CacheConfiguration) Copy(opts ...func(*CacheConfiguration)) CacheC
 	return newConfig
 }
 
+// Name returns name of the cache.
 func (config *CacheConfiguration) Name() string {
 	return getProperty(config, cacheNameProp, "")
 }
 
+// Backups returns number of backups.
 func (config *CacheConfiguration) Backups() int {
 	return getProperty(config, backupsProp, 0)
 }
 
+// CacheMode returns cache mode.
 func (config *CacheConfiguration) CacheMode() CacheMode {
 	return getProperty[CacheMode](config, cacheModeProp, -1)
 }
 
+// CacheAtomicityMode returns cache atomicity mode.
 func (config *CacheConfiguration) CacheAtomicityMode() CacheAtomicityMode {
 	return getProperty[CacheAtomicityMode](config, cacheAtomicityModeProp, -1)
 }
 
+// IsCopyOnRead returns whether a copy of the value stored in the on-heap cache should be created for a cache operation return the value.
 func (config *CacheConfiguration) IsCopyOnRead() bool {
 	return getProperty(config, copyOnReadProp, false)
 }
 
+// DataRegionName returns data region name where cache data are stored.
 func (config *CacheConfiguration) DataRegionName() string {
 	return getProperty(config, dataRegionNameProp, "")
 }
 
+// IsEagerTtl returns whether expired cache entries will be eagerly removed from cache.
 func (config *CacheConfiguration) IsEagerTtl() bool {
 	return getProperty(config, eagerTtlProp, false)
 }
 
+// CacheGroupName returns the cache group name. Caches with the same group name share single underlying 'physical' cache (partition set),
+// but are logically isolated.
 func (config *CacheConfiguration) CacheGroupName() string {
 	return getProperty(config, groupNameProp, "")
 }
 
+// MaxConcurrentAsyncOperations returns maximum number of allowed concurrent asynchronous operations, 0 means that the number is unlimited.
 func (config *CacheConfiguration) MaxConcurrentAsyncOperations() int {
 	return getProperty(config, maxAsyncOpsProp, 0)
 }
 
+// MaxQueryIteratorsCount returns maximum number of query iterators that can be stored.
 func (config *CacheConfiguration) MaxQueryIteratorsCount() int {
 	return getProperty(config, maxQueryIteratorsProp, 0)
 }
 
+// IsOnHeapCacheEnabled returns whether the on-heap cache is enabled for the off-heap based page memory.
 func (config *CacheConfiguration) IsOnHeapCacheEnabled() bool {
 	return getProperty(config, onHeapCacheEnabledProp, false)
 }
 
+// PartitionLossPolicy returns partition loss policy. This policy defines how Ignite will react to a situation when all nodes for
+// some partition leave the cluster.
 func (config *CacheConfiguration) PartitionLossPolicy() PartitionLossPolicy {
 	return getProperty[PartitionLossPolicy](config, partitionLossPolicyProp, -1)
 }
 
+// QueryDetailsMetricsSize returns size of queries detail metrics that will be stored in memory for monitoring purposes.
+// If 0 then history will not be collected.
 func (config *CacheConfiguration) QueryDetailsMetricsSize() int {
 	return getProperty(config, queryDetailsMetricSizeProp, 0)
 }
 
+// QueryParallelism returns a hint to query execution engine on desired degree of parallelism within a single node.
 func (config *CacheConfiguration) QueryParallelism() int {
 	return getProperty(config, queryParallelismProp, 0)
 }
 
+// IsReadFromBackup indicates whether data can be read from backup. If false always get data from primary node (never from backup).
 func (config *CacheConfiguration) IsReadFromBackup() bool {
 	return getProperty(config, readFromBackupProp, false)
 }
 
+// RebalanceMode returns rebalance mode for distributed cache.
 func (config *CacheConfiguration) RebalanceMode() CacheRebalanceMode {
-	return getProperty(config, rebalanceModeProp, Sync)
+	return getProperty(config, rebalanceModeProp, SyncRebalanceMode)
 }
 
+// RebalanceOrder returns a cache rebalance order. The rebalance order guarantees that rebalancing for this cache will start only when rebalancing for
+// all caches with smaller rebalance order will be completed. Default is 0
 func (config *CacheConfiguration) RebalanceOrder() int {
 	return getProperty(config, rebalanceOrderProp, 0)
 }
 
+// IsSqlEscapeAll returns sql escape flag. If true all the SQL table and field names will be escaped with double quotes like
+// "tableName"."fieldsName". This enforces case sensitivity for field names and also allows having special characters in table and field names.
 func (config *CacheConfiguration) IsSqlEscapeAll() bool {
 	return getProperty(config, sqlEscapeAllProp, false)
 }
 
+// IsStatsEnabled returns whether collecting statistics is enabled.
 func (config *CacheConfiguration) IsStatsEnabled() bool {
 	return getProperty(config, statsEnabledProp, false)
 }
 
+// SqlIndexMaxInlineSize return maximum inline size for sql indexes. If -1 then maximum possible inline size is used.
 func (config *CacheConfiguration) SqlIndexMaxInlineSize() int {
 	return getProperty(config, sqlIndexMaxInlineSizeProp, 0)
 }
 
+// SqlSchema returns sql schema name for the indexed cache.
 func (config *CacheConfiguration) SqlSchema() string {
 	return getProperty(config, sqlSchemaProp, "")
 }
 
+// WriteSynchronizationMode returns write synchronization mode.
 func (config *CacheConfiguration) WriteSynchronizationMode() CacheWriteSynchronizationMode {
 	return getProperty[CacheWriteSynchronizationMode](config, writeSyncModeProp, -1)
 }
 
-func (config *CacheConfiguration) ExpiryPolicy() ExpirePolicy {
-	return getProperty[ExpirePolicy](config, expirePolicyProp, nil)
+// ExpiryPolicy returns cache expiry policy. See [ExpiryPolicy] for details.
+func (config *CacheConfiguration) ExpiryPolicy() *ExpiryPolicy {
+	return getProperty[*ExpiryPolicy](config, expirePolicyProp, nil)
 }
 
+// KeyConfiguration returns cache key configuration.
 func (config *CacheConfiguration) KeyConfiguration() []CacheKeyConfig {
 	return getProperty[[]CacheKeyConfig](config, cacheKeyConfigProp, nil)
 }
 
+// QueryEntities returns query entities of the cache. If set then the cache is indexed.
 func (config *CacheConfiguration) QueryEntities() []QueryEntity {
 	return getProperty[[]QueryEntity](config, queryEntitiesProp, nil)
 }
@@ -765,7 +855,8 @@ func readCollection[T any](reader BinaryReader, elemReader func(reader BinaryRea
 	return coll, nil
 }
 
-func WithCacheName(name string) func(*CacheConfiguration) {
+// WithCacheName returns [CacheConfigurationOption] that sets a cache name. Especially useful with [CacheConfiguration.Copy]
+func WithCacheName(name string) CacheConfigurationOption {
 	return func(config *CacheConfiguration) {
 		if len(name) > 0 {
 			config.props[cacheNameProp] = name
@@ -773,7 +864,8 @@ func WithCacheName(name string) func(*CacheConfiguration) {
 	}
 }
 
-func WithCacheGroupName(name string) func(*CacheConfiguration) {
+// WithCacheGroupName returns [CacheConfigurationOption] that sets a cache group name.
+func WithCacheGroupName(name string) CacheConfigurationOption {
 	return func(config *CacheConfiguration) {
 		if len(name) > 0 {
 			config.props[groupNameProp] = name
@@ -781,31 +873,36 @@ func WithCacheGroupName(name string) func(*CacheConfiguration) {
 	}
 }
 
-func WithBackupsCount(cnt int) func(*CacheConfiguration) {
+// WithBackupsCount returns [CacheConfigurationOption] that sets a number of cache backups.
+func WithBackupsCount(cnt int) CacheConfigurationOption {
 	return func(config *CacheConfiguration) {
 		config.props[backupsProp] = cnt
 	}
 }
 
-func WithWriteSynchronizationMode(mode CacheWriteSynchronizationMode) func(*CacheConfiguration) {
+// WithWriteSynchronizationMode returns [CacheConfigurationOption] that sets cache write synchronization mode.
+func WithWriteSynchronizationMode(mode CacheWriteSynchronizationMode) CacheConfigurationOption {
 	return func(config *CacheConfiguration) {
 		config.props[writeSyncModeProp] = mode
 	}
 }
 
-func WithCopyOnRead(enabled bool) func(*CacheConfiguration) {
+// WithCopyOnRead returns [CacheConfigurationOption] that sets copy-on-read flag. See [CacheConfiguration.IsCopyOnRead].
+func WithCopyOnRead(enabled bool) CacheConfigurationOption {
 	return func(config *CacheConfiguration) {
 		config.props[copyOnReadProp] = enabled
 	}
 }
 
-func WithReadFromBackup(enabled bool) func(*CacheConfiguration) {
+// WithReadFromBackup returns [CacheConfigurationOption] that sets read-from-backup flag. See [CacheConfiguration.IsReadFromBackup].
+func WithReadFromBackup(enabled bool) CacheConfigurationOption {
 	return func(config *CacheConfiguration) {
 		config.props[readFromBackupProp] = enabled
 	}
 }
 
-func WithDataRegionName(dataRegionName string) func(*CacheConfiguration) {
+// WithDataRegionName returns [CacheConfigurationOption] that sets cache data region name. See [CacheConfiguration.DataRegionName].
+func WithDataRegionName(dataRegionName string) CacheConfigurationOption {
 	return func(config *CacheConfiguration) {
 		if len(dataRegionName) > 0 {
 			config.props[dataRegionNameProp] = dataRegionName
@@ -813,37 +910,43 @@ func WithDataRegionName(dataRegionName string) func(*CacheConfiguration) {
 	}
 }
 
-func WithOnHeapCacheEnabled(enabled bool) func(*CacheConfiguration) {
+// WithOnHeapCacheEnabled returns [CacheConfigurationOption] that sets on-heap caching flag. See [CacheConfiguration.IsOnHeapCacheEnabled].
+func WithOnHeapCacheEnabled(enabled bool) CacheConfigurationOption {
 	return func(config *CacheConfiguration) {
 		config.props[onHeapCacheEnabledProp] = enabled
 	}
 }
 
-func WithCacheMode(mode CacheMode) func(*CacheConfiguration) {
+// WithCacheMode returns [CacheConfigurationOption] that sets cache mode. See [CacheConfiguration.CacheMode].
+func WithCacheMode(mode CacheMode) CacheConfigurationOption {
 	return func(config *CacheConfiguration) {
 		config.props[cacheModeProp] = mode
 	}
 }
 
-func WithCacheAtomicityMode(mode CacheAtomicityMode) func(*CacheConfiguration) {
+// WithCacheAtomicityMode returns [CacheConfigurationOption] that sets cache atomicity mode. See [CacheConfiguration.CacheAtomicityMode].
+func WithCacheAtomicityMode(mode CacheAtomicityMode) CacheConfigurationOption {
 	return func(config *CacheConfiguration) {
 		config.props[cacheAtomicityModeProp] = mode
 	}
 }
 
-func WithQueryParallelism(parallelism int) func(*CacheConfiguration) {
+// WithQueryParallelism returns [CacheConfigurationOption] that sets cache query parallelism. See [CacheConfiguration.QueryParallelism].
+func WithQueryParallelism(parallelism int) CacheConfigurationOption {
 	return func(config *CacheConfiguration) {
 		config.props[queryParallelismProp] = parallelism
 	}
 }
 
-func WithQueryDetailsMetricsSize(size int) func(*CacheConfiguration) {
+// WithQueryDetailsMetricsSize returns [CacheConfigurationOption] that sets query details metrics size. See [CacheConfiguration.QueryDetailsMetricsSize].
+func WithQueryDetailsMetricsSize(size int) CacheConfigurationOption {
 	return func(config *CacheConfiguration) {
 		config.props[queryDetailsMetricSizeProp] = size
 	}
 }
 
-func WithSqlSchema(schema string) func(*CacheConfiguration) {
+// WithSqlSchema returns [CacheConfigurationOption] that sets sql schema of cache.
+func WithSqlSchema(schema string) CacheConfigurationOption {
 	return func(config *CacheConfiguration) {
 		if len(schema) > 0 {
 			config.props[sqlSchemaProp] = schema
@@ -851,67 +954,79 @@ func WithSqlSchema(schema string) func(*CacheConfiguration) {
 	}
 }
 
-func WithSqlIndexMaxInlineSize(size int) func(*CacheConfiguration) {
+// WithSqlIndexMaxInlineSize returns [CacheConfigurationOption] that sets sql index maximal inline size. See [CacheConfiguration.SqlIndexMaxInlineSize].
+func WithSqlIndexMaxInlineSize(size int) CacheConfigurationOption {
 	return func(config *CacheConfiguration) {
 		config.props[sqlIndexMaxInlineSizeProp] = size
 	}
 }
 
-func WithSqlEscapeAll(enabled bool) func(*CacheConfiguration) {
+// WithSqlEscapeAll returns [CacheConfigurationOption] that sets sql escape flag. See [CacheConfiguration.IsSqlEscapeAll].
+func WithSqlEscapeAll(enabled bool) CacheConfigurationOption {
 	return func(config *CacheConfiguration) {
 		config.props[sqlEscapeAllProp] = enabled
 	}
 }
 
-func WithRebalanceMode(mode CacheRebalanceMode) func(*CacheConfiguration) {
+// WithRebalanceMode returns [CacheConfigurationOption] that sets a rebalance mode of the cache. See [CacheConfiguration.RebalanceMode].
+func WithRebalanceMode(mode CacheRebalanceMode) CacheConfigurationOption {
 	return func(config *CacheConfiguration) {
 		config.props[rebalanceModeProp] = mode
 	}
 }
 
-func WithRebalanceOrder(order int) func(*CacheConfiguration) {
+// WithRebalanceOrder returns [CacheConfigurationOption] that sets a rebalance order of the cache. See [CacheConfiguration.RebalanceOrder].
+func WithRebalanceOrder(order int) CacheConfigurationOption {
 	return func(config *CacheConfiguration) {
 		config.props[rebalanceOrderProp] = order
 	}
 }
 
-func WithMaxConcurrentAsyncOperations(count int) func(*CacheConfiguration) {
+// WithMaxConcurrentAsyncOperations returns [CacheConfigurationOption] that sets maximal number of concurrent async operations.
+// See [CacheConfiguration.MaxConcurrentAsyncOperations].
+func WithMaxConcurrentAsyncOperations(count int) CacheConfigurationOption {
 	return func(config *CacheConfiguration) {
 		config.props[maxAsyncOpsProp] = count
 	}
 }
 
-func WithPartitionLossPolicy(policy PartitionLossPolicy) func(*CacheConfiguration) {
+// WithPartitionLossPolicy returns [CacheConfigurationOption] that sets a partition loss policy for a cache. See [CacheConfiguration.PartitionLossPolicy].
+func WithPartitionLossPolicy(policy PartitionLossPolicy) CacheConfigurationOption {
 	return func(config *CacheConfiguration) {
 		config.props[partitionLossPolicyProp] = policy
 	}
 }
 
-func WithMaxQueryIteratorsCount(count int) func(*CacheConfiguration) {
+// WithMaxQueryIteratorsCount returns [CacheConfigurationOption] that sets maximal number of query iterators. See [CacheConfiguration.MaxQueryIteratorsCount].
+func WithMaxQueryIteratorsCount(count int) CacheConfigurationOption {
 	return func(config *CacheConfiguration) {
 		config.props[maxQueryIteratorsProp] = count
 	}
 }
 
-func WithEagerTtl(enabled bool) func(*CacheConfiguration) {
+// WithEagerTtl returns [CacheConfigurationOption] that sets an eager ttl flag. See [CacheConfiguration.IsEagerTtl].
+func WithEagerTtl(enabled bool) CacheConfigurationOption {
 	return func(config *CacheConfiguration) {
 		config.props[eagerTtlProp] = enabled
 	}
 }
 
-func WithStatsEnabled(enabled bool) func(*CacheConfiguration) {
+// WithStatsEnabled returns [CacheConfigurationOption] that sets a statistics enabled flag. See [CacheConfiguration.IsStatsEnabled].
+func WithStatsEnabled(enabled bool) CacheConfigurationOption {
 	return func(config *CacheConfiguration) {
 		config.props[statsEnabledProp] = enabled
 	}
 }
 
-func WithExpirePolicy(creation time.Duration, access time.Duration, update time.Duration) func(*CacheConfiguration) {
+// WithExpiryPolicy returns [CacheConfigurationOption] that sets an expiry policy of the cache. See [ExpiryPolicy] for details.
+func WithExpiryPolicy(creation time.Duration, access time.Duration, update time.Duration) CacheConfigurationOption {
 	return func(config *CacheConfiguration) {
-		config.props[expirePolicyProp] = &expirePolicyImpl{creation: creation, access: access, update: update}
+		config.props[expirePolicyProp] = &ExpiryPolicy{creation: creation, access: access, update: update}
 	}
 }
 
-func WithCacheKeyConfiguration(typeName string, affinityKeyField string) func(*CacheConfiguration) {
+// WithCacheKeyConfiguration returns [CacheConfigurationOption] that specifies cache affinity key with given type name and affinity field name.
+func WithCacheKeyConfiguration(typeName string, affinityKeyField string) CacheConfigurationOption {
 	return func(config *CacheConfiguration) {
 		var keyConfigs []CacheKeyConfig
 		val, found := config.props[cacheKeyConfigProp]
@@ -925,12 +1040,16 @@ func WithCacheKeyConfiguration(typeName string, affinityKeyField string) func(*C
 				return
 			}
 		}
-		keyConfigs = append(keyConfigs, &cacheKeyConfig{typeName: typeName, affKeyFldName: affinityKeyField})
+		keyConfigs = append(keyConfigs, CacheKeyConfig{typeName: typeName, affKeyFldName: affinityKeyField})
 		config.props[cacheKeyConfigProp] = keyConfigs
 	}
 }
 
-func WithQueryEntity(keyType string, valueType string, opts ...func(*QueryEntity)) func(*CacheConfiguration) {
+type QueryEntityOption func(entity *QueryEntity)
+
+// WithQueryEntity returns [CacheConfigurationOption] that specifies [QueryEntity] for the cache, keyType and valueType
+// specifies types for key and value, opts set other options for [QueryEntity].
+func WithQueryEntity(keyType string, valueType string, opts ...QueryEntityOption) CacheConfigurationOption {
 	return func(config *CacheConfiguration) {
 		var queryEntities []QueryEntity
 		val, found := config.props[queryEntitiesProp]
@@ -956,7 +1075,8 @@ func WithQueryEntity(keyType string, valueType string, opts ...func(*QueryEntity
 	}
 }
 
-func WithTableName(name string) func(*QueryEntity) {
+// WithTableName returns [QueryEntityOption] that sets sql table name.
+func WithTableName(name string) QueryEntityOption {
 	return func(entity *QueryEntity) {
 		if len(name) > 0 {
 			entity.tblName = name
@@ -964,7 +1084,8 @@ func WithTableName(name string) func(*QueryEntity) {
 	}
 }
 
-func WithKeyFieldName(name string) func(*QueryEntity) {
+// WithKeyFieldName returns [QueryEntityOption] that sets key field name.
+func WithKeyFieldName(name string) QueryEntityOption {
 	return func(entity *QueryEntity) {
 		if len(name) > 0 {
 			entity.keyFldName = name
@@ -972,7 +1093,8 @@ func WithKeyFieldName(name string) func(*QueryEntity) {
 	}
 }
 
-func WithValueFieldName(name string) func(*QueryEntity) {
+// WithValueFieldName returns [QueryEntityOption] that sets value field name.
+func WithValueFieldName(name string) QueryEntityOption {
 	return func(entity *QueryEntity) {
 		if len(name) > 0 {
 			entity.valFldName = name
@@ -980,7 +1102,11 @@ func WithValueFieldName(name string) func(*QueryEntity) {
 	}
 }
 
-func WithQueryField(name string, typeName string, opts ...func(field *QueryField)) func(entity *QueryEntity) {
+type QueryFieldOption func(field *QueryField)
+
+// WithQueryField returns [QueryEntityOption] that adds query field to the resulting [QueryEntity].
+// name and typeName set a name and a type name of the field respectively, opts set other options.
+func WithQueryField(name string, typeName string, opts ...QueryFieldOption) QueryEntityOption {
 	return func(entity *QueryEntity) {
 		if entity.fields == nil {
 			entity.fields = make([]QueryField, 0)
@@ -1001,37 +1127,43 @@ func WithQueryField(name string, typeName string, opts ...func(field *QueryField
 	}
 }
 
-func WithNotNull() func(field *QueryField) {
+// WithNotNull returns [QueryFieldOption] that sets this field non-nullable.
+func WithNotNull() QueryFieldOption {
 	return func(field *QueryField) {
 		field.isNotNull = true
 	}
 }
 
-func WithKey() func(field *QueryField) {
+// WithKey returns [QueryFieldOption] that sets this field as a part of key.
+func WithKey() QueryFieldOption {
 	return func(field *QueryField) {
 		field.isKey = true
 	}
 }
 
-func WithDefaultValue(val interface{}) func(field *QueryField) {
+// WithDefaultValue returns [QueryFieldOption] that sets default value of the field.
+func WithDefaultValue(val interface{}) QueryFieldOption {
 	return func(field *QueryField) {
 		field.dfltVal = val
 	}
 }
 
-func WithScale(scale int) func(field *QueryField) {
+// WithScale returns [QueryFieldOption] that sets scale of the field.
+func WithScale(scale int) QueryFieldOption {
 	return func(field *QueryField) {
 		field.scale = scale
 	}
 }
 
-func WithPrecision(precision int) func(field *QueryField) {
+// WithPrecision returns [QueryFieldOption] that sets precision of the field.
+func WithPrecision(precision int) QueryFieldOption {
 	return func(field *QueryField) {
 		field.precision = precision
 	}
 }
 
-func WithFieldAlias(origName string, alias string) func(entity *QueryEntity) {
+// WithFieldAlias returns [QueryEntityOption] that sets alias for the field name.
+func WithFieldAlias(origName string, alias string) QueryEntityOption {
 	return func(entity *QueryEntity) {
 		if entity.aliases == nil {
 			entity.aliases = make(map[string]string)
@@ -1040,7 +1172,11 @@ func WithFieldAlias(origName string, alias string) func(entity *QueryEntity) {
 	}
 }
 
-func WithIndex(name string, opts ...func(index *QueryIndex)) func(entity *QueryEntity) {
+type QueryIndexOption func(index *QueryIndex)
+
+// WithIndex returns [QueryEntityOption] that adds an index to [QueryEntity]. name specifies a name
+// the index, opts specify other options.
+func WithIndex(name string, opts ...QueryIndexOption) QueryEntityOption {
 	return func(entity *QueryEntity) {
 		if entity.indexes == nil {
 			entity.indexes = make([]QueryIndex, 0)
@@ -1058,19 +1194,22 @@ func WithIndex(name string, opts ...func(index *QueryIndex)) func(entity *QueryE
 	}
 }
 
-func WithIndexType(indexType IndexType) func(index *QueryIndex) {
+// WithIndexType returns [QueryIndexOption] that sets index type.
+func WithIndexType(indexType IndexType) QueryIndexOption {
 	return func(index *QueryIndex) {
 		index.idxType = indexType
 	}
 }
 
-func WithInlineSize(inlineSize int) func(index *QueryIndex) {
+// WithInlineSize returns [QueryIndexOption] that sets index inline size. See [QueryIndex.InlineSize]
+func WithInlineSize(inlineSize int) QueryIndexOption {
 	return func(index *QueryIndex) {
 		index.inlineSz = inlineSize
 	}
 }
 
-func WithIndexField(field IndexField) func(index *QueryIndex) {
+// WithIndexField returns [QueryIndexOption] that sets an index field. See [IndexField].
+func WithIndexField(field IndexField) QueryIndexOption {
 	return func(index *QueryIndex) {
 		for _, f := range index.fields {
 			if f.Name == field.Name {
