@@ -56,8 +56,8 @@ if err != nil {
 fmt.Printf("Contains key %s? %t\n", "test", contains)
 >>> Contains key test? true
 ```
-You can see other operations in ``Cache`` documentation. Currently only limited types are supported: numerical types`` string``
-uuid`` bytes slices. Other types and BinaryObject will be added in later releases.
+You can see other operations in ``Cache`` documentation. Currently only limited types are supported: numerical types, string,
+uuid, bytes slices. Other types and BinaryObject will be added in later releases.
 ### TTL (ExpiryPolicy) support
 You can set ExpiryPolicy to entries by creating special decorator by ``Cache.WithExpiryPolicy``.
 ```go
@@ -73,7 +73,7 @@ if err != nil {
 	return
 }
 <-time.After(1200 * time.Millisecond)
-contains`` err := cache.ContainsKey(ctx, "test")
+contains, err := cache.ContainsKey(ctx, "test")
 if err != nil {
 	fmt.Printf("Failed to invoke contains key operation %s \n", err)
 	return
