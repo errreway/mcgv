@@ -34,7 +34,7 @@ A list of already created caches can be obtained using ``Client.CacheNames``. A 
 Here is a basic usage scenario of ``Cache``:
 ```go
 ctx := context.Background()
-cache`` err := client.GetOrCreateCacheWithConfiguration(ctx, ignite.CreateCacheConfiguration("test",
+cache, err := client.GetOrCreateCacheWithConfiguration(ctx, ignite.CreateCacheConfiguration("test",
 	ignite.WithCacheAtomicityMode(ignite.AtomicAtomicityMode),
 	ignite.WithCacheMode(ignite.ReplicatedCacheMode),
 	ignite.WithReadFromBackup(true)
