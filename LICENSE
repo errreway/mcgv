@@ -1,3 +1,10 @@
+Ignite Go Client is dual licensed and available under the MIT license or under the GitVerse 1.0 license.
+The user can independently choose one of these two licenses to use.
+
+Ignite Go Client распространяется под одной из двух лицензий: лицензией MIT или
+лицензией GitVerse 1.0. Пользователь может самостоятельно выбрать одну из этих двух
+лицензий для применения.
+
 Лицензия GitVerse 1.0
 
 Правообладатель (c) 2024 АО "СберТех"
@@ -38,3 +45,20 @@
 действия, направленного на любое использование Программного продукта. Условия
 настоящей лицензии толкуются и применяются в соответствии с законодательством
 Российской Федерации.
+
+The MIT License
+
+Copyright 2024 JSC SberTech
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
+documentation files (the “Software”), to deal in the Software without restriction, including without limitation
+the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software,
+and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
+TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE
+OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
