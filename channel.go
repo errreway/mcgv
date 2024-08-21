@@ -63,8 +63,8 @@ func responseId(packet []byte) (int64, bool) {
 	return 0, false
 }
 
-func newRequest(id int64, opCode int16, requestWriter func(input BinaryWriter) error) (*pendingRequest, error) {
-	reqInput := NewBinaryWriter(64)
+func newRequest(id int64, opCode int16, requestWriter func(input BinaryOutputStream) error) (*pendingRequest, error) {
+	reqInput := NewBinaryOutputStream(64)
 	reqInput.WriteInt32(0)
 	// Handshake request
 	if id != -1 {
@@ -77,7 +77,7 @@ func newRequest(id int64, opCode int16, requestWriter func(input BinaryWriter) e
 	}
 	currPosition := reqInput.Position()
 	reqInput.SetPosition(0)
-	reqInput.WriteInt32(currPosition - intBytes)
+	reqInput.WriteInt32(int32(currPosition - intBytes))
 	reqInput.SetPosition(currPosition)
 	return &pendingRequest{
 		id:          id,
@@ -94,13 +94,14 @@ func (ch *tcpChannel) protocolContext() *ProtocolContext {
 	return res.(*ProtocolContext)
 }
 
-func (ch *tcpChannel) send(ctx context.Context, opCode int16, requestWriter func(output BinaryWriter) error, responseReader func(input BinaryReader, err error)) {
+func (ch *tcpChannel) send(ctx context.Context, opCode int16, requestWriter func(output BinaryOutputStream) error, responseReader func(input BinaryInputStream, err error)) {
 	reqId := ch.requestId()
 	ch.log.Trace(func() string {
 		return fmt.Sprintf("start performing request[id=%d, op=%d] on %s", reqId, opCode, ch)
 	})
+	responseReaderFacade := responseReader
 	if ch.log.Level() <= logger.TraceLevel {
-		responseReader = func(input BinaryReader, err error) {
+		responseReaderFacade = func(input BinaryInputStream, err error) {
 			ch.log.Trace(func() string {
 				if err != nil {
 					return fmt.Sprintf("request[id=%d, op=%d] failed on %s: %s", reqId, opCode, ch, err.Error())
@@ -110,10 +111,10 @@ func (ch *tcpChannel) send(ctx context.Context, opCode int16, requestWriter func
 			responseReader(input, err)
 		}
 	}
-	ch.send0(ctx, reqId, opCode, requestWriter, responseReader)
+	ch.send0(ctx, reqId, opCode, requestWriter, responseReaderFacade)
 }
 
-func (ch *tcpChannel) send0(ctx context.Context, id int64, opCode int16, requestWriter func(output BinaryWriter) error, responseReader func(input BinaryReader, err error)) {
+func (ch *tcpChannel) send0(ctx context.Context, id int64, opCode int16, requestWriter func(output BinaryOutputStream) error, responseReader func(input BinaryInputStream, err error)) {
 	if ch.closed.Load() {
 		responseReader(nil, createClientConnectionError("channel is closed", nil))
 		return
@@ -451,9 +452,9 @@ func (ch *tcpChannel) handshake(ctx context.Context, cliProtoCtx *ProtocolContex
 func (ch *tcpChannel) handshakeRound(ctx context.Context, cliProtoCtx *ProtocolContext, cliCfg *clientConfiguration) (*ProtocolContext, error) {
 	var err error = nil
 	var srvProtoCtx *ProtocolContext = nil
-	writer := func(bw BinaryWriter) error {
+	writer := func(bw BinaryOutputStream) error {
 		bw.WriteInt8(1)
-		cliProtoCtx.marshall(bw)
+		cliProtoCtx.marshal(bw)
 		if cliProtoCtx.SupportsAttributeFeature(UserAttributesFeature) {
 			if len(cliCfg.attrs) == 0 {
 				bw.WriteNull()
@@ -473,7 +474,7 @@ func (ch *tcpChannel) handshakeRound(ctx context.Context, cliProtoCtx *ProtocolC
 		}
 		return nil
 	}
-	reader := func(input BinaryReader, err0 error) {
+	reader := func(input BinaryInputStream, err0 error) {
 		if err0 != nil {
 			err = err0
 			return

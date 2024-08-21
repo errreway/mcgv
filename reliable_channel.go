@@ -21,7 +21,7 @@ type reliableChannel struct {
 	log           *logger.Logger
 }
 
-func (r *reliableChannel) send(ctx context.Context, opCode int16, requestWriter func(output BinaryWriter) error, responseReader func(input BinaryReader, err error)) {
+func (r *reliableChannel) send(ctx context.Context, opCode int16, requestWriter func(output BinaryOutputStream) error, responseReader func(input BinaryInputStream, err error)) {
 	if r.closed.Load() {
 		responseReader(nil, createClientConnectionError("channel is closed", nil))
 		return
@@ -37,7 +37,7 @@ func (r *reliableChannel) send(ctx context.Context, opCode int16, requestWriter 
 		}
 		attemptsLimit := r.attemptsLimit
 		attemptsCnt++
-		currCh.send(ctx, opCode, requestWriter, func(input BinaryReader, err error) {
+		currCh.send(ctx, opCode, requestWriter, func(input BinaryInputStream, err error) {
 			var connErr *ClientConnectionError
 			if errors.As(err, &connErr) {
 				connectFailed = true

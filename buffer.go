@@ -3,6 +3,7 @@ package ignite
 import (
 	"encoding/binary"
 	"fmt"
+	"gitverse.ru/sbertech/ignite-go-client/internal"
 	"math"
 )
 
@@ -15,11 +16,11 @@ const (
 	uuidBytes  = 16
 )
 
-type BinaryWriter interface {
+type BinaryOutputStream interface {
 	Data() []byte
-	Position() int32
-	Available() int32
-	SetPosition(pos int32)
+	Position() int
+	Available() int
+	SetPosition(pos int)
 	WriteNull()
 	WriteBool(v bool)
 	WriteUInt8(v uint8)
@@ -31,12 +32,13 @@ type BinaryWriter interface {
 	WriteUInt64(v uint64)
 	WriteInt64(v int64)
 	WriteBytes(v []byte)
+	HashCode(start int, end int) int32
 }
 
-type BinaryReader interface {
-	Position() int32
-	Available() int32
-	SetPosition(pos int32)
+type BinaryInputStream interface {
+	Position() int
+	Available() int
+	SetPosition(pos int)
 	ReadBool() bool
 	ReadUInt8() uint8
 	ReadInt8() int8
@@ -46,52 +48,52 @@ type BinaryReader interface {
 	ReadInt32() int32
 	ReadUInt64() uint64
 	ReadInt64() int64
-	ReadBytes(size int32) []byte
+	ReadBytes(size int) []byte
 	IsNull() bool
 }
 
-type binaryWriterImpl struct {
+type binaryOutputStreamImpl struct {
 	buffer   []byte
-	position int32
+	position int
 }
 
-type binaryReaderImpl struct {
+type binaryInputStreamImpl struct {
 	buffer   []byte
-	offset   int32
-	position int32
+	offset   int
+	position int
 }
 
-func NewBinaryWriter(length int) BinaryWriter {
-	return &binaryWriterImpl{
+func NewBinaryOutputStream(length int) BinaryOutputStream {
+	return &binaryOutputStreamImpl{
 		buffer: make([]byte, length),
 	}
 }
 
-func NewBinaryReader(buffer []byte, offset int32) BinaryReader {
-	return &binaryReaderImpl{
+func NewBinaryReader(buffer []byte, offset int) BinaryInputStream {
+	return &binaryInputStreamImpl{
 		buffer:   buffer,
 		offset:   offset,
 		position: offset,
 	}
 }
 
-func (bw *binaryWriterImpl) Data() []byte {
+func (bw *binaryOutputStreamImpl) Data() []byte {
 	return bw.buffer[:bw.position]
 }
 
-func (bw *binaryWriterImpl) Available() int32 {
-	return int32(len(bw.buffer)) - bw.position
+func (bw *binaryOutputStreamImpl) Available() int {
+	return len(bw.buffer) - bw.position
 }
 
-func (bw *binaryWriterImpl) Position() int32 {
+func (bw *binaryOutputStreamImpl) Position() int {
 	return bw.position
 }
 
-func (bw *binaryWriterImpl) SetPosition(pos int32) {
+func (bw *binaryOutputStreamImpl) SetPosition(pos int) {
 	bw.position = pos
 }
 
-func (bw *binaryWriterImpl) ensureAvailable(size int32) {
+func (bw *binaryOutputStreamImpl) ensureAvailable(size int) {
 	if math.MaxInt32-bw.position < size {
 		panic(fmt.Sprintf("Buffer length overflow: position=%d, required size=%d", bw.position, size))
 	}
@@ -102,16 +104,16 @@ func (bw *binaryWriterImpl) ensureAvailable(size int32) {
 	}
 }
 
-func (bw *binaryWriterImpl) WriteNull() {
-	bw.WriteInt8(nullType)
+func (bw *binaryOutputStreamImpl) WriteNull() {
+	bw.WriteInt8(NullType)
 }
 
-func (bw *binaryWriterImpl) WriteBool(v bool) {
+func (bw *binaryOutputStreamImpl) WriteBool(v bool) {
 	bw.ensureAvailable(boolBytes)
 	bw.writeBool(v)
 }
 
-func (bw *binaryWriterImpl) writeBool(v bool) {
+func (bw *binaryOutputStreamImpl) writeBool(v bool) {
 	if v {
 		bw.buffer[bw.position] = 1
 	} else {
@@ -120,82 +122,90 @@ func (bw *binaryWriterImpl) writeBool(v bool) {
 	bw.position += boolBytes
 }
 
-func (bw *binaryWriterImpl) WriteUInt8(v uint8) {
+func (bw *binaryOutputStreamImpl) WriteUInt8(v uint8) {
 	bw.ensureAvailable(byteBytes)
 	bw.writeByte(v)
 }
 
-func (bw *binaryWriterImpl) WriteInt8(v int8) {
+func (bw *binaryOutputStreamImpl) WriteInt8(v int8) {
 	bw.ensureAvailable(byteBytes)
 	bw.writeByte(uint8(v))
 }
 
-func (bw *binaryWriterImpl) writeByte(v byte) {
+func (bw *binaryOutputStreamImpl) writeByte(v byte) {
 	bw.buffer[bw.position] = v
 	bw.position += byteBytes
 }
 
-func (bw *binaryWriterImpl) WriteInt16(v int16) {
+func (bw *binaryOutputStreamImpl) WriteInt16(v int16) {
 	bw.ensureAvailable(shortBytes)
 	bw.writeShort(uint16(v))
 }
 
-func (bw *binaryWriterImpl) WriteUInt16(v uint16) {
+func (bw *binaryOutputStreamImpl) WriteUInt16(v uint16) {
 	bw.ensureAvailable(shortBytes)
 	bw.writeShort(v)
 }
 
-func (bw *binaryWriterImpl) writeShort(v uint16) {
+func (bw *binaryOutputStreamImpl) writeShort(v uint16) {
 	binary.LittleEndian.PutUint16(bw.buffer[bw.position:], v)
 	bw.position += shortBytes
 }
 
-func (bw *binaryWriterImpl) WriteInt32(v int32) {
+func (bw *binaryOutputStreamImpl) WriteInt32(v int32) {
 	bw.ensureAvailable(intBytes)
 	bw.writeInt(uint32(v))
 }
 
-func (bw *binaryWriterImpl) WriteUInt32(v uint32) {
+func (bw *binaryOutputStreamImpl) WriteUInt32(v uint32) {
 	bw.ensureAvailable(intBytes)
 	bw.writeInt(v)
 }
 
-func (bw *binaryWriterImpl) writeInt(v uint32) {
+func (bw *binaryOutputStreamImpl) writeInt(v uint32) {
 	binary.LittleEndian.PutUint32(bw.buffer[bw.position:], v)
 	bw.position += intBytes
 }
 
-func (bw *binaryWriterImpl) WriteUInt64(v uint64) {
+func (bw *binaryOutputStreamImpl) WriteUInt64(v uint64) {
 	bw.ensureAvailable(longBytes)
 	bw.writeLong(v)
 }
 
-func (bw *binaryWriterImpl) WriteInt64(v int64) {
+func (bw *binaryOutputStreamImpl) WriteInt64(v int64) {
 	bw.ensureAvailable(longBytes)
 	bw.writeLong(uint64(v))
 }
 
-func (bw *binaryWriterImpl) writeLong(v uint64) {
+func (bw *binaryOutputStreamImpl) writeLong(v uint64) {
 	binary.LittleEndian.PutUint64(bw.buffer[bw.position:], v)
 	bw.position += longBytes
 }
 
-func (bw *binaryWriterImpl) WriteBytes(v []byte) {
-	length := int32(len(v))
+func (bw *binaryOutputStreamImpl) WriteBytes(v []byte) {
+	length := len(v)
 	bw.ensureAvailable(length)
 	copy(bw.buffer[bw.position:], v)
 	bw.position += length
 }
 
-func (br *binaryReaderImpl) Available() int32 {
-	return int32(len(br.buffer)) - br.position
+func (bw *binaryOutputStreamImpl) HashCode(start int, end int) int32 {
+	bufLen := len(bw.buffer)
+	if start > bufLen || start < 0 || end > bufLen || end < 0 || start > end {
+		panic(fmt.Sprintf("invalid start=%d, end=%d", start, end))
+	}
+	return internal.SliceHashCode(bw.buffer[start:end])
 }
 
-func (br *binaryReaderImpl) Position() int32 {
+func (br *binaryInputStreamImpl) Available() int {
+	return len(br.buffer) - br.position
+}
+
+func (br *binaryInputStreamImpl) Position() int {
 	return br.position
 }
 
-func (br *binaryReaderImpl) SetPosition(pos int32) {
+func (br *binaryInputStreamImpl) SetPosition(pos int) {
 	if pos < 0 {
 		panic(fmt.Sprintf("negatige position passed: %d", pos))
 	}
@@ -205,7 +215,7 @@ func (br *binaryReaderImpl) SetPosition(pos int32) {
 	br.position = pos
 }
 
-func (br *binaryReaderImpl) ReadBool() bool {
+func (br *binaryInputStreamImpl) ReadBool() bool {
 	ret := false
 	if br.buffer[br.position] == 1 {
 		ret = true
@@ -214,56 +224,56 @@ func (br *binaryReaderImpl) ReadBool() bool {
 	return ret
 }
 
-func (br *binaryReaderImpl) ReadUInt8() uint8 {
+func (br *binaryInputStreamImpl) ReadUInt8() uint8 {
 	ret := br.buffer[br.position]
 	br.position += byteBytes
 	return ret
 }
 
-func (br *binaryReaderImpl) ReadInt8() int8 {
+func (br *binaryInputStreamImpl) ReadInt8() int8 {
 	return int8(br.ReadUInt8())
 }
 
-func (br *binaryReaderImpl) ReadUInt16() uint16 {
+func (br *binaryInputStreamImpl) ReadUInt16() uint16 {
 	r := binary.LittleEndian.Uint16(br.buffer[br.position:])
 	br.position += shortBytes
 	return r
 }
 
-func (br *binaryReaderImpl) ReadInt16() int16 {
+func (br *binaryInputStreamImpl) ReadInt16() int16 {
 	return int16(br.ReadUInt16())
 }
 
-func (br *binaryReaderImpl) ReadUInt32() uint32 {
+func (br *binaryInputStreamImpl) ReadUInt32() uint32 {
 	r := binary.LittleEndian.Uint32(br.buffer[br.position:])
 	br.position += intBytes
 	return r
 }
 
-func (br *binaryReaderImpl) ReadInt32() int32 {
+func (br *binaryInputStreamImpl) ReadInt32() int32 {
 	return int32(br.ReadUInt32())
 }
 
-func (br *binaryReaderImpl) ReadUInt64() uint64 {
+func (br *binaryInputStreamImpl) ReadUInt64() uint64 {
 	r := binary.LittleEndian.Uint64(br.buffer[br.position:])
 	br.position += longBytes
 	return r
 }
 
-func (br *binaryReaderImpl) IsNull() bool {
-	if br.buffer[br.position] == byte(nullType) {
+func (br *binaryInputStreamImpl) IsNull() bool {
+	if br.buffer[br.position] == byte(NullType) {
 		br.position += byteBytes
 		return true
 	}
 	return false
 }
 
-func (br *binaryReaderImpl) ReadInt64() int64 {
+func (br *binaryInputStreamImpl) ReadInt64() int64 {
 	return int64(br.ReadUInt64())
 }
 
-func (br *binaryReaderImpl) ReadBytes(size int32) []byte {
+func (br *binaryInputStreamImpl) ReadBytes(size int) []byte {
 	ret := make([]byte, size)
-	br.position += int32(copy(ret, br.buffer[br.position:]))
+	br.position += copy(ret, br.buffer[br.position:])
 	return ret
 }

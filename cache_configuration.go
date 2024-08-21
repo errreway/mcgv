@@ -328,7 +328,7 @@ func CreateCacheConfiguration(name string, opts ...CacheConfigurationOption) Cac
 	return ret
 }
 
-func (config *CacheConfiguration) marshall(ctx context.Context, marshaller marshaller, writer BinaryWriter) error {
+func (config *CacheConfiguration) marshal(ctx context.Context, marshaller marshaller, writer BinaryOutputStream) error {
 	protoCtx := marshaller.protocolContext()
 	origPos := writer.Position()
 	writer.WriteInt32(0)
@@ -372,7 +372,7 @@ func (config *CacheConfiguration) marshall(ctx context.Context, marshaller marsh
 			}
 		case []CacheKeyConfig:
 			{
-				err := writeCollection(writer, val, func(output BinaryWriter, keyCfg CacheKeyConfig) error {
+				err := writeCollection(writer, val, func(output BinaryOutputStream, keyCfg CacheKeyConfig) error {
 					marshalString(output, keyCfg.TypeName())
 					marshalString(output, keyCfg.AffinityKeyFieldName())
 					return nil
@@ -394,12 +394,12 @@ func (config *CacheConfiguration) marshall(ctx context.Context, marshaller marsh
 	}
 	finalPos := writer.Position()
 	writer.SetPosition(origPos)
-	writer.WriteInt32(finalPos - origPos - 4)
+	writer.WriteInt32(int32(finalPos - origPos - 4))
 	writer.SetPosition(finalPos)
 	return nil
 }
 
-func unmarshall(ctx context.Context, marshaller marshaller, reader BinaryReader) (CacheConfiguration, error) {
+func unmarshalCacheConfiguration(ctx context.Context, marshaller marshaller, reader BinaryInputStream) (CacheConfiguration, error) {
 	var err error
 	protoCtx := marshaller.protocolContext()
 	reader.ReadInt32() // Skip unneeded length field
@@ -443,7 +443,7 @@ func unmarshall(ctx context.Context, marshaller marshaller, reader BinaryReader)
 		return conf, err
 	}
 	props[writeSyncModeProp] = CacheWriteSynchronizationMode(reader.ReadInt32())
-	err = setCollectionProperty(&conf, reader, cacheKeyConfigProp, func(reader BinaryReader) (CacheKeyConfig, error) {
+	err = setCollectionProperty(&conf, reader, cacheKeyConfigProp, func(reader BinaryInputStream) (CacheKeyConfig, error) {
 		keyConfig := CacheKeyConfig{}
 		var err0 error
 		keyConfig.typeName, err0 = unmarshalString(reader, false)
@@ -474,8 +474,8 @@ func unmarshall(ctx context.Context, marshaller marshaller, reader BinaryReader)
 	return conf, err
 }
 
-func marshalQueryEntity(ctx context.Context, marshaller marshaller) func(writer BinaryWriter, entity QueryEntity) error {
-	marshalEmptyAsNull := func(writer BinaryWriter, val string) {
+func marshalQueryEntity(ctx context.Context, marshaller marshaller) func(writer BinaryOutputStream, entity QueryEntity) error {
+	marshalEmptyAsNull := func(writer BinaryOutputStream, val string) {
 		if len(val) == 0 {
 			writer.WriteNull()
 		} else {
@@ -483,7 +483,7 @@ func marshalQueryEntity(ctx context.Context, marshaller marshaller) func(writer 
 		}
 	}
 	queryFieldMarshalFunc := marshalQueryField(ctx, marshaller)
-	return func(writer BinaryWriter, entity QueryEntity) error {
+	return func(writer BinaryOutputStream, entity QueryEntity) error {
 		marshalString(writer, entity.KeyType())
 		marshalString(writer, entity.ValueType())
 		marshalEmptyAsNull(writer, entity.TableName())
@@ -504,10 +504,10 @@ func marshalQueryEntity(ctx context.Context, marshaller marshaller) func(writer 
 	}
 }
 
-func marshalQueryField(ctx context.Context, marshaller marshaller) func(writer BinaryWriter, field QueryField) error {
+func marshalQueryField(ctx context.Context, marshaller marshaller) func(writer BinaryOutputStream, field QueryField) error {
 	protoCtx := marshaller.protocolContext()
 	withPrecisionScale := protoCtx.SupportsQueryEntityPrecisionAndScale()
-	return func(writer BinaryWriter, field QueryField) error {
+	return func(writer BinaryOutputStream, field QueryField) error {
 		var err error
 		marshalString(writer, field.Name())
 		marshalString(writer, field.TypeName())
@@ -525,11 +525,11 @@ func marshalQueryField(ctx context.Context, marshaller marshaller) func(writer B
 	}
 }
 
-func marshalQueryIndex(writer BinaryWriter, index QueryIndex) error {
+func marshalQueryIndex(writer BinaryOutputStream, index QueryIndex) error {
 	marshalString(writer, index.Name())
 	writer.WriteInt8(int8(index.Type()))
 	writer.WriteInt32(int32(index.InlineSize()))
-	err := writeCollection(writer, index.Fields(), func(writer0 BinaryWriter, field IndexField) error {
+	err := writeCollection(writer, index.Fields(), func(writer0 BinaryOutputStream, field IndexField) error {
 		marshalString(writer0, field.Name)
 		writer0.WriteBool(field.Asc)
 		return nil
@@ -540,9 +540,9 @@ func marshalQueryIndex(writer BinaryWriter, index QueryIndex) error {
 	return nil
 }
 
-func unmarshalQueryEntity(ctx context.Context, marshaller marshaller) func(reader BinaryReader) (QueryEntity, error) {
+func unmarshalQueryEntity(ctx context.Context, marshaller marshaller) func(reader BinaryInputStream) (QueryEntity, error) {
 	qryFieldUnmarshalProc := unmarshalQueryField(ctx, marshaller)
-	return func(reader BinaryReader) (QueryEntity, error) {
+	return func(reader BinaryInputStream) (QueryEntity, error) {
 		var err error
 		entity := QueryEntity{}
 		entity.keyType, err = unmarshalString(reader, false)
@@ -582,7 +582,7 @@ func unmarshalQueryEntity(ctx context.Context, marshaller marshaller) func(reade
 			}
 			entity.aliases[key] = val
 		}
-		entity.indexes, err = readCollection(reader, unmarshallQueryIndex)
+		entity.indexes, err = readCollection(reader, unmarshalQueryIndex)
 		if err != nil {
 			return entity, err
 		}
@@ -590,10 +590,10 @@ func unmarshalQueryEntity(ctx context.Context, marshaller marshaller) func(reade
 	}
 }
 
-func unmarshalQueryField(ctx context.Context, marshaller marshaller) func(reader BinaryReader) (QueryField, error) {
+func unmarshalQueryField(ctx context.Context, marshaller marshaller) func(reader BinaryInputStream) (QueryField, error) {
 	protoCtx := marshaller.protocolContext()
 	withPrecisionScale := protoCtx.SupportsQueryEntityPrecisionAndScale()
-	return func(reader BinaryReader) (QueryField, error) {
+	return func(reader BinaryInputStream) (QueryField, error) {
 		var err error
 		fld := QueryField{precision: -1, scale: -1}
 		fld.name, err = unmarshalString(reader, false)
@@ -606,7 +606,7 @@ func unmarshalQueryField(ctx context.Context, marshaller marshaller) func(reader
 		}
 		fld.isKey = reader.ReadBool()
 		fld.isNotNull = reader.ReadBool()
-		fld.dfltVal, err = marshaller.unmarshall(ctx, reader)
+		fld.dfltVal, err = marshaller.unmarshal(ctx, reader)
 		if err != nil {
 			return fld, err
 		}
@@ -620,7 +620,7 @@ func unmarshalQueryField(ctx context.Context, marshaller marshaller) func(reader
 	}
 }
 
-func unmarshallQueryIndex(reader BinaryReader) (QueryIndex, error) {
+func unmarshalQueryIndex(reader BinaryInputStream) (QueryIndex, error) {
 	idx := QueryIndex{}
 	name, err := unmarshalString(reader, false)
 	if err != nil {
@@ -629,7 +629,7 @@ func unmarshallQueryIndex(reader BinaryReader) (QueryIndex, error) {
 	idx.name = name
 	idx.idxType = IndexType(reader.ReadInt8())
 	idx.inlineSz = int(reader.ReadInt32())
-	idx.fields, err = readCollection(reader, func(reader0 BinaryReader) (IndexField, error) {
+	idx.fields, err = readCollection(reader, func(reader0 BinaryInputStream) (IndexField, error) {
 		fldName, err0 := unmarshalString(reader0, false)
 		if err0 != nil {
 			return IndexField{}, err0
@@ -642,7 +642,7 @@ func unmarshallQueryIndex(reader BinaryReader) (QueryIndex, error) {
 	return idx, nil
 }
 
-func (config *CacheConfiguration) setStringProperty(reader BinaryReader, propCode propertyCode) error {
+func (config *CacheConfiguration) setStringProperty(reader BinaryInputStream, propCode propertyCode) error {
 	var err error
 	var val string
 	if val, err = unmarshalString(reader, false); err != nil {
@@ -833,26 +833,13 @@ func getProperty[T any](config *CacheConfiguration, code propertyCode, defaultVa
 	return ret
 }
 
-func setCollectionProperty[T any](config *CacheConfiguration, reader BinaryReader, code propertyCode, elemReader func(reader BinaryReader) (T, error)) error {
+func setCollectionProperty[T any](config *CacheConfiguration, reader BinaryInputStream, code propertyCode, elemReader func(reader BinaryInputStream) (T, error)) error {
 	coll, err := readCollection[T](reader, elemReader)
 	if err != nil {
 		return err
 	}
 	config.props[code] = coll
 	return nil
-}
-
-func readCollection[T any](reader BinaryReader, elemReader func(reader BinaryReader) (T, error)) ([]T, error) {
-	sz := reader.ReadInt32()
-	coll := make([]T, sz)
-	for i := 0; i < int(sz); i++ {
-		el, err := elemReader(reader)
-		if err != nil {
-			return nil, err
-		}
-		coll[i] = el
-	}
-	return coll, nil
 }
 
 // WithCacheName returns [CacheConfigurationOption] that sets a cache name. Especially useful with [CacheConfiguration.Copy]

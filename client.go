@@ -104,9 +104,9 @@ const (
 func (cli *Client) CacheNames(ctx context.Context) ([]string, error) {
 	var err error = nil
 	var names []string
-	cli.ch.send(ctx, opCacheGetNames, func(output BinaryWriter) error {
+	cli.ch.send(ctx, opCacheGetNames, func(output BinaryOutputStream) error {
 		return nil
-	}, func(input BinaryReader, err0 error) {
+	}, func(input BinaryInputStream, err0 error) {
 		if err0 != nil {
 			err = err0
 			return
@@ -132,10 +132,10 @@ func (cli *Client) CacheNames(ctx context.Context) ([]string, error) {
 // CreateCache creates cache with default configuration with specified name, returns [Cache] instance or error if failed.
 func (cli *Client) CreateCache(ctx context.Context, name string) (*Cache, error) {
 	var err error
-	cli.ch.send(ctx, opCacheCreateWithName, func(output BinaryWriter) error {
+	cli.ch.send(ctx, opCacheCreateWithName, func(output BinaryOutputStream) error {
 		marshalString(output, name)
 		return nil
-	}, func(output BinaryReader, err0 error) {
+	}, func(output BinaryInputStream, err0 error) {
 		if err0 != nil {
 			err = err0
 		}
@@ -150,12 +150,12 @@ func (cli *Client) CreateCache(ctx context.Context, name string) (*Cache, error)
 // CreateCacheWithConfiguration creates with specified [CacheConfiguration], returns [Cache] instance or error if failed.
 func (cli *Client) CreateCacheWithConfiguration(ctx context.Context, config CacheConfiguration) (*Cache, error) {
 	var err error
-	cli.ch.send(ctx, opCacheCreateWithConfig, func(output BinaryWriter) error {
-		if err0 := config.marshall(ctx, cli.marsh, output); err0 != nil {
+	cli.ch.send(ctx, opCacheCreateWithConfig, func(output BinaryOutputStream) error {
+		if err0 := config.marshal(ctx, cli.marsh, output); err0 != nil {
 			return err0
 		}
 		return nil
-	}, func(output BinaryReader, err0 error) {
+	}, func(output BinaryInputStream, err0 error) {
 		if err0 != nil {
 			err = err0
 		}
@@ -169,12 +169,12 @@ func (cli *Client) CreateCacheWithConfiguration(ctx context.Context, config Cach
 // GetOrCreateCache returns already started cache or creates new one with specified name, returns [Cache] instance or error if failed.
 func (cli *Client) GetOrCreateCache(ctx context.Context, name string) (*Cache, error) {
 	var err error
-	cli.ch.send(ctx, opCacheGetOrCreateWithName, func(output BinaryWriter) error {
+	cli.ch.send(ctx, opCacheGetOrCreateWithName, func(output BinaryOutputStream) error {
 		if err0 := cli.marsh.marshal(ctx, output, name); err0 != nil {
 			return err0
 		}
 		return nil
-	}, func(output BinaryReader, err0 error) {
+	}, func(output BinaryInputStream, err0 error) {
 		if err0 != nil {
 			err = err0
 		}
@@ -188,12 +188,12 @@ func (cli *Client) GetOrCreateCache(ctx context.Context, name string) (*Cache, e
 // GetOrCreateCacheWithConfiguration returns already started cache or creates new one with specified [CacheConfiguration], returns [Cache] instance or error if failed.
 func (cli *Client) GetOrCreateCacheWithConfiguration(ctx context.Context, config CacheConfiguration) (*Cache, error) {
 	var err error
-	cli.ch.send(ctx, opCacheGetOrCreateWithConfig, func(output BinaryWriter) error {
-		if err0 := config.marshall(ctx, cli.marsh, output); err0 != nil {
+	cli.ch.send(ctx, opCacheGetOrCreateWithConfig, func(output BinaryOutputStream) error {
+		if err0 := config.marshal(ctx, cli.marsh, output); err0 != nil {
 			return err0
 		}
 		return nil
-	}, func(output BinaryReader, err0 error) {
+	}, func(output BinaryInputStream, err0 error) {
 		if err0 != nil {
 			err = err0
 		}
@@ -208,10 +208,10 @@ func (cli *Client) GetOrCreateCacheWithConfiguration(ctx context.Context, config
 // DestroyCache destroys cache with specified name.
 func (cli *Client) DestroyCache(ctx context.Context, name string) error {
 	var err error
-	cli.ch.send(ctx, opCacheDestroy, func(output BinaryWriter) error {
+	cli.ch.send(ctx, opCacheDestroy, func(output BinaryOutputStream) error {
 		output.WriteInt32(internal.HashCode(name))
 		return nil
-	}, func(output BinaryReader, err0 error) {
+	}, func(output BinaryInputStream, err0 error) {
 		if err0 != nil {
 			err = err0
 		}
@@ -227,6 +227,54 @@ func (cli *Client) newCache(name string) *Cache {
 	}
 }
 
+// WithAffinityKeyName sets affinity key field for binary object.
+func WithAffinityKeyName(affKeyName string) func(opt *binaryObjectOptions) {
+	return func(opt *binaryObjectOptions) {
+		opt.affKeyName = affKeyName
+	}
+}
+
+// WithField sets field with specified name and value for binary object.
+func WithField(name string, value interface{}) func(opt *binaryObjectOptions) {
+	return func(opt *binaryObjectOptions) {
+		_, ok := opt.fields[name]
+		if !ok {
+			opt.fieldsOrder = append(opt.fieldsOrder, name)
+			opt.fields[name] = &boField{
+				typeId: -1,
+				value:  value,
+			}
+		}
+	}
+}
+
+// WithNullField sets field with specified name, type and nil value for binary object.
+func WithNullField(name string, typeId TypeDesc) func(opt *binaryObjectOptions) {
+	return func(opt *binaryObjectOptions) {
+		_, ok := opt.fields[name]
+		if !ok {
+			opt.fieldsOrder = append(opt.fieldsOrder, name)
+			opt.fields[name] = &boField{
+				typeId: int32(typeId),
+				value:  nil,
+			}
+		}
+	}
+}
+
+// CreateBinaryObject creates BinaryObject with specified type name and options.
+func (cli *Client) CreateBinaryObject(ctx context.Context, typeName string, opts ...func(*binaryObjectOptions)) (BinaryObject, error) {
+	boOpts := &binaryObjectOptions{
+		typeName:    typeName,
+		fields:      make(map[string]*boField),
+		fieldsOrder: make([]string, 0),
+	}
+	for _, opt := range opts {
+		opt(boOpts)
+	}
+	return newBinaryObject(ctx, cli.marsh, boOpts)
+}
+
 // Version returns current connection protocol version.
 func (cli *Client) Version() (string, error) {
 	ver := cli.ch.protocolContext().Version()
@@ -240,21 +288,24 @@ func (cli *Client) Close(ctx context.Context) error {
 }
 
 type clientConfiguration struct {
-	addressesSupplier func(ctx context.Context) ([]string, error)
-	shuffleAddresses  bool
-	user              string
-	password          string
-	attrs             map[string]string
-	tlsConfigSupplier func() (*tls.Config, error)
-	requestTimeout    time.Duration
-	retryLimit        int
-	logger            *logger.Logger
-	protocolContext   *ProtocolContext
+	addressesSupplier      func(ctx context.Context) ([]string, error)
+	shuffleAddresses       bool
+	user                   string
+	password               string
+	attrs                  map[string]string
+	tlsConfigSupplier      func() (*tls.Config, error)
+	requestTimeout         time.Duration
+	retryLimit             int
+	logger                 *logger.Logger
+	protocolContext        *ProtocolContext
+	enableAutoBinaryConfig bool
+	compactFooter          bool
+	binaryIdMapper         BinaryIdMapper
 }
 
 type ClientConfigurationOption func(config *clientConfiguration) error
 
-// WithAddressSupplier return [ClientConfigurationOption] that sets address supplier. The supplier must return slice of addresses of
+// WithAddressSupplier returns [ClientConfigurationOption] that sets address supplier. The supplier must return slice of addresses of
 // ignite nodes or error if failed.
 //
 // WARNING: Adding result of [WithAddresses] after this will override this [ClientConfigurationOption] and vice versa.
@@ -268,7 +319,7 @@ func WithAddressSupplier(supplier func(ctx context.Context) ([]string, error)) C
 	}
 }
 
-// WithShuffleAddresses return [ClientConfigurationOption] that sets whether addresses of ignite nodes will be shuffled after
+// WithShuffleAddresses returns [ClientConfigurationOption] that sets whether addresses of ignite nodes will be shuffled after
 // obtaining from addresses supplier. See also: [WithAddressSupplier]
 func WithShuffleAddresses(shuffle bool) ClientConfigurationOption {
 	return func(config *clientConfiguration) error {
@@ -277,7 +328,7 @@ func WithShuffleAddresses(shuffle bool) ClientConfigurationOption {
 	}
 }
 
-// WithAddresses return [ClientConfigurationOption] that sets addresses of ignite nodes to connect.
+// WithAddresses returns [ClientConfigurationOption] that sets addresses of ignite nodes to connect.
 //
 // WARNING: Adding result of [WithAddressSupplier] after this will override this [ClientConfigurationOption] and vice versa.
 func WithAddresses(addresses ...string) ClientConfigurationOption {
@@ -304,7 +355,7 @@ func WithAddresses(addresses ...string) ClientConfigurationOption {
 	}
 }
 
-// WithCredentials return [ClientConfigurationOption] that sets credentials (username and password) used to authenticate client.
+// WithCredentials returns [ClientConfigurationOption] that sets credentials (username and password) used to authenticate client.
 func WithCredentials(username string, password string) ClientConfigurationOption {
 	return func(config *clientConfiguration) error {
 		if len(username) != 0 && len(password) != 0 {
@@ -315,7 +366,7 @@ func WithCredentials(username string, password string) ClientConfigurationOption
 	}
 }
 
-// WithTls return [ClientConfigurationOption] that sets TLS configuration supplier. The supplier must return tls configuration or error if failed.
+// WithTls returns [ClientConfigurationOption] that sets TLS configuration supplier. The supplier must return tls configuration or error if failed.
 func WithTls(supplier func() (*tls.Config, error)) ClientConfigurationOption {
 	return func(config *clientConfiguration) error {
 		if supplier == nil {
@@ -326,7 +377,7 @@ func WithTls(supplier func() (*tls.Config, error)) ClientConfigurationOption {
 	}
 }
 
-// WithRequestTimeout return [ClientConfigurationOption] that sets requests timeout. Setting zero or negative duration means no timeout.
+// WithRequestTimeout returns [ClientConfigurationOption] that sets requests timeout. Setting zero or negative duration means no timeout.
 func WithRequestTimeout(timeout time.Duration) ClientConfigurationOption {
 	return func(config *clientConfiguration) error {
 		if timeout <= 0 {
@@ -338,7 +389,7 @@ func WithRequestTimeout(timeout time.Duration) ClientConfigurationOption {
 	}
 }
 
-// WithClientAttribute return [ClientConfigurationOption] that adds key-value pair to optional client connection attributes.
+// WithClientAttribute returns [ClientConfigurationOption] that adds key-value pair to optional client connection attributes.
 func WithClientAttribute(key string, value string) ClientConfigurationOption {
 	return func(config *clientConfiguration) error {
 		if len(key) != 0 && len(value) != 0 {
@@ -372,6 +423,33 @@ func WithProtocolContext(version ProtocolVersion, features ...AttributeFeature) 
 	}
 }
 
+// WithDisabledAutoBinaryConfiguration returns [ClientConfigurationOption] that disables automatic retrieving the current
+// binary configuration from the cluster.
+func WithDisabledAutoBinaryConfiguration() ClientConfigurationOption {
+	return func(config *clientConfiguration) error {
+		config.enableAutoBinaryConfig = false
+		return nil
+	}
+}
+
+// WithBinaryCompactFooter returns [ClientConfigurationOption] that sets compact footer support to binary object serialization.
+// It is set to true by default.
+func WithBinaryCompactFooter(isCompact bool) ClientConfigurationOption {
+	return func(config *clientConfiguration) error {
+		config.compactFooter = isCompact
+		return nil
+	}
+}
+
+// WithBinaryIdMapper returns [ClientConfigurationOption] that sets custom [BinaryIdMapper] to binary object serialization.
+// [BinaryBasicIdMapper] is set by default.
+func WithBinaryIdMapper(mapper BinaryIdMapper) ClientConfigurationOption {
+	return func(config *clientConfiguration) error {
+		config.binaryIdMapper = mapper
+		return nil
+	}
+}
+
 // Start creates and initializes a new Client.
 // Passing opts parameter allows user to configure Client to be created.
 func Start(ctx context.Context, opts ...ClientConfigurationOption) (*Client, error) {
@@ -379,7 +457,13 @@ func Start(ctx context.Context, opts ...ClientConfigurationOption) (*Client, err
 		requestTimeout:   0,
 		retryLimit:       0,
 		shuffleAddresses: true,
-		protocolContext:  NewProtocolContext(ProtocolVersion{1, 7, 0}, UserAttributesFeature),
+		protocolContext: NewProtocolContext(
+			ProtocolVersion{1, 7, 0},
+			UserAttributesFeature,
+			BinaryConfigurationFeature,
+		),
+		compactFooter:          true,
+		enableAutoBinaryConfig: true,
 	}
 	for _, opt := range opts {
 		if err := opt(&cfg); err != nil {
@@ -390,17 +474,29 @@ func Start(ctx context.Context, opts ...ClientConfigurationOption) (*Client, err
 		dfltSink, _ := logger.NewSink(nil, logger.OffLevel)
 		cfg.logger = &logger.Logger{Sink: dfltSink}
 	}
+	if cfg.binaryIdMapper == nil {
+		cfg.binaryIdMapper = &BinaryBasicIdMapper{}
+	}
 	ch, err := createReliableChannel(ctx, &cfg)
 	if err != nil {
 		return nil, err
 	}
 	cli := Client{cfg: &cfg, ch: ch}
-	cli.marsh = newMarshaller(&cli)
+	marsh := &marshallerImpl{
+		cli:           &cli,
+		reg:           newBinaryMetadataRegistry(&cli),
+		compactFooter: cfg.compactFooter,
+		idMapper:      cfg.binaryIdMapper,
+	}
+	cli.marsh = marsh
+	if cfg.enableAutoBinaryConfig {
+		err = marsh.checkBinaryConfiguration(ctx)
+	}
 	return &cli, err
 }
 
 type channel interface {
-	send(ctx context.Context, opCode int16, requestWriter func(output BinaryWriter) error, responseReader func(input BinaryReader, err error))
+	send(ctx context.Context, opCode int16, requestWriter func(output BinaryOutputStream) error, responseReader func(input BinaryInputStream, err error))
 	protocolContext() *ProtocolContext
 	close(ctx context.Context)
 	isClosed() bool

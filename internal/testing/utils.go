@@ -31,6 +31,7 @@ type IgniteParams struct {
 	UseAuth        bool
 	UseSsl         bool
 	UsePersistence bool
+	CompactFooter  bool
 }
 
 type IgniteInstance interface {
@@ -148,9 +149,16 @@ func WithSsl() func(params *IgniteParams) {
 	}
 }
 
+func WithCompactFooter(compactFooter bool) func(params *IgniteParams) {
+	return func(params *IgniteParams) {
+		params.CompactFooter = compactFooter
+	}
+}
+
 func StartIgnite(opts ...func(params *IgniteParams)) (IgniteInstance, error) {
 	params := &IgniteParams{
-		InstanceIdx: 0,
+		InstanceIdx:   0,
+		CompactFooter: true,
 	}
 	if len(opts) > 0 {
 		for _, opt := range opts {

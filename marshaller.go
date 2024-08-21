@@ -9,42 +9,48 @@ import (
 )
 
 type marshaller interface {
-	marshal(ctx context.Context, writer BinaryWriter, payload interface{}) error
-	unmarshall(ctx context.Context, reader BinaryReader) (interface{}, error)
+	binaryMetadataRegistry
+	marshal(ctx context.Context, writer BinaryOutputStream, payload interface{}) error
+	unmarshal(ctx context.Context, reader BinaryInputStream) (interface{}, error)
 	protocolContext() *ProtocolContext
+	isCompactFooter() bool
+	binaryIdMapper() BinaryIdMapper
 }
 
-type typeDesc = int8
+type TypeDesc = int8
 type mapTypeDesc = int8
 type collectionTypeDesc = int8 //lint:ignore U1000 reserved for future
 
 const (
-	byteType typeDesc = iota + 1
-	shortType
-	intType
-	longType
-	floatType
-	doubleType
-	charType
-	boolType
-	stringType
-	uuidType
-	dateType //lint:ignore U1000 reserved for future
-	byteArrayType
-	shortArrayType  //lint:ignore U1000 reserved for future
-	intArrayType    //lint:ignore U1000 reserved for future
-	longArrayType   //lint:ignore U1000 reserved for future
-	floatArrayType  //lint:ignore U1000 reserved for future
-	doubleArrayType //lint:ignore U1000 reserved for future
-	charArrayType   //lint:ignore U1000 reserved for future
-	boolArrayType   //lint:ignore U1000 reserved for future
-	stringArrayType //lint:ignore U1000 reserved for future
-	uuidArrayType   //lint:ignore U1000 reserved for future
-	dateArrayType   //lint:ignore U1000 reserved for future
-	objectArrayType //lint:ignore U1000 reserved for future
-	collectionType  //lint:ignore U1000 reserved for future
+	ByteType TypeDesc = iota + 1
+	ShortType
+	IntType
+	LongType
+	FloatType
+	DoubleType
+	CharType
+	BoolType
+	StringType
+	UuidType
+	DateType //lint:ignore U1000 reserved for future
+	ByteArrayType
+	ShortArrayType  //lint:ignore U1000 reserved for future
+	IntArrayType    //lint:ignore U1000 reserved for future
+	LongArrayType   //lint:ignore U1000 reserved for future
+	FloatArrayType  //lint:ignore U1000 reserved for future
+	DoubleArrayType //lint:ignore U1000 reserved for future
+	CharArrayType   //lint:ignore U1000 reserved for future
+	BoolArrayType   //lint:ignore U1000 reserved for future
+	StringArrayType //lint:ignore U1000 reserved for future
+	UuidArrayType   //lint:ignore U1000 reserved for future
+	DateArrayType   //lint:ignore U1000 reserved for future
+	ObjectArrayType //lint:ignore U1000 reserved for future
+	CollectionType  //lint:ignore U1000 reserved for future
 	mapType
-	nullType typeDesc = 101
+	wrappedObjectType TypeDesc = 27
+	NullType          TypeDesc = 101
+	handleType        TypeDesc = 102 //lint:ignore U1000 reserved for future
+	BinaryObjectType  TypeDesc = 103
 )
 
 const (
@@ -60,98 +66,144 @@ const (
 	singletonList                               //lint:ignore U1000 reserved for future
 )
 
-type marshallerImpl struct {
-	cli *Client
-}
+const (
+	opGetBinaryConfiguration int16 = 3004
+)
 
-func newMarshaller(cli *Client) marshaller {
-	return &marshallerImpl{
-		cli: cli,
-	}
+type marshallerImpl struct {
+	cli           *Client
+	reg           binaryMetadataRegistry
+	compactFooter bool
+	idMapper      BinaryIdMapper
 }
 
 func (m *marshallerImpl) protocolContext() *ProtocolContext {
 	return m.cli.ch.protocolContext()
 }
 
-func (m *marshallerImpl) marshal(_ context.Context, writer BinaryWriter, payload interface{}) error {
+func (m *marshallerImpl) isCompactFooter() bool {
+	return m.compactFooter
+}
+
+func (m *marshallerImpl) binaryIdMapper() BinaryIdMapper {
+	return m.idMapper
+}
+
+func (m *marshallerImpl) getMetadata(ctx context.Context, typeId int32) (*binaryMetadata, error) {
+	return m.reg.getMetadata(ctx, typeId)
+}
+
+func (m *marshallerImpl) getSchema(ctx context.Context, typeId int32, schemaId int32) (*binarySchema, error) {
+	return m.reg.getSchema(ctx, typeId, schemaId)
+}
+
+func (m *marshallerImpl) putMetadata(ctx context.Context, typeId int32, meta *binaryMetadata) error {
+	return m.reg.putMetadata(ctx, typeId, meta)
+}
+
+func (m *marshallerImpl) clearRegistry() {
+	m.reg.clearRegistry()
+}
+
+func (m *marshallerImpl) checkBinaryConfiguration(ctx context.Context) error {
+	var err error
+	pCtx := m.protocolContext()
+	if pCtx != nil && pCtx.SupportsAttributeFeature(BinaryConfigurationFeature) {
+		var srvCompactFooter bool
+		m.cli.ch.send(ctx, opGetBinaryConfiguration, func(output BinaryOutputStream) error {
+			return nil
+		}, func(input BinaryInputStream, err0 error) {
+			if err0 != nil {
+				err = err0
+				return
+			}
+			srvCompactFooter = input.ReadBool()
+			input.ReadInt8() // Ignored
+		})
+		if err == nil {
+			m.compactFooter = srvCompactFooter
+		}
+	}
+	return err
+}
+
+func (m *marshallerImpl) marshal(_ context.Context, writer BinaryOutputStream, payload interface{}) error {
 	if payload == nil {
-		writer.WriteInt8(nullType)
+		writer.WriteInt8(NullType)
 		return nil
 	}
+	typeId, err := GetTypeId(payload)
+	if err != nil {
+		return err
+	}
+	if typeId != BinaryObjectType {
+		writer.WriteInt8(typeId)
+	}
+
 	switch val := payload.(type) {
 	case bool:
 		{
-			writer.WriteInt8(boolType)
 			writer.WriteBool(val)
 		}
 	case uint8:
 		{
-			writer.WriteInt8(byteType)
 			writer.WriteUInt8(val)
 		}
 	case int8:
 		{
-			writer.WriteInt8(byteType)
 			writer.WriteInt8(val)
 		}
 	case uint16:
 		{
-			writer.WriteInt8(charType)
 			writer.WriteUInt16(val)
 		}
 	case int16:
 		{
-			writer.WriteInt8(shortType)
 			writer.WriteInt16(val)
 		}
 	case uint32:
 		{
-			writer.WriteInt8(intType)
 			writer.WriteUInt32(val)
 		}
 	case int32:
 		{
-			writer.WriteInt8(intType)
 			writer.WriteInt32(val)
 		}
 	case int:
 		{
-			writer.WriteInt8(intType)
 			writer.WriteInt32(int32(val))
 		}
 	case uint64:
 		{
-			writer.WriteInt8(longType)
 			writer.WriteUInt64(val)
 		}
 	case int64:
 		{
-			writer.WriteInt8(longType)
 			writer.WriteInt64(val)
 		}
 	case float32:
 		{
-			writer.WriteInt8(floatType)
 			writer.WriteUInt32(math.Float32bits(val))
 		}
 	case float64:
 		{
-			writer.WriteInt8(doubleType)
 			writer.WriteUInt64(math.Float64bits(val))
 		}
 	case []byte:
 		{
-			marshalBytes(writer, val)
+			marshalBytes0(writer, val)
 		}
 	case string:
 		{
-			marshalString(writer, val)
+			marshalString0(writer, val)
 		}
 	case uuid.UUID:
 		{
-			writer.WriteInt8(uuidType)
 			writer.WriteBytes(val[:])
+		}
+	case BinaryObject:
+		{
+			writer.WriteBytes(val.Data())
 		}
 	default:
 		return fmt.Errorf("type '%T' is not supported", val)
@@ -159,18 +211,93 @@ func (m *marshallerImpl) marshal(_ context.Context, writer BinaryWriter, payload
 	return nil
 }
 
-func (m *marshallerImpl) unmarshall(_ context.Context, reader BinaryReader) (interface{}, error) {
+func GetTypeId(val interface{}) (TypeDesc, error) {
+	if val == nil {
+		return NullType, nil
+	}
+	switch t := val.(type) {
+	case bool:
+		{
+			return BoolType, nil
+		}
+	case uint8:
+		{
+			return ByteType, nil
+		}
+	case int8:
+		{
+			return ByteType, nil
+		}
+	case uint16:
+		{
+			return CharType, nil
+		}
+	case int16:
+		{
+			return ShortType, nil
+		}
+	case uint32:
+		{
+			return IntType, nil
+		}
+	case int32:
+		{
+			return IntType, nil
+		}
+	case int:
+		{
+			return IntType, nil
+		}
+	case uint64:
+		{
+			return LongType, nil
+		}
+	case int64:
+		{
+			return LongType, nil
+		}
+	case float32:
+		{
+			return FloatType, nil
+		}
+	case float64:
+		{
+			return DoubleType, nil
+		}
+	case []byte:
+		{
+			return ByteArrayType, nil
+		}
+	case string:
+		{
+			return StringType, nil
+		}
+	case uuid.UUID:
+		{
+			return UuidType, nil
+		}
+	case BinaryObject:
+		{
+			return BinaryObjectType, nil
+		}
+	default:
+		return -1, fmt.Errorf("type '%T' is not supported", t)
+	}
+
+}
+
+func (m *marshallerImpl) unmarshal(_ context.Context, reader BinaryInputStream) (interface{}, error) {
 	err := ensureAvailable(reader, 1)
 	if err != nil {
 		return nil, err
 	}
 	payloadType := reader.ReadInt8()
 	switch payloadType {
-	case nullType:
+	case NullType:
 		{
 			return nil, nil
 		}
-	case boolType:
+	case BoolType:
 		{
 			err = ensureAvailable(reader, 1)
 			if err != nil {
@@ -178,7 +305,7 @@ func (m *marshallerImpl) unmarshall(_ context.Context, reader BinaryReader) (int
 			}
 			return reader.ReadBool(), nil
 		}
-	case byteType:
+	case ByteType:
 		{
 			err = ensureAvailable(reader, 1)
 			if err != nil {
@@ -186,7 +313,7 @@ func (m *marshallerImpl) unmarshall(_ context.Context, reader BinaryReader) (int
 			}
 			return reader.ReadInt8(), nil
 		}
-	case shortType:
+	case ShortType:
 		{
 			err = ensureAvailable(reader, 2)
 			if err != nil {
@@ -194,7 +321,7 @@ func (m *marshallerImpl) unmarshall(_ context.Context, reader BinaryReader) (int
 			}
 			return reader.ReadInt16(), nil
 		}
-	case charType:
+	case CharType:
 		{
 			err = ensureAvailable(reader, 2)
 			if err != nil {
@@ -202,7 +329,7 @@ func (m *marshallerImpl) unmarshall(_ context.Context, reader BinaryReader) (int
 			}
 			return reader.ReadUInt16(), nil
 		}
-	case intType:
+	case IntType:
 		{
 			err = ensureAvailable(reader, 4)
 			if err != nil {
@@ -210,7 +337,7 @@ func (m *marshallerImpl) unmarshall(_ context.Context, reader BinaryReader) (int
 			}
 			return reader.ReadInt32(), nil
 		}
-	case longType:
+	case LongType:
 		{
 			err = ensureAvailable(reader, 8)
 			if err != nil {
@@ -218,7 +345,7 @@ func (m *marshallerImpl) unmarshall(_ context.Context, reader BinaryReader) (int
 			}
 			return reader.ReadInt64(), nil
 		}
-	case floatType:
+	case FloatType:
 		{
 			err = ensureAvailable(reader, 4)
 			if err != nil {
@@ -227,7 +354,7 @@ func (m *marshallerImpl) unmarshall(_ context.Context, reader BinaryReader) (int
 			return math.Float32frombits(reader.ReadUInt32()), nil
 
 		}
-	case doubleType:
+	case DoubleType:
 		{
 			err = ensureAvailable(reader, 8)
 			if err != nil {
@@ -235,7 +362,7 @@ func (m *marshallerImpl) unmarshall(_ context.Context, reader BinaryReader) (int
 			}
 			return math.Float64frombits(reader.ReadUInt64()), nil
 		}
-	case byteArrayType:
+	case ByteArrayType:
 		{
 			var ret []byte
 			if ret, err = unmarshalBytes(reader, true); err != nil {
@@ -243,7 +370,7 @@ func (m *marshallerImpl) unmarshall(_ context.Context, reader BinaryReader) (int
 			}
 			return ret, nil
 		}
-	case stringType:
+	case StringType:
 		{
 			var ret string
 			if ret, err = unmarshalString(reader, true); err != nil {
@@ -251,7 +378,7 @@ func (m *marshallerImpl) unmarshall(_ context.Context, reader BinaryReader) (int
 			}
 			return ret, nil
 		}
-	case uuidType:
+	case UuidType:
 		{
 			var ret uuid.UUID
 			if ret, err = unmarshalUuid(reader, true); err != nil {
@@ -259,29 +386,45 @@ func (m *marshallerImpl) unmarshall(_ context.Context, reader BinaryReader) (int
 			}
 			return ret, nil
 		}
+	case BinaryObjectType:
+		{
+			return unmarshalBinaryObject(m, reader, false)
+		}
+	case wrappedObjectType:
+		{
+			return unmarshalBinaryObject(m, reader, true)
+		}
 	default:
 		return nil, fmt.Errorf("type %d is not supported", payloadType)
 	}
 }
 
-func marshalString(writer BinaryWriter, val string) {
-	writer.WriteInt8(stringType)
+func marshalString(writer BinaryOutputStream, val string) {
+	writer.WriteInt8(StringType)
+	marshalString0(writer, val)
+}
+
+func marshalString0(writer BinaryOutputStream, val string) {
 	bytes := []byte(val)
 	writer.WriteInt32(int32(len(bytes)))
 	writer.WriteBytes(bytes)
 }
 
-func marshalBytes(writer BinaryWriter, val []byte) {
+func marshalBytes(writer BinaryOutputStream, val []byte) {
 	if val == nil {
-		writer.WriteInt8(nullType)
+		writer.WriteInt8(NullType)
 		return
 	}
-	writer.WriteInt8(byteArrayType)
+	writer.WriteInt8(ByteArrayType)
+	marshalBytes0(writer, val)
+}
+
+func marshalBytes0(writer BinaryOutputStream, val []byte) {
 	writer.WriteInt32(int32(len(val)))
 	writer.WriteBytes(val)
 }
 
-func unmarshalBytes(reader BinaryReader, skipHeader bool) ([]byte, error) {
+func unmarshalBytes(reader BinaryInputStream, skipHeader bool) ([]byte, error) {
 	var err error
 	if !skipHeader {
 		if err = ensureAvailable(reader, 1); err != nil {
@@ -289,11 +432,11 @@ func unmarshalBytes(reader BinaryReader, skipHeader bool) ([]byte, error) {
 		}
 		t := reader.ReadInt8()
 		switch t {
-		case nullType:
+		case NullType:
 			{
 				return nil, nil
 			}
-		case byteArrayType:
+		case ByteArrayType:
 			{
 				break
 			}
@@ -306,14 +449,14 @@ func unmarshalBytes(reader BinaryReader, skipHeader bool) ([]byte, error) {
 	if err = ensureAvailable(reader, 4); err != nil {
 		return nil, err
 	}
-	bytesSz := reader.ReadInt32()
+	bytesSz := int(reader.ReadInt32())
 	if err = ensureAvailable(reader, bytesSz); err != nil {
 		return nil, err
 	}
 	return reader.ReadBytes(bytesSz), nil
 }
 
-func unmarshalString(reader BinaryReader, skipHeader bool) (string, error) {
+func unmarshalString(reader BinaryInputStream, skipHeader bool) (string, error) {
 	var err error
 	if !skipHeader {
 		if err = ensureAvailable(reader, 1); err != nil {
@@ -321,11 +464,11 @@ func unmarshalString(reader BinaryReader, skipHeader bool) (string, error) {
 		}
 		t := reader.ReadInt8()
 		switch t {
-		case nullType:
+		case NullType:
 			{
 				return "", nil
 			}
-		case stringType:
+		case StringType:
 			{
 				break
 			}
@@ -338,14 +481,49 @@ func unmarshalString(reader BinaryReader, skipHeader bool) (string, error) {
 	if err = ensureAvailable(reader, 4); err != nil {
 		return "", err
 	}
-	strSz := reader.ReadInt32()
+	strSz := int(reader.ReadInt32())
 	if err = ensureAvailable(reader, strSz); err != nil {
 		return "", err
 	}
 	return bytesToString(reader.ReadBytes(strSz)), nil
 }
 
-func unmarshalUuid(reader BinaryReader, skipHeader bool) (uuid.UUID, error) {
+func unmarshalBinaryObject(m marshaller, reader BinaryInputStream, wrapped bool) (BinaryObject, error) {
+	var err error
+	var data []byte
+	if wrapped {
+		err = ensureAvailable(reader, 4)
+		if err != nil {
+			return nil, err
+		}
+		sz := int(reader.ReadInt32())
+		err = ensureAvailable(reader, sz+4)
+		if err != nil {
+			return nil, err
+		}
+		data = reader.ReadBytes(sz)
+		offset := reader.ReadInt32()
+		data = data[offset:]
+	} else {
+		if err = ensureAvailable(reader, headerLength); err != nil {
+			return nil, err
+		}
+		startPos := reader.Position() - 1 // First byte of header has been already read
+		reader.SetPosition(startPos + lenPos)
+		sz := int(reader.ReadInt32())
+		reader.SetPosition(startPos)
+		if err = ensureAvailable(reader, sz); err != nil {
+			return nil, err
+		}
+		data = reader.ReadBytes(sz)
+	}
+	return &binaryObjectImpl{
+		data:  data,
+		marsh: m,
+	}, nil
+}
+
+func unmarshalUuid(reader BinaryInputStream, skipHeader bool) (uuid.UUID, error) {
 	var err error
 	if !skipHeader {
 		if err = ensureAvailable(reader, 1); err != nil {
@@ -353,11 +531,11 @@ func unmarshalUuid(reader BinaryReader, skipHeader bool) (uuid.UUID, error) {
 		}
 		t := reader.ReadInt8()
 		switch t {
-		case nullType:
+		case NullType:
 			{
 				return uuid.Nil, nil
 			}
-		case uuidType:
+		case UuidType:
 			{
 				break
 			}
@@ -375,7 +553,7 @@ func unmarshalUuid(reader BinaryReader, skipHeader bool) (uuid.UUID, error) {
 	return ret, nil
 }
 
-func ensureAvailable(reader BinaryReader, nBytes int32) error {
+func ensureAvailable(reader BinaryInputStream, nBytes int) error {
 	if reader.Available() < nBytes {
 		return fmt.Errorf("invalid binary stream")
 	}
@@ -384,4 +562,52 @@ func ensureAvailable(reader BinaryReader, nBytes int32) error {
 
 func bytesToString(buf []byte) string {
 	return *(*string)(unsafe.Pointer(&buf))
+}
+
+func readCollection[T any](reader BinaryInputStream, elemReader func(reader BinaryInputStream) (T, error)) ([]T, error) {
+	sz := reader.ReadInt32()
+	coll := make([]T, sz)
+	for i := 0; i < int(sz); i++ {
+		el, err := elemReader(reader)
+		if err != nil {
+			return nil, err
+		}
+		coll[i] = el
+	}
+	return coll, nil
+}
+
+func readMap[K comparable, V any](reader BinaryInputStream, kvReader func(BinaryInputStream) (K, V, error)) (map[K]V, error) {
+	sz := reader.ReadInt32()
+	outMap := make(map[K]V, sz)
+	for i := 0; i < int(sz); i++ {
+		k, v, err := kvReader(reader)
+		if err != nil {
+			return nil, err
+		}
+		outMap[k] = v
+	}
+	return outMap, nil
+}
+
+func writeMap[K comparable, V any](writer BinaryOutputStream, inMap map[K]V, kvWriter func(BinaryOutputStream, K, V) error) error {
+	writer.WriteInt32(int32(len(inMap)))
+	for k, v := range inMap {
+		err := kvWriter(writer, k, v)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func writeCollection[T any](writer BinaryOutputStream, values []T, valueWriter func(output BinaryOutputStream, value T) error) error {
+	writer.WriteInt32(int32(len(values)))
+	for _, value := range values {
+		err := valueWriter(writer, value)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }

@@ -66,7 +66,7 @@ func (ctx *ProtocolContext) Version() ProtocolVersion {
 	return ctx.version
 }
 
-func (ctx *ProtocolContext) marshall(writer BinaryWriter) {
+func (ctx *ProtocolContext) marshal(writer BinaryOutputStream) {
 	writer.WriteInt16(ctx.version.Major)
 	writer.WriteInt16(ctx.version.Minor)
 	writer.WriteInt16(ctx.version.Patch)
