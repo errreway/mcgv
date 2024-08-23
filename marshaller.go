@@ -2,6 +2,7 @@ package ignite
 
 import (
 	"context"
+	"encoding/binary"
 	"fmt"
 	"github.com/google/uuid"
 	"math"
@@ -199,7 +200,7 @@ func (m *marshallerImpl) marshal(_ context.Context, writer BinaryOutputStream, p
 		}
 	case uuid.UUID:
 		{
-			writer.WriteBytes(val[:])
+			marshalUuid0(writer, val)
 		}
 	case BinaryObject:
 		{
@@ -410,6 +411,17 @@ func marshalString0(writer BinaryOutputStream, val string) {
 	writer.WriteBytes(bytes)
 }
 
+//lint:ignore U1000 reserved for future
+func marshalUuid(writer BinaryOutputStream, val uuid.UUID) {
+	writer.WriteInt8(UuidType)
+	marshalUuid0(writer, val)
+}
+
+func marshalUuid0(writer BinaryOutputStream, val uuid.UUID) {
+	writer.WriteUInt64(binary.BigEndian.Uint64(val[:8]))
+	writer.WriteUInt64(binary.BigEndian.Uint64(val[8:]))
+}
+
 func marshalBytes(writer BinaryOutputStream, val []byte) {
 	if val == nil {
 		writer.WriteInt8(NullType)
@@ -549,7 +561,8 @@ func unmarshalUuid(reader BinaryInputStream, skipHeader bool) (uuid.UUID, error)
 		return uuid.Nil, err
 	}
 	ret := uuid.UUID{}
-	copy(ret[:], reader.ReadBytes(16))
+	binary.BigEndian.PutUint64(ret[:8], reader.ReadUInt64())
+	binary.BigEndian.PutUint64(ret[8:], reader.ReadUInt64())
 	return ret, nil
 }
 

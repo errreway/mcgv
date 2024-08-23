@@ -20,42 +20,26 @@ func TestBinaryObjectsCacheOperations(t *testing.T) {
 	suite.Run(t, new(BinaryObjectTestSuite))
 }
 
-func (suite *BinaryObjectTestSuite) TestDefault() {
-	defer func() {
-		if err := recover(); err != nil {
-			suite.KillAllGrids()
-		}
-	}()
-	for _, compactFooter := range []bool{true, false} {
-		_, err := suite.StartIgnite(testing2.WithCompactFooter(compactFooter))
-		require.NoError(suite.T(), err)
-		suite.cli, err = StartTestClient(context.Background())
-		require.NoError(suite.T(), err)
-		require.Equal(suite.T(), compactFooter, suite.cli.marsh.isCompactFooter())
-		for _, fixture := range []struct {
-			f         func(*testing.T, *Client, *Cache)
-			isIndexed bool
-		}{
-			{testMergeMetadata, false},
-			{testPutGetAllBinaryObject, true},
-			{testNestedBinaryObject, false},
-			{testLargeBinaryObject, false},
-		} {
-			fName := runtime.FuncForPC(reflect.ValueOf(fixture.f).Pointer()).Name()
-			suite.T().Run(fmt.Sprintf("%s/compactFooter-%t", fName, compactFooter), func(t *testing.T) {
-				var cache *Cache
-				if fixture.isIndexed {
-					cache = suite.createIndexedCache()
-				} else {
-					cache = suite.createSimpleCache()
-				}
-				fixture.f(t, suite.cli, cache)
-				DestroyAllCaches(t, suite.cli)
-			})
-		}
-		_ = suite.cli.Close(context.Background())
-		suite.KillAllGrids()
-	}
+func (suite *BinaryObjectTestSuite) TestBasic() {
+	suite.runTests([]struct {
+		f         func(*testing.T, *Client, *Cache)
+		isIndexed bool
+	}{
+		{testPutGetAllBinaryObject, true},
+		{testNestedBinaryObject, false},
+		{testLargeBinaryObject, false},
+	}...)
+}
+
+func (suite *BinaryObjectTestSuite) TestMergeMetadata() {
+	suite.runTests(struct {
+		f         func(*testing.T, *Client, *Cache)
+		isIndexed bool
+	}{testMergeMetadata_WithClearRegistry, false})
+	suite.runTests(struct {
+		f         func(*testing.T, *Client, *Cache)
+		isIndexed bool
+	}{testMergeMetadata_WithoutClearRegistry, false})
 }
 
 func testPutGetAllBinaryObject(t *testing.T, cli *Client, cache *Cache) {
@@ -171,7 +155,15 @@ func testNestedBinaryObject(t *testing.T, cli *Client, cache *Cache) {
 	require.Equal(t, int32(10), innerFldVal)
 }
 
-func testMergeMetadata(t *testing.T, cli *Client, _ *Cache) {
+func testMergeMetadata_WithClearRegistry(t *testing.T, cli *Client, cache *Cache) {
+	testMergeMetadata(t, cli, cache, true)
+}
+
+func testMergeMetadata_WithoutClearRegistry(t *testing.T, cli *Client, cache *Cache) {
+	testMergeMetadata(t, cli, cache, false)
+}
+
+func testMergeMetadata(t *testing.T, cli *Client, _ *Cache, clearRegistry bool) {
 	ctx := context.Background()
 	objChecker := func(obj BinaryObject, typeName string, fields []string, fieldVals ...struct {
 		name  string
@@ -204,6 +196,9 @@ func testMergeMetadata(t *testing.T, cli *Client, _ *Cache) {
 	checks := make([]func(int, []string), 0)
 
 	// Empty object, schema with no fields
+	if clearRegistry {
+		cli.marsh.clearRegistry()
+	}
 	objEmpty, err := cli.CreateBinaryObject(ctx, "MERGED")
 	require.NoError(t, err)
 	checks = append(checks, func(schemaCnt int, fields []string) {
@@ -219,6 +214,9 @@ func testMergeMetadata(t *testing.T, cli *Client, _ *Cache) {
 	runChecks(1, []string{}, checks)
 
 	// New schema should be added since new field was added
+	if clearRegistry {
+		cli.marsh.clearRegistry()
+	}
 	objOneField, err := cli.CreateBinaryObject(ctx, "MERGED", WithField("id", 10))
 	require.NoError(t, err)
 	checks = append(checks, func(schemaCnt int, fields []string) {
@@ -233,12 +231,24 @@ func testMergeMetadata(t *testing.T, cli *Client, _ *Cache) {
 	})
 	runChecks(2, []string{"id"}, checks)
 
+	if clearRegistry {
+		cli.marsh.clearRegistry()
+	}
 	_, err = cli.CreateBinaryObject(ctx, "MERGED", WithField("id", 10), WithAffinityKeyName("id"))
 	require.Error(t, err) // should fail if affinity key name was changed
+	runChecks(2, []string{"id"}, checks)
+
+	if clearRegistry {
+		cli.marsh.clearRegistry()
+	}
 	_, err = cli.CreateBinaryObject(ctx, "MERGED", WithField("id", "test"))
 	require.Error(t, err) // should fail if field type was changed
+	runChecks(2, []string{"id"}, checks)
 
 	// New schema should be added since new field was added
+	if clearRegistry {
+		cli.marsh.clearRegistry()
+	}
 	objTwoField, err := cli.CreateBinaryObject(ctx, "MERGED", WithField("id", 10), WithField("name", "name"))
 	require.NoError(t, err)
 	checks = append(checks, func(schemaCnt int, fields []string) {
@@ -254,6 +264,9 @@ func testMergeMetadata(t *testing.T, cli *Client, _ *Cache) {
 	runChecks(3, []string{"id", "name"}, checks)
 
 	// No new schema should be added.
+	if clearRegistry {
+		cli.marsh.clearRegistry()
+	}
 	objOneFieldAfterTwo, err := cli.CreateBinaryObject(ctx, "MERGED", WithField("id", 10))
 	require.NoError(t, err)
 	checks = append(checks, func(schemaCnt int, fields []string) {
@@ -269,6 +282,9 @@ func testMergeMetadata(t *testing.T, cli *Client, _ *Cache) {
 	runChecks(3, []string{"id", "name"}, checks)
 
 	// New schema should be added if field order is different.
+	if clearRegistry {
+		cli.marsh.clearRegistry()
+	}
 	objTwoFieldDiffOrder, err := cli.CreateBinaryObject(ctx, "MERGED", WithField("name", "name"), WithField("id", 10))
 	require.NoError(t, err)
 	checks = append(checks, func(schemaCnt int, fields []string) {
@@ -303,6 +319,39 @@ func (suite *BinaryObjectTestSuite) createSimpleCache() *Cache {
 	cache, err := suite.cli.CreateCache(context.Background(), "SIMPLE")
 	require.NoError(suite.T(), err)
 	return cache
+}
+
+func (suite *BinaryObjectTestSuite) runTests(tests ...struct {
+	f         func(*testing.T, *Client, *Cache)
+	isIndexed bool
+}) {
+	defer func() {
+		if err := recover(); err != nil {
+			suite.KillAllGrids()
+		}
+	}()
+	for _, compactFooter := range []bool{true, false} {
+		_, err := suite.StartIgnite(testing2.WithCompactFooter(compactFooter))
+		require.NoError(suite.T(), err)
+		suite.cli, err = StartTestClient(context.Background())
+		require.NoError(suite.T(), err)
+		require.Equal(suite.T(), compactFooter, suite.cli.marsh.isCompactFooter())
+		for _, fixture := range tests {
+			fName := runtime.FuncForPC(reflect.ValueOf(fixture.f).Pointer()).Name()
+			suite.T().Run(fmt.Sprintf("%s/compactFooter-%t", fName, compactFooter), func(t *testing.T) {
+				var cache *Cache
+				if fixture.isIndexed {
+					cache = suite.createIndexedCache()
+				} else {
+					cache = suite.createSimpleCache()
+				}
+				fixture.f(t, suite.cli, cache)
+				DestroyAllCaches(t, suite.cli)
+			})
+		}
+		_ = suite.cli.Close(context.Background())
+		suite.KillAllGrids()
+	}
 }
 
 func RequireEqual(t require.TestingT, obj1 BinaryObject, obj2 BinaryObject) {

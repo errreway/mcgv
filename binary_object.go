@@ -231,6 +231,21 @@ func newBinaryObject(ctx context.Context, marsh marshaller, opts *binaryObjectOp
 	typeId := bIdMapper.TypeId(opts.typeName)
 
 	schemaBuilder := newBinarySchemaBuilder()
+
+	oldMeta, err := marsh.getMetadata(ctx, typeId)
+	if err != nil {
+		return nil, err
+	}
+	if oldMeta != nil {
+		if opts.typeName != oldMeta.typeName {
+			return nil, fmt.Errorf("types have the same typeId %d: old %s vs %s", typeId, oldMeta.typeName,
+				opts.typeName)
+		}
+		if opts.affKeyName != oldMeta.affKeyName {
+			return nil, fmt.Errorf("type %s with typeId %d has different affinity key field: %s vs %s",
+				opts.typeName, typeId, oldMeta.affKeyName, opts.affKeyName)
+		}
+	}
 	binaryMeta := newBinaryMetadata(typeId, opts.typeName, opts.affKeyName)
 
 	outStream := NewBinaryOutputStream(headerLength)
@@ -247,18 +262,40 @@ func newBinaryObject(ctx context.Context, marsh marshaller, opts *binaryObjectOp
 		flags |= flagHasSchema
 		for _, fldName := range opts.fieldsOrder {
 			field := opts.fields[fldName]
-			if field.typeId < 0 {
-				fldTypeId, err := GetTypeId(field.value)
-				if err != nil {
-					return nil, err
-				}
-				field.typeId = int32(fldTypeId)
-			}
 			fieldId := bIdMapper.FieldId(typeId, fldName)
+			// set old field metadata if exists
+			var oldFieldMeta *binaryFieldMeta = nil
+			if oldMeta != nil {
+				if fMeta, ok := oldMeta.fields[fldName]; ok {
+					oldFieldMeta = &fMeta
+				}
+			}
+			// set field type if not have been set already
+			if field.typeId < 0 {
+				if field.value != nil {
+					fldTypeId, err := GetTypeId(field.value)
+					if err != nil {
+						return nil, err
+					}
+					field.typeId = int32(fldTypeId)
+				} else if oldFieldMeta != nil {
+					field.typeId = oldFieldMeta.typeId
+				} else {
+					field.typeId = int32(BinaryObjectType)
+				}
+			}
+			// check type compliance for oldMeta
+			if oldFieldMeta != nil && field.typeId != oldFieldMeta.typeId {
+				return nil, fmt.Errorf("type %s with typeId %d has different type for field %s: old %d vs %d",
+					opts.typeName, typeId, fldName, oldFieldMeta.typeId, typeId)
+			}
+			// add new field to meta if oldFieldMeta is nil
+			if oldFieldMeta == nil {
+				binaryMeta.addField(fldName, field.typeId, fieldId)
+			}
 			outStream.WriteInt32(fieldId)
 			schemaBuilder.AddField(fieldId, int32(outStream.Position()-startPos))
-			binaryMeta.addField(fldName, field.typeId, fieldId)
-			if err := marsh.marshal(ctx, outStream, field.value); err != nil {
+			if err = marsh.marshal(ctx, outStream, field.value); err != nil {
 				return nil, err
 			}
 		}
@@ -284,7 +321,7 @@ func newBinaryObject(ctx context.Context, marsh marshaller, opts *binaryObjectOp
 	outStream.WriteInt32(int32(offset))
 	// Add schema to registry
 	binaryMeta.addSchema(schema)
-	err := marsh.putMetadata(ctx, typeId, binaryMeta)
+	err = marsh.putMetadata(ctx, typeId, binaryMeta)
 	if err != nil {
 		return nil, err
 	}
