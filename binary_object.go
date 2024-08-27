@@ -293,7 +293,6 @@ func newBinaryObject(ctx context.Context, marsh marshaller, opts *binaryObjectOp
 			if oldFieldMeta == nil {
 				binaryMeta.addField(fldName, field.typeId, fieldId)
 			}
-			outStream.WriteInt32(fieldId)
 			schemaBuilder.AddField(fieldId, int32(outStream.Position()-startPos))
 			if err = marsh.marshal(ctx, outStream, field.value); err != nil {
 				return nil, err
