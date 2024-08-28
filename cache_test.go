@@ -3,6 +3,7 @@ package ignite
 import (
 	"context"
 	"fmt"
+	"github.com/cockroachdb/apd/v3"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
@@ -80,6 +81,42 @@ func (suite *CacheTestSuite) TestPutGetSingle() {
 	for _, f := range fixtures {
 		suite.T().Run(fmt.Sprintf("put/get single key=%v,val=%v", f.key, f.val), func(t *testing.T) {
 			suite.putGetSingleTest(t, f.key, f.val, f.val)
+		})
+	}
+}
+
+func (suite *CacheTestSuite) TestPutGetDecimals() {
+	decimals := []struct {
+		coeff string
+		exp   int32
+	}{
+		{"FFDEADBEEFDEADBEEFDEADBEEF", 10},
+		{"-FFDEADBEEFDEADBEEFDEADBEEF", 10},
+		{"FFDEADBEEFDEADBEEFDEADBEEF", -10},
+		{"-FFDEADBEEFDEADBEEFDEADBEEF", -10},
+		{"7FDEADBEEFDEADBEEFDEADBEEF", 10},
+		{"7FDEADBEEFDEADBEEFDEADBEEF", -10},
+		{"-7FDEADBEEFDEADBEEFDEADBEEF", 10},
+		{"-7FDEADBEEFDEADBEEFDEADBEEF", -10},
+		{"80DEADBEEFDEADBEEFDEADBEEF", 10},
+		{"-80DEADBEEFDEADBEEFDEADBEEF", 10},
+		{"80DEADBEEFDEADBEEFDEADBEEF", -10},
+		{"-80DEADBEEFDEADBEEFDEADBEEF", -10},
+		{"0", 0},
+		{"0", -10},
+		{"0", 10},
+		{"-80", 0},
+		{"80", 0},
+		{"7F", 0},
+		{"-7F", 0},
+	}
+
+	for _, dec := range decimals {
+		coeff := new(apd.BigInt)
+		coeff.SetString(dec.coeff, 16)
+		val := apd.NewWithBigInt(coeff, dec.exp)
+		suite.T().Run(fmt.Sprintf("put/get decimal key=%v,val=%v", val, val), func(t *testing.T) {
+			suite.putGetSingleTest(t, val, val, val)
 		})
 	}
 }

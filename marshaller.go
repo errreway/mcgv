@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
+	"github.com/cockroachdb/apd/v3"
 	"github.com/google/uuid"
 	"math"
 	"time"
@@ -50,6 +51,7 @@ const (
 	CollectionType  //lint:ignore U1000 reserved for future
 	mapType
 	wrappedObjectType TypeDesc = 27
+	DecimalType       TypeDesc = 30
 	TimestampType     TypeDesc = 33
 	TimeType          TypeDesc = 36
 	NullType          TypeDesc = 101
@@ -217,6 +219,14 @@ func (m *marshallerImpl) marshal(_ context.Context, writer BinaryOutputStream, p
 		{
 			marshalTimestamp0(writer, val)
 		}
+	case *apd.Decimal:
+		{
+			marshalDecimal0(writer, val)
+		}
+	case apd.Decimal:
+		{
+			marshalDecimal0(writer, &val)
+		}
 	case BinaryObject:
 		{
 			writer.WriteBytes(val.Data())
@@ -307,6 +317,10 @@ func GetTypeId(val interface{}) (TypeDesc, error) {
 	case BinaryObject:
 		{
 			return BinaryObjectType, nil
+		}
+	case *apd.Decimal, apd.Decimal:
+		{
+			return DecimalType, nil
 		}
 	default:
 		return -1, fmt.Errorf("type '%T' is not supported", t)
@@ -414,6 +428,10 @@ func (m *marshallerImpl) unmarshal(_ context.Context, reader BinaryInputStream) 
 		{
 			return unmarshalTimestamp(reader, true)
 		}
+	case DecimalType:
+		{
+			return unmarshalDecimal(reader, true)
+		}
 	case BinaryObjectType:
 		{
 			return unmarshalBinaryObject(m, reader, false)
@@ -462,6 +480,26 @@ func marshalTimestamp0(writer BinaryOutputStream, val time.Time) {
 	nanos %= int(time.Millisecond)
 	writer.WriteInt64(millis)
 	writer.WriteInt32(int32(nanos))
+}
+
+//lint:ignore U1000 reserved for future
+func marshalDecimal(writer BinaryOutputStream, val *apd.Decimal) {
+	writer.WriteInt8(DecimalType)
+	marshalDecimal0(writer, val)
+}
+
+func marshalDecimal0(writer BinaryOutputStream, val *apd.Decimal) {
+	writer.WriteInt32(-val.Exponent)
+	coeff := val.Coeff.Bytes()
+	if len(coeff) == 0 || coeff[0] > 0x7F {
+		tmp := make([]byte, len(coeff)+1)
+		copy(tmp[1:], coeff)
+		coeff = tmp
+	}
+	if val.Negative {
+		coeff[0] |= 0x80
+	}
+	marshalBytes0(writer, coeff)
 }
 
 func marshalBytes(writer BinaryOutputStream, val []byte) {
@@ -695,6 +733,49 @@ func unmarshalTimestamp(reader BinaryInputStream, skipHeader bool) (time.Time, e
 	millis := reader.ReadInt64()
 	nanos := reader.ReadInt32() + int32((millis%1000)*int64(time.Millisecond))
 	return time.Unix(millis/1000, int64(nanos)), nil
+}
+
+func unmarshalDecimal(reader BinaryInputStream, skipHeader bool) (*apd.Decimal, error) {
+	var err error
+	if !skipHeader {
+		if err = ensureAvailable(reader, 1); err != nil {
+			return nil, err
+		}
+		t := reader.ReadInt8()
+		switch t {
+		case NullType:
+			{
+				return nil, nil
+			}
+		case DecimalType:
+			{
+				break
+			}
+		default:
+			{
+				return nil, fmt.Errorf("unexpected type %d in stream", t)
+			}
+		}
+	}
+	err = ensureAvailable(reader, 4)
+	if err != nil {
+		return nil, err
+	}
+	exp := -reader.ReadInt32()
+	coefData, err := unmarshalBytes(reader, true)
+	if err != nil {
+		return nil, err
+	}
+	negative := coefData[0]&0x80 == 0x80
+	if negative {
+		coefData[0] &= 0x7F
+	}
+	coef := new(apd.BigInt)
+	coef.SetBytes(coefData)
+	if negative {
+		coef.Neg(coef)
+	}
+	return apd.NewWithBigInt(coef, exp), err
 }
 
 func ensureAvailable(reader BinaryInputStream, nBytes int) error {

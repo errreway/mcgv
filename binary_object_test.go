@@ -3,6 +3,7 @@ package ignite
 import (
 	"context"
 	"fmt"
+	"github.com/cockroachdb/apd/v3"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
@@ -168,7 +169,9 @@ func testDifferentFieldTypes(t *testing.T, cli *Client, cache *Cache) {
 		{"short", int16(10)}, {"int", int32(10)}, {"long", int64(10)},
 		{"float", float32(10.0)}, {"double", float64(10.0)},
 		{"string", "test"}, {"uuid", uuid.New()}, {"time", NewTime(timestamp)},
-		{"date", NewDate(timestamp)}, {"timestamp", timestamp}}
+		{"date", NewDate(timestamp)}, {"timestamp", timestamp},
+		{"decimal", apd.New(100500, -3)},
+	}
 	ctx := context.Background()
 	opts := make([]func(*binaryObjectOptions), 0)
 	for _, field := range fields {
