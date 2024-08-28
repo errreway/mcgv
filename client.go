@@ -9,6 +9,7 @@ import (
 	"gitverse.ru/sbertech/ignite-go-client/logger"
 	"net"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -131,6 +132,10 @@ func (cli *Client) CacheNames(ctx context.Context) ([]string, error) {
 
 // CreateCache creates cache with default configuration with specified name, returns [Cache] instance or error if failed.
 func (cli *Client) CreateCache(ctx context.Context, name string) (*Cache, error) {
+	name = strings.TrimSpace(name)
+	if len(name) == 0 {
+		return nil, errors.New("cache name is empty")
+	}
 	var err error
 	cli.ch.send(ctx, opCacheCreateWithName, func(output BinaryOutputStream) error {
 		marshalString(output, name)
@@ -168,6 +173,10 @@ func (cli *Client) CreateCacheWithConfiguration(ctx context.Context, config Cach
 
 // GetOrCreateCache returns already started cache or creates new one with specified name, returns [Cache] instance or error if failed.
 func (cli *Client) GetOrCreateCache(ctx context.Context, name string) (*Cache, error) {
+	name = strings.TrimSpace(name)
+	if len(name) == 0 {
+		return nil, errors.New("cache name is empty")
+	}
 	var err error
 	cli.ch.send(ctx, opCacheGetOrCreateWithName, func(output BinaryOutputStream) error {
 		if err0 := cli.marsh.marshal(ctx, output, name); err0 != nil {
@@ -230,6 +239,10 @@ func (cli *Client) newCache(name string) *Cache {
 // WithAffinityKeyName sets affinity key field for binary object.
 func WithAffinityKeyName(affKeyName string) func(opt *binaryObjectOptions) {
 	return func(opt *binaryObjectOptions) {
+		affKeyName = strings.TrimSpace(affKeyName)
+		if len(affKeyName) == 0 {
+			return
+		}
 		opt.affKeyName = affKeyName
 	}
 }
@@ -237,6 +250,10 @@ func WithAffinityKeyName(affKeyName string) func(opt *binaryObjectOptions) {
 // WithField sets field with specified name and value for binary object.
 func WithField(name string, value interface{}) func(opt *binaryObjectOptions) {
 	return func(opt *binaryObjectOptions) {
+		name = strings.TrimSpace(name)
+		if len(name) == 0 {
+			return
+		}
 		_, ok := opt.fields[name]
 		if !ok {
 			opt.fieldsOrder = append(opt.fieldsOrder, name)
@@ -251,6 +268,10 @@ func WithField(name string, value interface{}) func(opt *binaryObjectOptions) {
 // WithNullField sets field with specified name, type and nil value for binary object.
 func WithNullField(name string, typeId TypeDesc) func(opt *binaryObjectOptions) {
 	return func(opt *binaryObjectOptions) {
+		name = strings.TrimSpace(name)
+		if len(name) == 0 {
+			return
+		}
 		_, ok := opt.fields[name]
 		if !ok {
 			opt.fieldsOrder = append(opt.fieldsOrder, name)
@@ -264,6 +285,10 @@ func WithNullField(name string, typeId TypeDesc) func(opt *binaryObjectOptions) 
 
 // CreateBinaryObject creates BinaryObject with specified type name and options.
 func (cli *Client) CreateBinaryObject(ctx context.Context, typeName string, opts ...func(*binaryObjectOptions)) (BinaryObject, error) {
+	typeName = strings.TrimSpace(typeName)
+	if len(typeName) == 0 {
+		return nil, fmt.Errorf("type name is empty")
+	}
 	boOpts := &binaryObjectOptions{
 		typeName:    typeName,
 		fields:      make(map[string]*boField),

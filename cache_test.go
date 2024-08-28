@@ -10,6 +10,7 @@ import (
 	"math"
 	"sort"
 	"testing"
+	"time"
 )
 
 type CacheTestSuite struct {
@@ -58,10 +59,11 @@ func (suite *CacheTestSuite) TearDownSuite() {
 }
 
 func (suite *CacheTestSuite) TestPutGetSingle() {
+	timestamp := time.Now().Truncate(0) // remove monotonic part.
 	values := []interface{}{
 		true, false, int8(-10), int16(-1024), int32(-1 * 1 << 30), int64(-1 * 1 << 40), math.Float32frombits(0xfd0f),
 		math.Float64frombits(0xffdd00ef), testing2.MakeRandomString(100), testing2.MakeByteArrayPayload(1024),
-		uuid.New(),
+		uuid.New(), NewTime(timestamp), NewDate(timestamp), timestamp,
 	}
 	fixtures := make([]struct {
 		key interface{}
@@ -417,6 +419,9 @@ func (suite *CacheTestSuite) TestBulkOperations() {
 }
 
 func (suite *CacheTestSuite) putGetSingleTest(t *testing.T, key interface{}, val interface{}, retVal interface{}) {
+	defer func() {
+		_ = suite.cache.ClearAll(context.Background())
+	}()
 	sz, err := suite.cache.Size(context.Background())
 	require.Nil(t, err)
 	require.Equal(t, uint64(0), sz, "cache must be empty")
@@ -435,7 +440,4 @@ func (suite *CacheTestSuite) putGetSingleTest(t *testing.T, key interface{}, val
 	actualVal, err := suite.cache.Get(context.Background(), key)
 	require.Nil(t, err, "failed to get value", err)
 	require.Equal(t, retVal, actualVal)
-	defer func() {
-		_ = suite.cache.ClearAll(context.Background())
-	}()
 }

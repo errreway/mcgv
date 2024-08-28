@@ -3,12 +3,14 @@ package ignite
 import (
 	"context"
 	"fmt"
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 	testing2 "gitverse.ru/sbertech/ignite-go-client/internal/testing"
 	"reflect"
 	"runtime"
 	"testing"
+	"time"
 )
 
 type BinaryObjectTestSuite struct {
@@ -28,6 +30,7 @@ func (suite *BinaryObjectTestSuite) TestBasic() {
 		{testPutGetAllBinaryObject, true},
 		{testNestedBinaryObject, false},
 		{testLargeBinaryObject, false},
+		{testDifferentFieldTypes, false},
 	}...)
 }
 
@@ -153,6 +156,39 @@ func testNestedBinaryObject(t *testing.T, cli *Client, cache *Cache) {
 	innerFldVal, err := inner1.Field(ctx, "id")
 	require.NoError(t, err)
 	require.Equal(t, int32(10), innerFldVal)
+}
+
+func testDifferentFieldTypes(t *testing.T, cli *Client, cache *Cache) {
+	timestamp := time.Now().Truncate(0) // remove monotonic part.
+	fields := []struct {
+		name  string
+		value interface{}
+	}{
+		{"bool", true}, {"byte", int8(10)}, {"char", uint16(10)},
+		{"short", int16(10)}, {"int", int32(10)}, {"long", int64(10)},
+		{"float", float32(10.0)}, {"double", float64(10.0)},
+		{"string", "test"}, {"uuid", uuid.New()}, {"time", NewTime(timestamp)},
+		{"date", NewDate(timestamp)}, {"timestamp", timestamp}}
+	ctx := context.Background()
+	opts := make([]func(*binaryObjectOptions), 0)
+	for _, field := range fields {
+		opts = append(opts, WithField(field.name, field.value))
+	}
+	obj, err := cli.CreateBinaryObject(ctx, "MANYFIELDS", opts...)
+	require.NoError(t, err)
+	for _, field := range fields {
+		val, err := obj.Field(ctx, field.name)
+		require.NoError(t, err)
+		require.Equal(t, field.value, val)
+	}
+	err = cache.Put(ctx, "key", obj)
+	require.NoError(t, err)
+
+	cli.marsh.clearRegistry()
+
+	obj1, err := cache.Get(ctx, "key")
+	require.NoError(t, err)
+	RequireEqual(t, obj, obj1.(BinaryObject))
 }
 
 func testMergeMetadata_WithClearRegistry(t *testing.T, cli *Client, cache *Cache) {

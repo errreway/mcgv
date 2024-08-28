@@ -3,6 +3,7 @@ package ignite
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -845,6 +846,7 @@ func setCollectionProperty[T any](config *CacheConfiguration, reader BinaryInput
 // WithCacheName returns [CacheConfigurationOption] that sets a cache name. Especially useful with [CacheConfiguration.Copy]
 func WithCacheName(name string) CacheConfigurationOption {
 	return func(config *CacheConfiguration) {
+		name = strings.TrimSpace(name)
 		if len(name) > 0 {
 			config.props[cacheNameProp] = name
 		}
@@ -854,6 +856,7 @@ func WithCacheName(name string) CacheConfigurationOption {
 // WithCacheGroupName returns [CacheConfigurationOption] that sets a cache group name.
 func WithCacheGroupName(name string) CacheConfigurationOption {
 	return func(config *CacheConfiguration) {
+		name = strings.TrimSpace(name)
 		if len(name) > 0 {
 			config.props[groupNameProp] = name
 		}
@@ -891,6 +894,7 @@ func WithReadFromBackup(enabled bool) CacheConfigurationOption {
 // WithDataRegionName returns [CacheConfigurationOption] that sets cache data region name. See [CacheConfiguration.DataRegionName].
 func WithDataRegionName(dataRegionName string) CacheConfigurationOption {
 	return func(config *CacheConfiguration) {
+		dataRegionName = strings.TrimSpace(dataRegionName)
 		if len(dataRegionName) > 0 {
 			config.props[dataRegionNameProp] = dataRegionName
 		}
@@ -935,6 +939,7 @@ func WithQueryDetailsMetricsSize(size int) CacheConfigurationOption {
 // WithSqlSchema returns [CacheConfigurationOption] that sets sql schema of cache.
 func WithSqlSchema(schema string) CacheConfigurationOption {
 	return func(config *CacheConfiguration) {
+		schema = strings.TrimSpace(schema)
 		if len(schema) > 0 {
 			config.props[sqlSchemaProp] = schema
 		}
@@ -1065,6 +1070,7 @@ func WithQueryEntity(keyType string, valueType string, opts ...QueryEntityOption
 // WithTableName returns [QueryEntityOption] that sets sql table name.
 func WithTableName(name string) QueryEntityOption {
 	return func(entity *QueryEntity) {
+		name = strings.TrimSpace(name)
 		if len(name) > 0 {
 			entity.tblName = name
 		}
@@ -1074,6 +1080,7 @@ func WithTableName(name string) QueryEntityOption {
 // WithKeyFieldName returns [QueryEntityOption] that sets key field name.
 func WithKeyFieldName(name string) QueryEntityOption {
 	return func(entity *QueryEntity) {
+		name = strings.TrimSpace(name)
 		if len(name) > 0 {
 			entity.keyFldName = name
 		}
@@ -1083,6 +1090,7 @@ func WithKeyFieldName(name string) QueryEntityOption {
 // WithValueFieldName returns [QueryEntityOption] that sets value field name.
 func WithValueFieldName(name string) QueryEntityOption {
 	return func(entity *QueryEntity) {
+		name = strings.TrimSpace(name)
 		if len(name) > 0 {
 			entity.valFldName = name
 		}

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/google/uuid"
 	"math"
+	"time"
 	"unsafe"
 )
 
@@ -33,7 +34,7 @@ const (
 	BoolType
 	StringType
 	UuidType
-	DateType //lint:ignore U1000 reserved for future
+	DateType
 	ByteArrayType
 	ShortArrayType  //lint:ignore U1000 reserved for future
 	IntArrayType    //lint:ignore U1000 reserved for future
@@ -49,6 +50,8 @@ const (
 	CollectionType  //lint:ignore U1000 reserved for future
 	mapType
 	wrappedObjectType TypeDesc = 27
+	TimestampType     TypeDesc = 33
+	TimeType          TypeDesc = 36
 	NullType          TypeDesc = 101
 	handleType        TypeDesc = 102 //lint:ignore U1000 reserved for future
 	BinaryObjectType  TypeDesc = 103
@@ -202,6 +205,18 @@ func (m *marshallerImpl) marshal(_ context.Context, writer BinaryOutputStream, p
 		{
 			marshalUuid0(writer, val)
 		}
+	case Time:
+		{
+			writer.WriteInt64(int64(val))
+		}
+	case Date:
+		{
+			writer.WriteInt64(int64(val))
+		}
+	case time.Time:
+		{
+			marshalTimestamp0(writer, val)
+		}
 	case BinaryObject:
 		{
 			writer.WriteBytes(val.Data())
@@ -276,6 +291,18 @@ func GetTypeId(val interface{}) (TypeDesc, error) {
 	case uuid.UUID:
 		{
 			return UuidType, nil
+		}
+	case Time:
+		{
+			return TimeType, nil
+		}
+	case Date:
+		{
+			return DateType, nil
+		}
+	case time.Time:
+		{
+			return TimestampType, nil
 		}
 	case BinaryObject:
 		{
@@ -365,27 +392,27 @@ func (m *marshallerImpl) unmarshal(_ context.Context, reader BinaryInputStream) 
 		}
 	case ByteArrayType:
 		{
-			var ret []byte
-			if ret, err = unmarshalBytes(reader, true); err != nil {
-				return nil, err
-			}
-			return ret, nil
+			return unmarshalBytes(reader, true)
 		}
 	case StringType:
 		{
-			var ret string
-			if ret, err = unmarshalString(reader, true); err != nil {
-				return "", err
-			}
-			return ret, nil
+			return unmarshalString(reader, true)
 		}
 	case UuidType:
 		{
-			var ret uuid.UUID
-			if ret, err = unmarshalUuid(reader, true); err != nil {
-				return uuid.Nil, err
-			}
-			return ret, nil
+			return unmarshalUuid(reader, true)
+		}
+	case TimeType:
+		{
+			return unmarshalTime(reader, true)
+		}
+	case DateType:
+		{
+			return unmarshalDate(reader, true)
+		}
+	case TimestampType:
+		{
+			return unmarshalTimestamp(reader, true)
 		}
 	case BinaryObjectType:
 		{
@@ -420,6 +447,21 @@ func marshalUuid(writer BinaryOutputStream, val uuid.UUID) {
 func marshalUuid0(writer BinaryOutputStream, val uuid.UUID) {
 	writer.WriteUInt64(binary.BigEndian.Uint64(val[:8]))
 	writer.WriteUInt64(binary.BigEndian.Uint64(val[8:]))
+}
+
+//lint:ignore U1000 reserved for future
+func marshalTimestamp(writer BinaryOutputStream, val time.Time) {
+	writer.WriteInt8(TimestampType)
+	marshalTimestamp0(writer, val)
+}
+
+func marshalTimestamp0(writer BinaryOutputStream, val time.Time) {
+	millis := val.Unix() * 1000
+	nanos := val.Nanosecond()
+	millis += int64(nanos / int(time.Millisecond))
+	nanos %= int(time.Millisecond)
+	writer.WriteInt64(millis)
+	writer.WriteInt32(int32(nanos))
 }
 
 func marshalBytes(writer BinaryOutputStream, val []byte) {
@@ -564,6 +606,95 @@ func unmarshalUuid(reader BinaryInputStream, skipHeader bool) (uuid.UUID, error)
 	binary.BigEndian.PutUint64(ret[:8], reader.ReadUInt64())
 	binary.BigEndian.PutUint64(ret[8:], reader.ReadUInt64())
 	return ret, nil
+}
+
+func unmarshalTime(reader BinaryInputStream, skipHeader bool) (Time, error) {
+	var err error
+	if !skipHeader {
+		if err = ensureAvailable(reader, 1); err != nil {
+			return 0, err
+		}
+		t := reader.ReadInt8()
+		switch t {
+		case NullType:
+			{
+				return 0, nil
+			}
+		case TimeType:
+			{
+				break
+			}
+		default:
+			{
+				return 0, fmt.Errorf("unexpected type %d in stream", t)
+			}
+		}
+	}
+	err = ensureAvailable(reader, 8)
+	if err != nil {
+		return 0, err
+	}
+	return Time(reader.ReadInt64()), nil
+}
+
+func unmarshalDate(reader BinaryInputStream, skipHeader bool) (Date, error) {
+	var err error
+	if !skipHeader {
+		if err = ensureAvailable(reader, 1); err != nil {
+			return 0, err
+		}
+		t := reader.ReadInt8()
+		switch t {
+		case NullType:
+			{
+				return 0, nil
+			}
+		case DateType:
+			{
+				break
+			}
+		default:
+			{
+				return 0, fmt.Errorf("unexpected type %d in stream", t)
+			}
+		}
+	}
+	err = ensureAvailable(reader, 8)
+	if err != nil {
+		return 0, err
+	}
+	return Date(reader.ReadInt64()), nil
+}
+
+func unmarshalTimestamp(reader BinaryInputStream, skipHeader bool) (time.Time, error) {
+	var err error
+	if !skipHeader {
+		if err = ensureAvailable(reader, 1); err != nil {
+			return time.Time{}, err
+		}
+		t := reader.ReadInt8()
+		switch t {
+		case NullType:
+			{
+				return time.Time{}, nil
+			}
+		case TimestampType:
+			{
+				break
+			}
+		default:
+			{
+				return time.Time{}, fmt.Errorf("unexpected type %d in stream", t)
+			}
+		}
+	}
+	err = ensureAvailable(reader, 12)
+	if err != nil {
+		return time.Time{}, err
+	}
+	millis := reader.ReadInt64()
+	nanos := reader.ReadInt32() + int32((millis%1000)*int64(time.Millisecond))
+	return time.Unix(millis/1000, int64(nanos)), nil
 }
 
 func ensureAvailable(reader BinaryInputStream, nBytes int) error {
