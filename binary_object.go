@@ -19,7 +19,7 @@ const (
 	headerLength              = 24
 	flagUserType       uint16 = 0x0001
 	flagHasSchema      uint16 = 0x0002
-	flagHasRaw         uint16 = 0x004
+	flagHasRaw         uint16 = 0x0004
 	flagOffsetOneByte  uint16 = 0x0008
 	flagOffsetTwoBytes uint16 = 0x0010
 	flagCompactFooter  uint16 = 0x0020
@@ -234,7 +234,7 @@ func newBinaryObject(ctx context.Context, marsh marshaller, opts *binaryObjectOp
 
 	oldMeta, err := marsh.getMetadata(ctx, typeId)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to get metadata: %w", err)
 	}
 	if oldMeta != nil {
 		if opts.typeName != oldMeta.typeName {
@@ -275,7 +275,7 @@ func newBinaryObject(ctx context.Context, marsh marshaller, opts *binaryObjectOp
 				if field.value != nil {
 					fldTypeId, err := GetTypeId(field.value)
 					if err != nil {
-						return nil, err
+						return nil, fmt.Errorf("failed to get type id for field %s: %w", fldName, err)
 					}
 					field.typeId = int32(fldTypeId)
 				} else if oldFieldMeta != nil {
@@ -295,7 +295,7 @@ func newBinaryObject(ctx context.Context, marsh marshaller, opts *binaryObjectOp
 			}
 			schemaBuilder.AddField(fieldId, int32(outStream.Position()-startPos))
 			if err = marsh.marshal(ctx, outStream, field.value); err != nil {
-				return nil, err
+				return nil, fmt.Errorf("failed to marshall field %s: %w", fldName, err)
 			}
 		}
 		offset = outStream.Position() - startPos

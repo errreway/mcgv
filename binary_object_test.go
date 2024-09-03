@@ -171,6 +171,35 @@ func testDifferentFieldTypes(t *testing.T, cli *Client, cache *Cache) {
 		{"string", "test"}, {"uuid", uuid.New()}, {"time", NewTime(timestamp)},
 		{"date", NewDate(timestamp)}, {"timestamp", timestamp},
 		{"decimal", apd.New(100500, -3)},
+		{"stringPArray", createPSlice("test1", "test2", "test3")},
+		{"stringArray", []string{"test1", "test2", "test3"}},
+		{"uuidPArray", createPSlice(uuid.New(), uuid.New(), uuid.New())},
+		{"uuidArray", []uuid.UUID{uuid.New(), uuid.New(), uuid.New()}},
+		{"timePArray", createPSlice(NewTime(timestamp), NewTime(timestamp.Add(time.Minute*10)), NewTime(timestamp.Add(time.Minute*20)))},
+		{"timeArray", []Time{NewTime(timestamp), NewTime(timestamp.Add(time.Minute * 10)), NewTime(timestamp.Add(time.Minute * 20))}},
+		{"datePArray", createPSlice(NewDate(timestamp), NewDate(timestamp.Add(time.Minute*10)), NewDate(timestamp.Add(time.Minute*20)))},
+		{"dateArray", []Date{NewDate(timestamp), NewDate(timestamp.Add(time.Minute * 10)), NewDate(timestamp.Add(time.Minute * 20))}},
+		{"timeStampPArray", createPSlice(timestamp, timestamp.Add(time.Minute*10), timestamp.Add(time.Minute*20))},
+		{"timeStampArray", []time.Time{timestamp, timestamp.Add(time.Minute * 10), timestamp.Add(time.Minute * 20)}},
+		{"decimalPArray", []*apd.Decimal{apd.New(100500, -3), apd.New(0, 3), apd.New(31415926, 7)}},
+		{"decimalArray", fromPSlice([]*apd.Decimal{apd.New(100500, -3), apd.New(0, 3), apd.New(31415926, 7)})},
+		{"binaryObject", createTestBinaryObject(t, cli, 100500)},
+		{"singletonList", NewSingletonList("test")},
+		{"objectArray", []BinaryObject{createTestBinaryObject(t, cli, 10), createTestBinaryObject(t, cli, 20), nil}},
+		{"objectArrayMixed", []interface{}{createTestBinaryObject(t, cli, 10), "test", nil}},
+		{"arrayList", NewArrayList("test", "test")},
+		{"arrayListMixed", NewArrayList([]interface{}{createTestBinaryObject(t, cli, 10), nil, "test"}...)},
+		{"linkedList", NewLinkedList("test", "test")},
+		{"linkedListMixed", NewLinkedList([]interface{}{createTestBinaryObject(t, cli, 10), nil, "test"}...)},
+		{"hashSet", NewHashSet("test1", "test2")},
+		{"hashSetMixed", NewHashSet([]interface{}{createTestBinaryObject(t, cli, 10), nil, "test"}...)},
+		{"linkedHashSet", NewHashSet("test1", "test2")},
+		{"linkedHashSetMixed", NewHashSet([]interface{}{createTestBinaryObject(t, cli, 10), nil, "test"}...)},
+		{"hashMap", ToHashMap(map[string]int32{"test1": 1, "test2": 2})},
+		{"hashMapMixed", NewHashMap([]KeyValue{{"test1", createTestBinaryObject(t, cli, 10)}, {int32(10), "test"}}...)},
+		{"linkedHashMap", ToLinkedHashMap(map[string]int32{"test1": 1, "test2": 2})},
+		{"linkedHashMapMixed", NewLinkedHashMap([]KeyValue{{"test1", createTestBinaryObject(t, cli, 10)}, {int32(10), "test"}}...)},
+		{"hashMapGo", map[string]BinaryObject{"test1": createTestBinaryObject(t, cli, 10), "test2": createTestBinaryObject(t, cli, 20)}},
 	}
 	ctx := context.Background()
 	opts := make([]func(*binaryObjectOptions), 0)
@@ -181,8 +210,26 @@ func testDifferentFieldTypes(t *testing.T, cli *Client, cache *Cache) {
 	require.NoError(t, err)
 	for _, field := range fields {
 		val, err := obj.Field(ctx, field.name)
-		require.NoError(t, err)
-		require.Equal(t, field.value, val)
+		require.NoError(t, err, field.name)
+		t.Logf("testing field %s: expected=%v, actual=%v", field.name, field.value, val)
+
+		switch exp := field.value.(type) {
+		case Map:
+			RequireMapEqual(t, exp, val.(Map))
+		case Collection:
+			actualCol := val.(Collection)
+			require.Equal(t, exp.Kind(), actualCol.Kind())
+			RequireArraysEqual(t, exp.Values(), actualCol.Values())
+		default:
+			switch reflect.ValueOf(field.value).Kind() {
+			case reflect.Slice:
+				RequireArraysReflectionEqual(t, reflect.ValueOf(field.value), reflect.ValueOf(val))
+			case reflect.Map:
+				RequireMapEqualGoMap(t, reflect.ValueOf(field.value), val.(Map))
+			default:
+				require.Equal(t, field.value, val)
+			}
+		}
 	}
 	err = cache.Put(ctx, "key", obj)
 	require.NoError(t, err)
@@ -365,9 +412,7 @@ func (suite *BinaryObjectTestSuite) runTests(tests ...struct {
 	isIndexed bool
 }) {
 	defer func() {
-		if err := recover(); err != nil {
-			suite.KillAllGrids()
-		}
+		suite.KillAllGrids()
 	}()
 	for _, compactFooter := range []bool{true, false} {
 		_, err := suite.StartIgnite(testing2.WithCompactFooter(compactFooter))
@@ -393,7 +438,7 @@ func (suite *BinaryObjectTestSuite) runTests(tests ...struct {
 	}
 }
 
-func RequireEqual(t require.TestingT, obj1 BinaryObject, obj2 BinaryObject) {
+func RequireEqual(t *testing.T, obj1 BinaryObject, obj2 BinaryObject) {
 	require.Equal(t, obj1.HashCode(), obj2.HashCode())
 	require.Equal(t, obj1.Data(), obj2.Data())
 	ctx := context.Background()
@@ -421,6 +466,11 @@ func RequireEqual(t require.TestingT, obj1 BinaryObject, obj2 BinaryObject) {
 		fld2Bo, ok2 := fld2.(BinaryObject)
 		if ok1 && ok2 {
 			RequireEqual(t, fld1Bo, fld2Bo)
+		} else if fld1Col, ok := fld1.(Collection); ok {
+			fld2Col, ok2 := fld2.(Collection)
+			require.True(t, ok2)
+			require.Equal(t, fld1Col.Kind(), fld2Col.Kind())
+			RequireArraysEqual(t, fld1Col.Values(), fld2Col.Values())
 		} else {
 			require.Equal(t, fld1, fld2)
 		}

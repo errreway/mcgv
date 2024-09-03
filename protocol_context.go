@@ -72,7 +72,7 @@ func (ctx *ProtocolContext) marshal(writer BinaryOutputStream) {
 	writer.WriteInt16(ctx.version.Patch)
 	writer.WriteInt8(2)
 	if ctx.SupportsBitmapFeatures() {
-		marshalBytes(writer, ctx.features.Bytes())
+		marshalByteArray(writer, ctx.features.Bytes())
 	}
 }
 

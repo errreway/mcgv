@@ -285,14 +285,11 @@ func (r *binaryMetadataRegistryImpl) sendBinaryMeta(ctx context.Context, meta *b
 	}
 	r.cli.ch.send(ctx, opPutBinaryType, func(output BinaryOutputStream) error {
 		output.WriteInt32(meta.typeId)
-		marshalString(output, meta.typeName)
+		marshalString(output, meta.TypeName())
 		// ignite requires null to be written if this field is empty.
-		if len(meta.affKeyName) == 0 {
-			output.WriteNull()
-		} else {
-			marshalString(output, meta.affKeyName)
-		}
-		err0 := writeCollection(output, meta.fieldsOrder, func(_ BinaryOutputStream, fName string) error {
+		marshalEmptyStringAsNull(output, meta.AffinityKeyName())
+		err0 := writeSequence(output, len(meta.fieldsOrder), func(_ BinaryOutputStream, idx int) error {
+			fName := meta.fieldsOrder[idx]
 			fMeta := meta.fields[fName]
 			marshalString(output, fName)
 			output.WriteInt32(fMeta.typeId)
@@ -305,7 +302,8 @@ func (r *binaryMetadataRegistryImpl) sendBinaryMeta(ctx context.Context, meta *b
 		output.WriteBool(meta.isEnum) // should be always false
 		err0 = writeMap(output, meta.schemas, func(_ BinaryOutputStream, _ int32, schema *binarySchema) error {
 			output.WriteInt32(schema.schemaId)
-			return writeCollection(output, schema.fieldIds, func(_ BinaryOutputStream, fieldId int32) error {
+			return writeSequence(output, len(schema.fieldIds), func(_ BinaryOutputStream, idx int) error {
+				fieldId := schema.fieldIds[idx]
 				output.WriteInt32(fieldId)
 				return nil
 			})
@@ -325,16 +323,16 @@ func unmarshalBinaryMeta(reader BinaryInputStream) (*binaryMetadata, error) {
 		isEnum: false, // Enums are not supported.
 	}
 	var err error
-	if bMeta.typeName, err = unmarshalString(reader, false); err != nil {
+	if bMeta.typeName, err = unmarshalString(reader); err != nil {
 		return nil, err
 	}
-	if bMeta.affKeyName, err = unmarshalString(reader, false); err != nil {
+	if bMeta.affKeyName, err = unmarshalString(reader); err != nil {
 		return nil, err
 	}
 	bMeta.fieldsOrder = make([]string, 0)
 	bMeta.fields, err = readMap[string, binaryFieldMeta](reader, func(BinaryInputStream) (string, binaryFieldMeta, error) {
 		val := binaryFieldMeta{}
-		key, err0 := unmarshalString(reader, false)
+		key, err0 := unmarshalString(reader)
 		if err0 != nil {
 			return "", val, err0
 		}
@@ -353,7 +351,7 @@ func unmarshalBinaryMeta(reader BinaryInputStream) (*binaryMetadata, error) {
 		key := reader.ReadInt32()
 		val := binarySchema{schemaId: key}
 		var err0 error
-		val.fieldIds, err0 = readCollection[int32](reader, func(BinaryInputStream) (int32, error) {
+		val.fieldIds, err0 = readSlice[int32](reader, func(int, BinaryInputStream) (int32, error) {
 			return reader.ReadInt32(), nil
 		})
 		return key, &val, err0

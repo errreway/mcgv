@@ -163,7 +163,7 @@ func (ch *tcpChannel) send0(ctx context.Context, id int64, opCode int16, request
 		if checkFlag(flags, errorFlag) {
 			statusCode := int(input.ReadInt32())
 			var errMsg string
-			errMsg, err = unmarshalString(input, false)
+			errMsg, err = unmarshalString(input)
 			if err != nil {
 				req.err = createClientConnectionError("broken output from server", err)
 			} else {
@@ -459,9 +459,9 @@ func (ch *tcpChannel) handshakeRound(ctx context.Context, cliProtoCtx *ProtocolC
 			if len(cliCfg.attrs) == 0 {
 				bw.WriteNull()
 			} else {
-				bw.WriteInt8(mapType)
+				bw.WriteInt8(MapType)
 				bw.WriteInt32(int32(len(cliCfg.attrs)))
-				bw.WriteInt8(hashMap)
+				bw.WriteInt8(HashMap)
 				for k, v := range cliCfg.attrs {
 					marshalString(bw, k)
 					marshalString(bw, v)
@@ -483,7 +483,7 @@ func (ch *tcpChannel) handshakeRound(ctx context.Context, cliProtoCtx *ProtocolC
 		if success {
 			if cliProtoCtx.SupportsBitmapFeatures() {
 				var bitMaskBytes []byte
-				if bitMaskBytes, err = unmarshalBytes(input, false); err != nil {
+				if bitMaskBytes, err = unmarshalByteArray(input); err != nil {
 					err = fmt.Errorf("broken output from server: %w", err)
 					return
 				}
@@ -493,7 +493,7 @@ func (ch *tcpChannel) handshakeRound(ctx context.Context, cliProtoCtx *ProtocolC
 			}
 			if cliProtoCtx.SupportsPartitionAwareness() {
 				var serverId uuid.UUID
-				if serverId, err = unmarshalUuid(input, false); err != nil {
+				if serverId, err = unmarshalUuid(input); err != nil {
 					err = fmt.Errorf("broken output from server: %w", err)
 					return
 				}
@@ -505,7 +505,7 @@ func (ch *tcpChannel) handshakeRound(ctx context.Context, cliProtoCtx *ProtocolC
 				ProtocolVersion{Major: input.ReadInt16(), Minor: input.ReadInt16(), Patch: input.ReadInt16()},
 			)
 			var errMsg string
-			if errMsg, err = unmarshalString(input, false); err != nil {
+			if errMsg, err = unmarshalString(input); err != nil {
 				err = fmt.Errorf("broken output from server: %w", err)
 				return
 			}

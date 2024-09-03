@@ -116,7 +116,7 @@ func (cli *Client) CacheNames(ctx context.Context) ([]string, error) {
 		names = make([]string, sz)
 		for i := 0; i < sz; i++ {
 			var name string
-			name, err0 = unmarshalString(input, false)
+			name, err0 = unmarshalString(input)
 			if err0 != nil {
 				err = err0
 				return

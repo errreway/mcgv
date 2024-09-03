@@ -11,9 +11,9 @@ const (
 	boolBytes  = 1
 	byteBytes  = 1
 	shortBytes = 2
+	charBytes  = 2
 	intBytes   = 4
 	longBytes  = 8
-	uuidBytes  = 16
 )
 
 type BinaryOutputStream interface {
@@ -31,6 +31,8 @@ type BinaryOutputStream interface {
 	WriteInt32(v int32)
 	WriteUInt64(v uint64)
 	WriteInt64(v int64)
+	WriteFloat32(v float32)
+	WriteFloat64(v float64)
 	WriteBytes(v []byte)
 	HashCode(start int, end int) int32
 }
@@ -48,6 +50,8 @@ type BinaryInputStream interface {
 	ReadInt32() int32
 	ReadUInt64() uint64
 	ReadInt64() int64
+	ReadFloat32() float32
+	ReadFloat64() float64
 	ReadBytes(size int) []byte
 	IsNull() bool
 }
@@ -182,6 +186,14 @@ func (bw *binaryOutputStreamImpl) writeLong(v uint64) {
 	bw.position += longBytes
 }
 
+func (bw *binaryOutputStreamImpl) WriteFloat32(v float32) {
+	bw.WriteUInt32(math.Float32bits(v))
+}
+
+func (bw *binaryOutputStreamImpl) WriteFloat64(v float64) {
+	bw.WriteUInt64(math.Float64bits(v))
+}
+
 func (bw *binaryOutputStreamImpl) WriteBytes(v []byte) {
 	length := len(v)
 	bw.ensureAvailable(length)
@@ -272,8 +284,75 @@ func (br *binaryInputStreamImpl) ReadInt64() int64 {
 	return int64(br.ReadUInt64())
 }
 
+func (br *binaryInputStreamImpl) ReadFloat32() float32 {
+	return math.Float32frombits(br.ReadUInt32())
+}
+
+func (br *binaryInputStreamImpl) ReadFloat64() float64 {
+	return math.Float64frombits(br.ReadUInt64())
+}
+
 func (br *binaryInputStreamImpl) ReadBytes(size int) []byte {
 	ret := make([]byte, size)
 	br.position += copy(ret, br.buffer[br.position:])
 	return ret
+}
+
+func readSlice[T any](reader BinaryInputStream, elemReader func(int, BinaryInputStream) (T, error)) ([]T, error) {
+	sz := int(reader.ReadInt32())
+	coll := make([]T, sz)
+	err := readSequence(reader, sz, func(idx int, reader BinaryInputStream) error {
+		el, err := elemReader(idx, reader)
+		if err != nil {
+			return err
+		}
+		coll[idx] = el
+		return nil
+	})
+	return coll, err
+}
+
+func readSequence(reader BinaryInputStream, length int, elemReader func(idx int, reader BinaryInputStream) error) error {
+	for i := 0; i < length; i++ {
+		if err := elemReader(i, reader); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func writeSequence(writer BinaryOutputStream, length int, valueWriter func(output BinaryOutputStream, idx int) error) error {
+	writer.WriteInt32(int32(length))
+	for idx := 0; idx < length; idx++ {
+		err := valueWriter(writer, idx)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func readMap[K comparable, V any](reader BinaryInputStream, kvReader func(BinaryInputStream) (K, V, error)) (map[K]V, error) {
+	length := int(reader.ReadInt32())
+	outMap := make(map[K]V)
+	err := readSequence(reader, length, func(_ int, reader BinaryInputStream) error {
+		k, v, err := kvReader(reader)
+		if err != nil {
+			return err
+		}
+		outMap[k] = v
+		return nil
+	})
+	return outMap, err
+}
+
+func writeMap[K comparable, V any](writer BinaryOutputStream, inMap map[K]V, kvWriter func(BinaryOutputStream, K, V) error) error {
+	writer.WriteInt32(int32(len(inMap)))
+	for k, v := range inMap {
+		err := kvWriter(writer, k, v)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }

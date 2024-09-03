@@ -373,7 +373,8 @@ func (config *CacheConfiguration) marshal(ctx context.Context, marshaller marsha
 			}
 		case []CacheKeyConfig:
 			{
-				err := writeCollection(writer, val, func(output BinaryOutputStream, keyCfg CacheKeyConfig) error {
+				err := writeSequence(writer, len(val), func(output BinaryOutputStream, idx int) error {
+					keyCfg := val[idx]
 					marshalString(output, keyCfg.TypeName())
 					marshalString(output, keyCfg.AffinityKeyFieldName())
 					return nil
@@ -384,7 +385,10 @@ func (config *CacheConfiguration) marshal(ctx context.Context, marshaller marsha
 			}
 		case []QueryEntity:
 			{
-				err := writeCollection(writer, val, marshalQueryEntity(ctx, marshaller))
+				err := writeSequence(writer, len(val), func(output BinaryOutputStream, idx int) error {
+					entity := val[idx]
+					return marshalQueryEntity(ctx, marshaller, output, &entity)
+				})
 				if err != nil {
 					return err
 				}
@@ -444,14 +448,14 @@ func unmarshalCacheConfiguration(ctx context.Context, marshaller marshaller, rea
 		return conf, err
 	}
 	props[writeSyncModeProp] = CacheWriteSynchronizationMode(reader.ReadInt32())
-	err = setCollectionProperty(&conf, reader, cacheKeyConfigProp, func(reader BinaryInputStream) (CacheKeyConfig, error) {
+	err = setCollectionProperty(&conf, reader, cacheKeyConfigProp, func(_ int, reader BinaryInputStream) (CacheKeyConfig, error) {
 		keyConfig := CacheKeyConfig{}
 		var err0 error
-		keyConfig.typeName, err0 = unmarshalString(reader, false)
+		keyConfig.typeName, err0 = unmarshalString(reader)
 		if err0 != nil {
 			return keyConfig, err0
 		}
-		keyConfig.affKeyFldName, err0 = unmarshalString(reader, false)
+		keyConfig.affKeyFldName, err0 = unmarshalString(reader)
 		if err0 != nil {
 			return keyConfig, err0
 		}
@@ -475,64 +479,66 @@ func unmarshalCacheConfiguration(ctx context.Context, marshaller marshaller, rea
 	return conf, err
 }
 
-func marshalQueryEntity(ctx context.Context, marshaller marshaller) func(writer BinaryOutputStream, entity QueryEntity) error {
-	marshalEmptyAsNull := func(writer BinaryOutputStream, val string) {
-		if len(val) == 0 {
-			writer.WriteNull()
-		} else {
-			marshalString(writer, val)
-		}
-	}
-	queryFieldMarshalFunc := marshalQueryField(ctx, marshaller)
-	return func(writer BinaryOutputStream, entity QueryEntity) error {
-		marshalString(writer, entity.KeyType())
-		marshalString(writer, entity.ValueType())
-		marshalEmptyAsNull(writer, entity.TableName())
-		marshalEmptyAsNull(writer, entity.KeyFieldName())
-		marshalEmptyAsNull(writer, entity.ValueFieldName())
-		if err := writeCollection(writer, entity.Fields(), queryFieldMarshalFunc); err != nil {
-			return err
-		}
-		writer.WriteInt32(int32(len(entity.Aliases())))
-		for orig, alias := range entity.Aliases() {
-			marshalString(writer, orig)
-			marshalString(writer, alias)
-		}
-		if err := writeCollection(writer, entity.Indexes(), marshalQueryIndex); err != nil {
-			return err
-		}
-		return nil
-	}
-}
+func marshalQueryEntity(ctx context.Context, marshaller marshaller, writer BinaryOutputStream, entity *QueryEntity) error {
+	marshalString(writer, entity.KeyType())
+	marshalString(writer, entity.ValueType())
+	marshalEmptyStringAsNull(writer, entity.TableName())
+	marshalEmptyStringAsNull(writer, entity.KeyFieldName())
+	marshalEmptyStringAsNull(writer, entity.ValueFieldName())
 
-func marshalQueryField(ctx context.Context, marshaller marshaller) func(writer BinaryOutputStream, field QueryField) error {
-	protoCtx := marshaller.protocolContext()
-	withPrecisionScale := protoCtx.SupportsQueryEntityPrecisionAndScale()
-	return func(writer BinaryOutputStream, field QueryField) error {
-		var err error
-		marshalString(writer, field.Name())
-		marshalString(writer, field.TypeName())
-		writer.WriteBool(field.IsKey())
-		writer.WriteBool(field.IsNotNull())
-		err = marshaller.marshal(ctx, writer, field.DefaultValue())
-		if err != nil {
-			return err
-		}
-		if withPrecisionScale {
-			writer.WriteInt32(int32(field.Precision()))
-			writer.WriteInt32(int32(field.Scale()))
-		}
+	fields := entity.Fields()
+	err := writeSequence(writer, len(fields), func(output BinaryOutputStream, idx int) error {
+		field := fields[idx]
+		return marshalQueryField(ctx, marshaller, output, &field)
+	})
+	if err != nil {
 		return err
 	}
+	writer.WriteInt32(int32(len(entity.Aliases())))
+	for orig, alias := range entity.Aliases() {
+		marshalString(writer, orig)
+		marshalString(writer, alias)
+	}
+
+	indexes := entity.Indexes()
+	err = writeSequence(writer, len(indexes), func(output BinaryOutputStream, idx int) error {
+		index := indexes[idx]
+		return marshalQueryIndex(output, &index)
+	})
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
-func marshalQueryIndex(writer BinaryOutputStream, index QueryIndex) error {
+func marshalQueryField(ctx context.Context, marshaller marshaller, writer BinaryOutputStream, field *QueryField) error {
+	protoCtx := marshaller.protocolContext()
+	withPrecisionScale := protoCtx.SupportsQueryEntityPrecisionAndScale()
+	marshalString(writer, field.Name())
+	marshalString(writer, field.TypeName())
+	writer.WriteBool(field.IsKey())
+	writer.WriteBool(field.IsNotNull())
+	err := marshaller.marshal(ctx, writer, field.DefaultValue())
+	if err != nil {
+		return err
+	}
+	if withPrecisionScale {
+		writer.WriteInt32(int32(field.Precision()))
+		writer.WriteInt32(int32(field.Scale()))
+	}
+	return err
+}
+
+func marshalQueryIndex(writer BinaryOutputStream, index *QueryIndex) error {
 	marshalString(writer, index.Name())
 	writer.WriteInt8(int8(index.Type()))
 	writer.WriteInt32(int32(index.InlineSize()))
-	err := writeCollection(writer, index.Fields(), func(writer0 BinaryOutputStream, field IndexField) error {
-		marshalString(writer0, field.Name)
-		writer0.WriteBool(field.Asc)
+
+	fields := index.Fields()
+	err := writeSequence(writer, len(fields), func(_ BinaryOutputStream, idx int) error {
+		field := fields[idx]
+		marshalString(writer, field.Name)
+		writer.WriteBool(field.Asc)
 		return nil
 	})
 	if err != nil {
@@ -541,49 +547,49 @@ func marshalQueryIndex(writer BinaryOutputStream, index QueryIndex) error {
 	return nil
 }
 
-func unmarshalQueryEntity(ctx context.Context, marshaller marshaller) func(reader BinaryInputStream) (QueryEntity, error) {
+func unmarshalQueryEntity(ctx context.Context, marshaller marshaller) func(int, BinaryInputStream) (QueryEntity, error) {
 	qryFieldUnmarshalProc := unmarshalQueryField(ctx, marshaller)
-	return func(reader BinaryInputStream) (QueryEntity, error) {
+	return func(_ int, reader BinaryInputStream) (QueryEntity, error) {
 		var err error
 		entity := QueryEntity{}
-		entity.keyType, err = unmarshalString(reader, false)
+		entity.keyType, err = unmarshalString(reader)
 		if err != nil {
 			return entity, err
 		}
-		entity.valType, err = unmarshalString(reader, false)
+		entity.valType, err = unmarshalString(reader)
 		if err != nil {
 			return entity, err
 		}
-		entity.tblName, err = unmarshalString(reader, false)
+		entity.tblName, err = unmarshalString(reader)
 		if err != nil {
 			return entity, err
 		}
-		entity.keyFldName, err = unmarshalString(reader, false)
+		entity.keyFldName, err = unmarshalString(reader)
 		if err != nil {
 			return entity, err
 		}
-		entity.valFldName, err = unmarshalString(reader, false)
+		entity.valFldName, err = unmarshalString(reader)
 		if err != nil {
 			return entity, err
 		}
-		entity.fields, err = readCollection(reader, qryFieldUnmarshalProc)
+		entity.fields, err = readSlice(reader, qryFieldUnmarshalProc)
 		if err != nil {
 			return entity, err
 		}
 		aliasesSz := reader.ReadInt32()
 		entity.aliases = make(map[string]string, aliasesSz)
 		for i := 0; i < int(aliasesSz); i++ {
-			key, err0 := unmarshalString(reader, false)
+			key, err0 := unmarshalString(reader)
 			if err0 != nil {
 				return entity, err0
 			}
-			val, err0 := unmarshalString(reader, false)
+			val, err0 := unmarshalString(reader)
 			if err0 != nil {
 				return entity, err0
 			}
 			entity.aliases[key] = val
 		}
-		entity.indexes, err = readCollection(reader, unmarshalQueryIndex)
+		entity.indexes, err = readSlice(reader, unmarshalQueryIndex)
 		if err != nil {
 			return entity, err
 		}
@@ -591,17 +597,17 @@ func unmarshalQueryEntity(ctx context.Context, marshaller marshaller) func(reade
 	}
 }
 
-func unmarshalQueryField(ctx context.Context, marshaller marshaller) func(reader BinaryInputStream) (QueryField, error) {
+func unmarshalQueryField(ctx context.Context, marshaller marshaller) func(int, BinaryInputStream) (QueryField, error) {
 	protoCtx := marshaller.protocolContext()
 	withPrecisionScale := protoCtx.SupportsQueryEntityPrecisionAndScale()
-	return func(reader BinaryInputStream) (QueryField, error) {
+	return func(_ int, reader BinaryInputStream) (QueryField, error) {
 		var err error
 		fld := QueryField{precision: -1, scale: -1}
-		fld.name, err = unmarshalString(reader, false)
+		fld.name, err = unmarshalString(reader)
 		if err != nil {
 			return fld, err
 		}
-		fld.typeName, err = unmarshalString(reader, false)
+		fld.typeName, err = unmarshalString(reader)
 		if err != nil {
 			return fld, err
 		}
@@ -621,17 +627,17 @@ func unmarshalQueryField(ctx context.Context, marshaller marshaller) func(reader
 	}
 }
 
-func unmarshalQueryIndex(reader BinaryInputStream) (QueryIndex, error) {
+func unmarshalQueryIndex(_ int, reader BinaryInputStream) (QueryIndex, error) {
 	idx := QueryIndex{}
-	name, err := unmarshalString(reader, false)
+	name, err := unmarshalString(reader)
 	if err != nil {
 		return idx, err
 	}
 	idx.name = name
 	idx.idxType = IndexType(reader.ReadInt8())
 	idx.inlineSz = int(reader.ReadInt32())
-	idx.fields, err = readCollection(reader, func(reader0 BinaryInputStream) (IndexField, error) {
-		fldName, err0 := unmarshalString(reader0, false)
+	idx.fields, err = readSlice(reader, func(_ int, reader0 BinaryInputStream) (IndexField, error) {
+		fldName, err0 := unmarshalString(reader0)
 		if err0 != nil {
 			return IndexField{}, err0
 		}
@@ -646,7 +652,7 @@ func unmarshalQueryIndex(reader BinaryInputStream) (QueryIndex, error) {
 func (config *CacheConfiguration) setStringProperty(reader BinaryInputStream, propCode propertyCode) error {
 	var err error
 	var val string
-	if val, err = unmarshalString(reader, false); err != nil {
+	if val, err = unmarshalString(reader); err != nil {
 		return err
 	}
 	if len(val) > 0 {
@@ -834,8 +840,8 @@ func getProperty[T any](config *CacheConfiguration, code propertyCode, defaultVa
 	return ret
 }
 
-func setCollectionProperty[T any](config *CacheConfiguration, reader BinaryInputStream, code propertyCode, elemReader func(reader BinaryInputStream) (T, error)) error {
-	coll, err := readCollection[T](reader, elemReader)
+func setCollectionProperty[T any](config *CacheConfiguration, reader BinaryInputStream, code propertyCode, elemReader func(int, BinaryInputStream) (T, error)) error {
+	coll, err := readSlice[T](reader, elemReader)
 	if err != nil {
 		return err
 	}

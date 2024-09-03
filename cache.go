@@ -324,8 +324,12 @@ func (cache *Cache) ContainsKeys(ctx context.Context, keys ...interface{}) (bool
 		if err != nil {
 			return err
 		}
-		err = writeCollection(output, keys, func(output0 BinaryOutputStream, el interface{}) error {
-			return cache.cli.marsh.marshal(ctx, output0, el)
+		err = writeSequence(output, len(keys), func(output0 BinaryOutputStream, idx int) error {
+			key := keys[idx]
+			if key == nil {
+				return fmt.Errorf("nil key passed to ContainsKeys")
+			}
+			return cache.cli.marsh.marshal(ctx, output0, key)
 		})
 		if err != nil {
 			return err
@@ -353,8 +357,12 @@ func (cache *Cache) GetAll(ctx context.Context, keys ...interface{}) ([]KeyValue
 		if err != nil {
 			return err
 		}
-		err = writeCollection(output, keys, func(output0 BinaryOutputStream, el interface{}) error {
-			return cache.cli.marsh.marshal(ctx, output0, el)
+		err = writeSequence(output, len(keys), func(output0 BinaryOutputStream, idx int) error {
+			key := keys[idx]
+			if key == nil {
+				return fmt.Errorf("nil key passed to GetAll")
+			}
+			return cache.cli.marsh.marshal(ctx, output0, key)
 		})
 		if err != nil {
 			return err
@@ -399,19 +407,20 @@ func (cache *Cache) PutAll(ctx context.Context, keysAndValues ...KeyValue) error
 		if err != nil {
 			return err
 		}
-		err = writeCollection(output, keysAndValues, func(output0 BinaryOutputStream, el KeyValue) error {
-			if el.Key == nil {
-				return fmt.Errorf("nil key")
+		err = writeSequence(output, len(keysAndValues), func(output0 BinaryOutputStream, idx int) error {
+			kv := keysAndValues[idx]
+			if kv.Key == nil {
+				return fmt.Errorf("nil key passed to PutAll")
 			}
-			if el.Value == nil {
-				return fmt.Errorf("nil value")
+			if kv.Value == nil {
+				return fmt.Errorf("nil value passed to PutAll")
 			}
 			var err0 error
-			err0 = cache.cli.marsh.marshal(ctx, output0, el.Key)
+			err0 = cache.cli.marsh.marshal(ctx, output0, kv.Key)
 			if err0 != nil {
 				return err0
 			}
-			err0 = cache.cli.marsh.marshal(ctx, output0, el.Value)
+			err0 = cache.cli.marsh.marshal(ctx, output0, kv.Value)
 			if err0 != nil {
 				return err0
 			}
@@ -604,8 +613,12 @@ func (cache *Cache) RemoveKeys(ctx context.Context, keys ...interface{}) error {
 		if err != nil {
 			return err
 		}
-		err = writeCollection(output, keys, func(output0 BinaryOutputStream, el interface{}) error {
-			return cache.cli.marsh.marshal(ctx, output0, el)
+		err = writeSequence(output, len(keys), func(output0 BinaryOutputStream, idx int) error {
+			key := keys[idx]
+			if key == nil {
+				return fmt.Errorf("nil key passed to RemoveKeys")
+			}
+			return cache.cli.marsh.marshal(ctx, output0, key)
 		})
 		if err != nil {
 			return err
@@ -674,8 +687,12 @@ func (cache *Cache) ClearKeys(ctx context.Context, keys ...interface{}) error {
 		if err != nil {
 			return err
 		}
-		err = writeCollection(output, keys, func(output0 BinaryOutputStream, el interface{}) error {
-			return cache.cli.marsh.marshal(ctx, output0, el)
+		err = writeSequence(output, len(keys), func(output0 BinaryOutputStream, idx int) error {
+			key := keys[idx]
+			if key == nil {
+				return fmt.Errorf("nil key passed to ClearKeys")
+			}
+			return cache.cli.marsh.marshal(ctx, output0, key)
 		})
 		if err != nil {
 			return err
