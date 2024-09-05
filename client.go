@@ -290,9 +290,10 @@ func (cli *Client) CreateBinaryObject(ctx context.Context, typeName string, opts
 		return nil, fmt.Errorf("type name is empty")
 	}
 	boOpts := &binaryObjectOptions{
-		typeName:    typeName,
-		fields:      make(map[string]*boField),
-		fieldsOrder: make([]string, 0),
+		typeName:     typeName,
+		fields:       make(map[string]*boField),
+		fieldsOrder:  make([]string, 0),
+		isRegistered: true, // should be true by default, false only for testing
 	}
 	for _, opt := range opts {
 		opt(boOpts)

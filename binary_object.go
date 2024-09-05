@@ -81,12 +81,16 @@ func (b BinaryBasicIdMapper) FieldId(_ int32, fldName string) int32 {
 }
 
 type binaryObjectImpl struct {
-	data  []byte
-	marsh marshaller
+	typeId int32
+	data   []byte
+	marsh  marshaller
 }
 
 func (b *binaryObjectImpl) Type(ctx context.Context) (BinaryType, error) {
-	typeId := b.typeId()
+	typeId, err := b.getTypeId()
+	if err != nil {
+		return nil, err
+	}
 	meta, err := b.marsh.getMetadata(ctx, typeId)
 	if err != nil {
 		return nil, err
@@ -104,9 +108,12 @@ func (b *binaryObjectImpl) Field(ctx context.Context, fldName string) (interface
 	}
 
 	bIdMapper := b.marsh.binaryIdMapper()
-	typeId := b.typeId()
+	typeId, err := b.getTypeId()
+	if err != nil {
+		return nil, err
+	}
 	schemaId := b.schemaId()
-	fieldId := bIdMapper.FieldId(b.typeId(), fldName)
+	fieldId := bIdMapper.FieldId(typeId, fldName)
 
 	isCompactFooter := flags&flagCompactFooter == flagCompactFooter
 	footer, fldSize := b.footer()
@@ -132,7 +139,7 @@ func (b *binaryObjectImpl) Field(ctx context.Context, fldName string) (interface
 	} else {
 		fldOffsetIdx = -1
 		for pos := 0; pos < len(footer); {
-			id := int32(binary.LittleEndian.Uint32(footer[pos : pos+4]))
+			id := int32(binary.LittleEndian.Uint32(footer[pos : pos+intBytes]))
 			if id == fieldId {
 				fldOffsetIdx = pos + 4
 				break
@@ -147,9 +154,9 @@ func (b *binaryObjectImpl) Field(ctx context.Context, fldName string) (interface
 	if fldSize == 1 {
 		fldOffset = int(footer[fldOffsetIdx])
 	} else if fldSize == 2 {
-		fldOffset = int(binary.LittleEndian.Uint16(footer[fldOffsetIdx : fldOffsetIdx+2]))
+		fldOffset = int(binary.LittleEndian.Uint16(footer[fldOffsetIdx : fldOffsetIdx+shortBytes]))
 	} else {
-		fldOffset = int(binary.LittleEndian.Uint32(footer[fldOffsetIdx : fldOffsetIdx+4]))
+		fldOffset = int(binary.LittleEndian.Uint32(footer[fldOffsetIdx : fldOffsetIdx+intBytes]))
 	}
 	return b.marsh.unmarshal(ctx, NewBinaryInputStream(b.data, fldOffset))
 }
@@ -162,18 +169,38 @@ func (b *binaryObjectImpl) Data() []byte {
 	return b.data
 }
 
-func (b *binaryObjectImpl) typeId() int32 {
+func (b *binaryObjectImpl) getTypeId() (int32, error) {
 	if len(b.data) < headerLength {
-		return 0
+		return 0, fmt.Errorf("invalid binary object, data is corrupted")
 	}
-	return int32(binary.LittleEndian.Uint32(b.data[typeIdPos : typeIdPos+4]))
+	typeId := b.typeId
+	if typeId != 0 {
+		return typeId, nil
+	}
+	typeId = b.getRawTypeId()
+	if typeId == int32(unregisteredType) {
+		clsName, err := unmarshalString(NewBinaryInputStream(b.data, headerLength))
+		if err != nil {
+			return 0, fmt.Errorf("invalid binary object, data is corrupted: %w", err)
+		}
+		typeId = b.marsh.binaryIdMapper().TypeId(clsName)
+	}
+	b.typeId = typeId
+	return typeId, nil
+}
+
+func (b *binaryObjectImpl) getRawTypeId() int32 {
+	if len(b.data) < headerLength {
+		panic("impossible condition")
+	}
+	return int32(binary.LittleEndian.Uint32(b.data[typeIdPos : typeIdPos+intBytes]))
 }
 
 func (b *binaryObjectImpl) schemaId() int32 {
 	if len(b.data) < headerLength {
 		return 0
 	}
-	return int32(binary.LittleEndian.Uint32(b.data[schemaIdPos : schemaIdPos+4]))
+	return int32(binary.LittleEndian.Uint32(b.data[schemaIdPos : schemaIdPos+intBytes]))
 }
 
 func (b *binaryObjectImpl) footer() ([]byte, int) {
@@ -192,7 +219,7 @@ func (b *binaryObjectImpl) footer() ([]byte, int) {
 	} else {
 		fldSize = 4
 	}
-	schemaStart := int(binary.LittleEndian.Uint32(b.data[schemaOffsetPos : schemaOffsetPos+4]))
+	schemaStart := int(binary.LittleEndian.Uint32(b.data[schemaOffsetPos : schemaOffsetPos+intBytes]))
 	schemaLen := len(b.data) - schemaStart
 	if flags&flagHasRaw == flagHasRaw {
 		schemaLen -= 4
@@ -204,14 +231,14 @@ func (b *binaryObjectImpl) flags() uint16 {
 	if len(b.data) < headerLength {
 		return 0
 	}
-	return binary.LittleEndian.Uint16(b.data[flagsPos : flagsPos+2])
+	return binary.LittleEndian.Uint16(b.data[flagsPos : flagsPos+shortBytes])
 }
 
 func (b *binaryObjectImpl) HashCode() int32 {
 	if len(b.data) < headerLength {
 		return 0
 	}
-	return int32(binary.LittleEndian.Uint32(b.data[hashCodePos : hashCodePos+4]))
+	return int32(binary.LittleEndian.Uint32(b.data[hashCodePos : hashCodePos+intBytes]))
 }
 
 type boField struct {
@@ -220,10 +247,11 @@ type boField struct {
 }
 
 type binaryObjectOptions struct {
-	typeName    string
-	affKeyName  string
-	fields      map[string]*boField
-	fieldsOrder []string
+	typeName     string
+	affKeyName   string
+	fields       map[string]*boField
+	fieldsOrder  []string
+	isRegistered bool // should be true by default, only for testing
 }
 
 func newBinaryObject(ctx context.Context, marsh marshaller, opts *binaryObjectOptions) (BinaryObject, error) {
@@ -257,7 +285,13 @@ func newBinaryObject(ctx context.Context, marsh marshaller, opts *binaryObjectOp
 		flags |= flagCompactFooter
 	}
 
-	var offset = headerLength
+	var offset int
+	if !opts.isRegistered {
+		marshalString(outStream, opts.typeName)
+		offset = outStream.Position()
+	} else {
+		offset = headerLength
+	}
 	if len(opts.fields) > 0 {
 		flags |= flagHasSchema
 		for _, fldName := range opts.fieldsOrder {
@@ -313,7 +347,11 @@ func newBinaryObject(ctx context.Context, marsh marshaller, opts *binaryObjectOp
 	outStream.WriteInt8(BinaryObjectType)
 	outStream.WriteInt8(protoVersion)
 	outStream.WriteUInt16(flags)
-	outStream.WriteInt32(typeId)
+	if !opts.isRegistered {
+		outStream.WriteInt32(int32(unregisteredType))
+	} else {
+		outStream.WriteInt32(typeId)
+	}
 	outStream.SetPosition(startPos + lenPos)
 	outStream.WriteInt32(int32(retPos - startPos))
 	outStream.WriteInt32(schema.schemaId)

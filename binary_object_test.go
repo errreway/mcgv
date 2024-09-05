@@ -33,6 +33,7 @@ func (suite *BinaryObjectTestSuite) TestBasic() {
 		{testNestedBinaryObject, false},
 		{testLargeBinaryObject, false},
 		{testDifferentFieldTypes, false},
+		{testUnregisteredTypes, false},
 	}...)
 }
 
@@ -247,6 +248,28 @@ func testMergeMetadata_WithClearRegistry(t *testing.T, cli *Client, cache *Cache
 
 func testMergeMetadata_WithoutClearRegistry(t *testing.T, cli *Client, cache *Cache) {
 	testMergeMetadata(t, cli, cache, false)
+}
+
+func testUnregisteredTypes(t *testing.T, cli *Client, cache *Cache) {
+	ctx := context.Background()
+	typeName := "UNREGISTERED"
+	expTypId := cli.marsh.binaryIdMapper().TypeId(typeName)
+	exp, err := cli.CreateBinaryObject(ctx, typeName, WithField("id", uuid.New()), func(options *binaryObjectOptions) {
+		options.isRegistered = false
+	})
+	require.Equal(t, int32(unregisteredType), exp.(*binaryObjectImpl).getRawTypeId())
+	require.NoError(t, err)
+	typ, err := exp.Type(ctx)
+	require.NoError(t, err)
+	require.Equal(t, typeName, typ.TypeName())
+	require.Equal(t, expTypId, typ.TypeId())
+
+	err = cache.Put(ctx, "key", exp)
+	require.NoError(t, err)
+	val, err := cache.Get(ctx, "key")
+	require.NoError(t, err)
+	require.Equal(t, int32(unregisteredType), val.(*binaryObjectImpl).getRawTypeId())
+	RequireBinaryObjectsEqual(t, exp, val.(BinaryObject))
 }
 
 func testMergeMetadata(t *testing.T, cli *Client, _ *Cache, clearRegistry bool) {
