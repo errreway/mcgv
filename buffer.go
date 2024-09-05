@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"gitverse.ru/sbertech/ignite-go-client/internal"
 	"math"
+	"unsafe"
 )
 
 const (
@@ -34,6 +35,18 @@ type BinaryOutputStream interface {
 	WriteFloat32(v float32)
 	WriteFloat64(v float64)
 	WriteBytes(v []byte)
+	WriteInt8Slice(val []int8)
+	WriteBoolSlice(val []bool)
+	WriteUInt16Slice(v []uint16)
+	WriteInt16Slice(v []int16)
+	WriteUInt32Slice(v []uint32)
+	WriteInt32Slice(v []int32)
+	WriteUIntSlice(v []uint)
+	WriteIntSlice(v []int)
+	WriteUInt64Slice(v []uint64)
+	WriteInt64Slice(v []int64)
+	WriteFloat32Slice(val []float32)
+	WriteFloat64Slice(val []float64)
 	HashCode(start int, end int) int32
 }
 
@@ -53,6 +66,16 @@ type BinaryInputStream interface {
 	ReadFloat32() float32
 	ReadFloat64() float64
 	ReadBytes(size int) []byte
+	ReadBoolSlice(size int) []bool
+	ReadInt8Slice(size int) []int8
+	ReadUInt16Slice(size int) []uint16
+	ReadInt16Slice(size int) []int16
+	ReadUInt32Slice(size int) []uint32
+	ReadInt32Slice(size int) []int32
+	ReadUInt64Slice(size int) []uint64
+	ReadInt64Slice(size int) []int64
+	ReadFloat32Slice(size int) []float32
+	ReadFloat64Slice(size int) []float64
 	IsNull() bool
 }
 
@@ -67,13 +90,20 @@ type binaryInputStreamImpl struct {
 	position int
 }
 
+var isLittleEndian = getNativeEndian()
+
+// returns true if little, false if big
+func getNativeEndian() bool {
+	return binary.LittleEndian.Uint16([]byte{0x12, 0x34}) == uint16(0x3412)
+}
+
 func NewBinaryOutputStream(length int) BinaryOutputStream {
 	return &binaryOutputStreamImpl{
 		buffer: make([]byte, length),
 	}
 }
 
-func NewBinaryReader(buffer []byte, offset int) BinaryInputStream {
+func NewBinaryInputStream(buffer []byte, offset int) BinaryInputStream {
 	return &binaryInputStreamImpl{
 		buffer:   buffer,
 		offset:   offset,
@@ -201,6 +231,114 @@ func (bw *binaryOutputStreamImpl) WriteBytes(v []byte) {
 	bw.position += length
 }
 
+func (bw *binaryOutputStreamImpl) WriteBoolSlice(val []bool) {
+	writePrimitiveSliceFast(bw, val, boolBytes)
+}
+
+func (bw *binaryOutputStreamImpl) WriteInt8Slice(val []int8) {
+	writePrimitiveSliceFast(bw, val, byteBytes)
+}
+
+func (bw *binaryOutputStreamImpl) WriteUInt16Slice(val []uint16) {
+	if isLittleEndian {
+		writePrimitiveSliceFast(bw, val, charBytes)
+	} else {
+		for _, v := range val {
+			bw.WriteUInt16(v)
+		}
+	}
+}
+
+func (bw *binaryOutputStreamImpl) WriteInt16Slice(val []int16) {
+	if isLittleEndian {
+		writePrimitiveSliceFast(bw, val, shortBytes)
+	} else {
+		for _, v := range val {
+			bw.WriteInt16(v)
+		}
+	}
+}
+
+func (bw *binaryOutputStreamImpl) WriteUInt32Slice(val []uint32) {
+	if isLittleEndian {
+		writePrimitiveSliceFast(bw, val, intBytes)
+	} else {
+		for _, v := range val {
+			bw.WriteUInt32(v)
+		}
+	}
+}
+
+func (bw *binaryOutputStreamImpl) WriteInt32Slice(val []int32) {
+	if isLittleEndian {
+		writePrimitiveSliceFast(bw, val, intBytes)
+	} else {
+		for _, v := range val {
+			bw.WriteInt32(v)
+		}
+	}
+}
+
+func (bw *binaryOutputStreamImpl) WriteUIntSlice(val []uint) {
+	if isLittleEndian {
+		writePrimitiveSliceFast(bw, val, longBytes)
+	} else {
+		for _, v := range val {
+			bw.WriteUInt64(uint64(v))
+		}
+	}
+}
+
+func (bw *binaryOutputStreamImpl) WriteIntSlice(val []int) {
+	if isLittleEndian {
+		writePrimitiveSliceFast(bw, val, longBytes)
+	} else {
+		for _, v := range val {
+			bw.WriteInt64(int64(v))
+		}
+	}
+}
+
+func (bw *binaryOutputStreamImpl) WriteUInt64Slice(val []uint64) {
+	if isLittleEndian {
+		writePrimitiveSliceFast(bw, val, longBytes)
+	} else {
+		for _, v := range val {
+			bw.WriteUInt64(v)
+		}
+	}
+}
+
+func (bw *binaryOutputStreamImpl) WriteInt64Slice(val []int64) {
+	if isLittleEndian {
+		writePrimitiveSliceFast(bw, val, longBytes)
+	} else {
+		for _, v := range val {
+			bw.WriteInt64(v)
+		}
+	}
+}
+
+func (bw *binaryOutputStreamImpl) WriteFloat32Slice(val []float32) {
+	if isLittleEndian {
+		writePrimitiveSliceFast(bw, val, intBytes)
+	} else {
+		for _, v := range val {
+			bw.WriteFloat32(v)
+		}
+	}
+}
+
+func (bw *binaryOutputStreamImpl) WriteFloat64Slice(val []float64) {
+	if isLittleEndian {
+		writePrimitiveSliceFast(bw, val, longBytes)
+	} else {
+		for _, v := range val {
+			bw.WriteFloat64(v)
+		}
+	}
+}
+
 func (bw *binaryOutputStreamImpl) HashCode(start int, end int) int32 {
 	bufLen := len(bw.buffer)
 	if start > bufLen || start < 0 || end > bufLen || end < 0 || start > end {
@@ -221,7 +359,7 @@ func (br *binaryInputStreamImpl) SetPosition(pos int) {
 	if pos < 0 {
 		panic(fmt.Sprintf("negatige position passed: %d", pos))
 	}
-	if len(br.buffer) < int(pos) {
+	if len(br.buffer) < pos {
 		panic(fmt.Sprintf("position %d is out of range, buffer length: %d", pos, len(br.buffer)))
 	}
 	br.position = pos
@@ -295,6 +433,131 @@ func (br *binaryInputStreamImpl) ReadFloat64() float64 {
 func (br *binaryInputStreamImpl) ReadBytes(size int) []byte {
 	ret := make([]byte, size)
 	br.position += copy(ret, br.buffer[br.position:])
+	return ret
+}
+
+func (br *binaryInputStreamImpl) ReadBoolSlice(size int) []bool {
+	return readPrimitiveSliceFast[bool](br, byteBytes, size)
+}
+
+func (br *binaryInputStreamImpl) ReadInt8Slice(size int) []int8 {
+	return readPrimitiveSliceFast[int8](br, byteBytes, size)
+}
+
+func (br *binaryInputStreamImpl) ReadUInt16Slice(size int) []uint16 {
+	if isLittleEndian {
+		return readPrimitiveSliceFast[uint16](br, charBytes, size)
+	} else {
+		ret := make([]uint16, size)
+		for i := 0; i < size; i++ {
+			ret[i] = br.ReadUInt16()
+		}
+		return ret
+	}
+}
+
+func (br *binaryInputStreamImpl) ReadInt16Slice(size int) []int16 {
+	if isLittleEndian {
+		return readPrimitiveSliceFast[int16](br, charBytes, size)
+	} else {
+		ret := make([]int16, size)
+		for i := 0; i < size; i++ {
+			ret[i] = br.ReadInt16()
+		}
+		return ret
+	}
+}
+
+func (br *binaryInputStreamImpl) ReadUInt32Slice(size int) []uint32 {
+	if isLittleEndian {
+		return readPrimitiveSliceFast[uint32](br, intBytes, size)
+	} else {
+		ret := make([]uint32, size)
+		for i := 0; i < size; i++ {
+			ret[i] = br.ReadUInt32()
+		}
+		return ret
+	}
+}
+
+func (br *binaryInputStreamImpl) ReadInt32Slice(size int) []int32 {
+	if isLittleEndian {
+		return readPrimitiveSliceFast[int32](br, intBytes, size)
+	} else {
+		ret := make([]int32, size)
+		for i := 0; i < size; i++ {
+			ret[i] = br.ReadInt32()
+		}
+		return ret
+	}
+}
+
+func (br *binaryInputStreamImpl) ReadUInt64Slice(size int) []uint64 {
+	if isLittleEndian {
+		return readPrimitiveSliceFast[uint64](br, longBytes, size)
+	} else {
+		ret := make([]uint64, size)
+		for i := 0; i < size; i++ {
+			ret[i] = br.ReadUInt64()
+		}
+		return ret
+	}
+}
+
+func (br *binaryInputStreamImpl) ReadInt64Slice(size int) []int64 {
+	if isLittleEndian {
+		return readPrimitiveSliceFast[int64](br, longBytes, size)
+	} else {
+		ret := make([]int64, size)
+		for i := 0; i < size; i++ {
+			ret[i] = br.ReadInt64()
+		}
+		return ret
+	}
+}
+
+func (br *binaryInputStreamImpl) ReadFloat32Slice(size int) []float32 {
+	if isLittleEndian {
+		return readPrimitiveSliceFast[float32](br, intBytes, size)
+	} else {
+		ret := make([]float32, size)
+		for i := 0; i < size; i++ {
+			ret[i] = br.ReadFloat32()
+		}
+		return ret
+	}
+}
+
+func (br *binaryInputStreamImpl) ReadFloat64Slice(size int) []float64 {
+	if isLittleEndian {
+		return readPrimitiveSliceFast[float64](br, longBytes, size)
+	} else {
+		ret := make([]float64, size)
+		for i := 0; i < size; i++ {
+			ret[i] = br.ReadFloat64()
+		}
+		return ret
+	}
+}
+
+type primitives interface {
+	~bool | ~int | ~int8 | ~int16 | ~int32 | ~int64 | ~uint | uint8 | uint16 | uint32 | uint64 | float32 | float64
+}
+
+func writePrimitiveSliceFast[T primitives](bw *binaryOutputStreamImpl, val []T, elemSz int) {
+	length := len(val) * elemSz
+	bw.ensureAvailable(length)
+	raw := unsafe.Slice((*byte)(unsafe.Pointer(&val[0])), length)
+	copy(bw.buffer[bw.position:bw.position+length], raw)
+	bw.position += length
+}
+
+func readPrimitiveSliceFast[T primitives](br *binaryInputStreamImpl, elemSz int, size int) []T {
+	length := size * elemSz
+	ret := make([]T, size)
+	raw := unsafe.Slice((*byte)(unsafe.Pointer(&ret[0])), length)
+	copy(raw, br.buffer[br.position:br.position+length])
+	br.position += length
 	return ret
 }
 

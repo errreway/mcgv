@@ -32,7 +32,7 @@ func (r *reliableChannel) send(ctx context.Context, opCode int16, requestWriter 
 		currCh, err := r.currentChannel(ctx)
 		if err != nil {
 			r.log.Errorf("connection failed: %s", err)
-			responseReader(NewBinaryReader(nil, 0), err)
+			responseReader(NewBinaryInputStream(nil, 0), err)
 			return
 		}
 		attemptsLimit := r.attemptsLimit

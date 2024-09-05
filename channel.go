@@ -145,7 +145,7 @@ func (ch *tcpChannel) send0(ctx context.Context, id int64, opCode int16, request
 			responseReader(nil, req.err)
 			return
 		}
-		input := NewBinaryReader(req.responseData, 0)
+		input := NewBinaryInputStream(req.responseData, 0)
 		// process handshake
 		if reqId == -1 {
 			responseReader(input, nil)

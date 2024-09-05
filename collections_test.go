@@ -7,9 +7,11 @@ import (
 	"github.com/cockroachdb/apd/v3"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
+	"math/rand"
 	"reflect"
 	"testing"
 	"time"
+	"unsafe"
 )
 
 func (suite *CacheTestSuite) TestCollections() {
@@ -83,6 +85,32 @@ func (suite *CacheTestSuite) TestCollections() {
 		})
 	}
 
+}
+
+func (suite *CacheTestSuite) TestPrimitiveArrays() {
+	fixtures := []struct {
+		name string
+		arr  interface{}
+	}{
+		{"BoolArray", createRandPrimitiveArray(func() bool { return rand.Intn(3) != 0 })},
+		{"ByteArray", createRandPrimitiveArray(func() byte { return byte(rand.Intn(1<<8 - 1)) })},
+		{"SignedByteArray", createRandPrimitiveArray(func() int8 { return int8(rand.Intn(1<<8 - 1)) })},
+		{"ShortArray", createRandPrimitiveArray(func() int16 { return int16(rand.Intn(1<<16 - 1)) })},
+		{"CharArray", createRandPrimitiveArray(func() uint16 { return uint16(rand.Intn(1<<16 - 1)) })},
+		{"UintArray", createRandPrimitiveArray(func() uint { return uint(rand.Uint32()) })},
+		{"IntArray", createRandPrimitiveArray(func() int { return int(rand.Int31()) })},
+		{"Uint32Array", createRandPrimitiveArray(func() uint32 { return rand.Uint32() })},
+		{"Int32Array", createRandPrimitiveArray(func() int32 { return rand.Int31() })},
+		{"Uint64Array", createRandPrimitiveArray(func() uint64 { return rand.Uint64() })},
+		{"Int64Array", createRandPrimitiveArray(func() int64 { return rand.Int63() })},
+		{"FloatArray", createRandPrimitiveArray(func() float32 { return rand.Float32() })},
+		{"DoubleArray", createRandPrimitiveArray(func() float64 { return rand.Float64() })},
+	}
+	for _, fixture := range fixtures {
+		suite.T().Run(fmt.Sprintf("%s:%s", fixture.name, fixture.arr), func(t *testing.T) {
+			suite.putGetCollectionTest(t, "primitive-arr-key", fixture.arr)
+		})
+	}
 }
 
 func (suite *CacheTestSuite) TestSpecialArrays() {
@@ -168,30 +196,75 @@ func (suite *CacheTestSuite) putGetCollectionTest(t *testing.T, key interface{},
 	actualVal, err := suite.cache.Get(context.Background(), key)
 	require.NoError(t, err, "failed to get value", err)
 
-	if coll, ok := val.(Collection); ok {
-		if coll.Kind() == UserCollection {
-			require.Equal(t, ArrayList, actualVal.(Collection).kind) // quirk of ignite serialization.
-		} else {
-			require.Equal(t, coll.Kind(), actualVal.(Collection).kind)
+	RequireIgniteTypesEqual(t, val, actualVal)
+}
+
+func RequireIgniteTypesEqual(t *testing.T, expected, actual interface{}) {
+	switch expected := expected.(type) {
+	case uint8:
+		require.Equal(t, int8(expected), actual)
+	case uint32:
+		require.Equal(t, int32(expected), actual)
+	case uint64:
+		require.Equal(t, int64(expected), actual)
+	case int:
+		require.Equal(t, int64(expected), actual)
+	case uint:
+		require.Equal(t, int64(expected), actual)
+	case []int8:
+		expArr := convertSignArray[int8, byte](expected)
+		require.Equal(t, expArr, actual.([]byte))
+	case []int:
+		expArr := convertSignArrayInt[int](expected)
+		require.Equal(t, expArr, actual.([]int64))
+	case []uint:
+		expArr := convertSignArrayInt[uint](expected)
+		require.Equal(t, expArr, actual.([]int64))
+	case []uint32:
+		expArr := convertSignArray[uint32, int32](expected)
+		require.Equal(t, expArr, actual.([]int32))
+	case []uint64:
+		expArr := convertSignArray[uint64, int64](expected)
+		require.Equal(t, expArr, actual.([]int64))
+	case Collection:
+		{
+			if expected.Kind() == UserCollection {
+				require.Equal(t, ArrayList, actual.(Collection).kind) // quirk of ignite serialization.
+			} else {
+				require.Equal(t, expected.Kind(), actual.(Collection).kind)
+			}
+			RequireArraysEqual(t, expected.values, actual.(Collection).values)
 		}
-		RequireArraysEqual(t, coll.values, actualVal.(Collection).values)
-	} else if arr, ok := val.([]interface{}); ok {
-		RequireArraysEqual(t, arr, actualVal.([]interface{}))
-	} else if expectedMap, ok := val.(Map); ok {
-		actualMap, ok := actualVal.(Map)
-		require.True(t, ok)
-		RequireMapEqual(t, expectedMap, actualMap)
-	} else if reflect.ValueOf(val).Kind() == reflect.Map {
-		expectedMap := reflect.ValueOf(val)
-		actualMap, ok := actualVal.(Map)
-		require.True(t, ok)
-		RequireMapEqualGoMap(t, expectedMap, actualMap)
-	} else if reflect.ValueOf(val).Kind() == reflect.Slice {
-		expectedSlice := reflect.ValueOf(val)
-		actualSlice := reflect.ValueOf(actualVal)
-		RequireArraysReflectionEqual(t, expectedSlice, actualSlice)
-	} else {
-		require.FailNow(t, "unexpected type", reflect.TypeOf(val))
+	case []interface{}:
+		{
+			RequireArraysEqual(t, expected, actual.([]interface{}))
+		}
+	case Map:
+		{
+			actualMap, ok := actual.(Map)
+			require.True(t, ok)
+			RequireMapEqual(t, expected, actualMap)
+		}
+	case BinaryObject:
+		{
+			actualBo, ok := actual.(BinaryObject)
+			require.True(t, ok)
+			RequireBinaryObjectsEqual(t, expected, actualBo)
+		}
+	default:
+		if reflect.ValueOf(expected).Kind() == reflect.Map {
+			expectedMap := reflect.ValueOf(expected)
+			actualMap, ok := actual.(Map)
+			require.True(t, ok)
+			RequireMapEqualGoMap(t, expectedMap, actualMap)
+		} else if reflect.ValueOf(expected).Kind() == reflect.Slice {
+			expectedSlice := reflect.ValueOf(expected)
+			actualSlice := reflect.ValueOf(actual)
+			RequireArraysReflectionEqual(t, expectedSlice, actualSlice)
+		} else {
+			// Last resort
+			require.Equal(t, expected, actual)
+		}
 	}
 }
 
@@ -276,6 +349,33 @@ func ElementEqual(expected, actual interface{}) bool {
 	return reflect.DeepEqual(expected, actual)
 }
 
+func RequireBinaryObjectsEqual(t *testing.T, obj1 BinaryObject, obj2 BinaryObject) {
+	require.Equal(t, obj1.HashCode(), obj2.HashCode())
+	require.Equal(t, obj1.Data(), obj2.Data())
+	ctx := context.Background()
+
+	type1, err := obj1.Type(ctx)
+	require.NoError(t, err)
+	require.NotNil(t, type1)
+	type2, err := obj2.Type(ctx)
+	require.NoError(t, err)
+	require.NotNil(t, type2)
+
+	require.Equal(t, type1.TypeId(), type2.TypeId())
+	require.Equal(t, type1.TypeName(), type2.TypeName())
+	require.Equal(t, type1.AffinityKeyName(), type2.AffinityKeyName())
+	require.Equal(t, type1.IsEnum(), type2.IsEnum())
+	require.Equal(t, type1.Fields(), type2.Fields())
+
+	for _, fldName := range type1.Fields() {
+		fld1, err := obj1.Field(ctx, fldName)
+		require.NoError(t, err)
+		fld2, err := obj2.Field(ctx, fldName)
+		require.NoError(t, err)
+		RequireIgniteTypesEqual(t, fld1, fld2)
+	}
+}
+
 func createTestBinaryObject(t *testing.T, cli *Client, id int32) BinaryObject {
 	ret, err := cli.CreateBinaryObject(context.Background(), "TEST_VALUE",
 		WithField("id", id), WithField("name", fmt.Sprintf("name_%d", id)))
@@ -298,5 +398,27 @@ func fromPSlice[T any](pSlice []*T) []T {
 			ret[i] = *v
 		}
 	}
+	return ret
+}
+
+func convertSignArrayUInt[I ~int | ~uint](in []I) []uint64 {
+	ret := make([]uint64, len(in))
+	for i, v := range in {
+		ret[i] = uint64(v)
+	}
+	return ret
+}
+
+func convertSignArrayInt[I ~int | ~uint](in []I) []int64 {
+	ret := make([]int64, len(in))
+	for i, v := range in {
+		ret[i] = int64(v)
+	}
+	return ret
+}
+
+func convertSignArray[I primitives, O primitives](in []I) []O {
+	ret := make([]O, len(in))
+	copy(ret, unsafe.Slice((*O)(unsafe.Pointer(&in[0])), len(in)))
 	return ret
 }

@@ -39,6 +39,10 @@ jobs:
       - name: Run tests
         run: |
           make test
+      - name: Kill ignite if remains
+        run: |
+          make kill-ignite
+
 # Upload artifacts doesn't work on gitverse yet :(.
 #      - name: Save artifacts
 #        uses: actions/upload-artifact@v3

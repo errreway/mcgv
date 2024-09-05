@@ -151,7 +151,7 @@ func (b *binaryObjectImpl) Field(ctx context.Context, fldName string) (interface
 	} else {
 		fldOffset = int(binary.LittleEndian.Uint32(footer[fldOffsetIdx : fldOffsetIdx+4]))
 	}
-	return b.marsh.unmarshal(ctx, NewBinaryReader(b.data, fldOffset))
+	return b.marsh.unmarshal(ctx, NewBinaryInputStream(b.data, fldOffset))
 }
 
 func (b *binaryObjectImpl) Size() int {

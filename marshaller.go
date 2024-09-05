@@ -166,10 +166,15 @@ func (m *marshallerImpl) marshal(ctx context.Context, writer BinaryOutputStream,
 			writer.WriteInt8(IntType)
 			writer.WriteInt32(val)
 		}
+	case uint:
+		{
+			writer.WriteInt8(LongType)
+			writer.WriteUInt64(uint64(val))
+		}
 	case int:
 		{
-			writer.WriteInt8(IntType)
-			writer.WriteInt32(int32(val))
+			writer.WriteInt8(LongType)
+			writer.WriteInt64(int64(val))
 		}
 	case uint64:
 		{
@@ -191,9 +196,81 @@ func (m *marshallerImpl) marshal(ctx context.Context, writer BinaryOutputStream,
 			writer.WriteInt8(DoubleType)
 			writer.WriteFloat64(val)
 		}
+	case []bool:
+		{
+			writer.WriteInt8(BoolArrayType)
+			writer.WriteInt32(int32(len(val)))
+			writer.WriteBoolSlice(val)
+		}
 	case []byte:
 		{
 			marshalByteArray(writer, val)
+		}
+	case []int8:
+		{
+			writer.WriteInt8(ByteArrayType)
+			writer.WriteInt32(int32(len(val)))
+			writer.WriteInt8Slice(val)
+		}
+	case []uint16:
+		{
+			writer.WriteInt8(CharArrayType)
+			writer.WriteInt32(int32(len(val)))
+			writer.WriteUInt16Slice(val)
+		}
+	case []int16:
+		{
+			writer.WriteInt8(ShortArrayType)
+			writer.WriteInt32(int32(len(val)))
+			writer.WriteInt16Slice(val)
+		}
+	case []uint32:
+		{
+			writer.WriteInt8(IntArrayType)
+			writer.WriteInt32(int32(len(val)))
+			writer.WriteUInt32Slice(val)
+		}
+	case []int32:
+		{
+			writer.WriteInt8(IntArrayType)
+			writer.WriteInt32(int32(len(val)))
+			writer.WriteInt32Slice(val)
+		}
+	case []uint:
+		{
+			writer.WriteInt8(LongArrayType)
+			writer.WriteInt32(int32(len(val)))
+			writer.WriteUIntSlice(val)
+		}
+	case []int:
+		{
+			writer.WriteInt8(LongArrayType)
+			writer.WriteInt32(int32(len(val)))
+			writer.WriteIntSlice(val)
+		}
+	case []uint64:
+		{
+			writer.WriteInt8(LongArrayType)
+			writer.WriteInt32(int32(len(val)))
+			writer.WriteUInt64Slice(val)
+		}
+	case []int64:
+		{
+			writer.WriteInt8(LongArrayType)
+			writer.WriteInt32(int32(len(val)))
+			writer.WriteInt64Slice(val)
+		}
+	case []float32:
+		{
+			writer.WriteInt8(FloatArrayType)
+			writer.WriteInt32(int32(len(val)))
+			writer.WriteFloat32Slice(val)
+		}
+	case []float64:
+		{
+			writer.WriteInt8(DoubleArrayType)
+			writer.WriteInt32(int32(len(val)))
+			writer.WriteFloat64Slice(val)
 		}
 	case string:
 		{
@@ -417,11 +494,7 @@ func GetTypeId(val interface{}) (TypeDesc, error) {
 		{
 			return BoolType, nil
 		}
-	case uint8:
-		{
-			return ByteType, nil
-		}
-	case int8:
+	case uint8, int8:
 		{
 			return ByteType, nil
 		}
@@ -433,23 +506,11 @@ func GetTypeId(val interface{}) (TypeDesc, error) {
 		{
 			return ShortType, nil
 		}
-	case uint32:
+	case uint32, int32:
 		{
 			return IntType, nil
 		}
-	case int32:
-		{
-			return IntType, nil
-		}
-	case int:
-		{
-			return IntType, nil
-		}
-	case uint64:
-		{
-			return LongType, nil
-		}
-	case int64:
+	case uint64, int64, uint, int:
 		{
 			return LongType, nil
 		}
@@ -461,9 +522,33 @@ func GetTypeId(val interface{}) (TypeDesc, error) {
 		{
 			return DoubleType, nil
 		}
-	case []byte:
+	case []byte, []int8:
 		{
 			return ByteArrayType, nil
+		}
+	case []int16:
+		{
+			return ShortArrayType, nil
+		}
+	case []uint16:
+		{
+			return CharArrayType, nil
+		}
+	case []uint32, []int32:
+		{
+			return IntArrayType, nil
+		}
+	case []uint64, []int64, []uint, []int:
+		{
+			return LongArrayType, nil
+		}
+	case []float32:
+		{
+			return FloatArrayType, nil
+		}
+	case []float64:
+		{
+			return DoubleArrayType, nil
 		}
 	case string:
 		{
@@ -623,6 +708,51 @@ func (m *marshallerImpl) unmarshal(ctx context.Context, reader BinaryInputStream
 	case ByteArrayType:
 		{
 			return readByteArray(reader)
+		}
+	case BoolArrayType, ShortArrayType, CharArrayType, IntArrayType, LongArrayType, FloatArrayType, DoubleArrayType:
+		{
+			var elemSz int
+			switch payloadType {
+			case BoolArrayType:
+				elemSz = boolBytes
+			case ShortArrayType:
+				elemSz = shortBytes
+			case CharArrayType:
+				elemSz = charBytes
+			case IntArrayType, FloatArrayType:
+				elemSz = intBytes
+			case LongArrayType, DoubleArrayType:
+				elemSz = longBytes
+			default:
+				panic("impossible condition")
+			}
+			err = ensureAvailable(reader, intBytes)
+			if err != nil {
+				return nil, err
+			}
+			sz := int(reader.ReadInt32())
+			err = ensureAvailable(reader, sz*elemSz)
+			if err != nil {
+				return nil, err
+			}
+			switch payloadType {
+			case BoolArrayType:
+				return reader.ReadBoolSlice(sz), nil
+			case ShortArrayType:
+				return reader.ReadInt16Slice(sz), nil
+			case CharArrayType:
+				return reader.ReadUInt16Slice(sz), nil
+			case IntArrayType:
+				return reader.ReadInt32Slice(sz), nil
+			case LongArrayType:
+				return reader.ReadInt64Slice(sz), nil
+			case FloatArrayType:
+				return reader.ReadFloat32Slice(sz), nil
+			case DoubleArrayType:
+				return reader.ReadFloat64Slice(sz), nil
+			default:
+				panic("impossible condition")
+			}
 		}
 	case StringType:
 		{
