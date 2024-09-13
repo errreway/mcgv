@@ -97,8 +97,8 @@ func (cache *Cache) Get(ctx context.Context, key interface{}) (interface{}, erro
 	}
 	var err error = nil
 	var ret interface{}
-	cache.cli.ch.send(ctx, opCacheGet, func(output BinaryOutputStream) error {
-		err = cache.writeCacheInfo(cache.cli.ch.protocolContext(), output)
+	cache.channel(ctx).send(ctx, opCacheGet, func(currCh channel, output BinaryOutputStream) error {
+		err = cache.writeCacheInfo(ctx, currCh.protocolContext(), output)
 		if err != nil {
 			return err
 		}
@@ -107,7 +107,7 @@ func (cache *Cache) Get(ctx context.Context, key interface{}) (interface{}, erro
 			return err
 		}
 		return nil
-	}, func(input BinaryInputStream, err0 error) {
+	}, func(_ channel, input BinaryInputStream, err0 error) {
 		if err0 != nil {
 			err = err0
 			return
@@ -127,8 +127,8 @@ func (cache *Cache) GetAndPut(ctx context.Context, key interface{}, value interf
 	}
 	var ret interface{}
 	var err error = nil
-	cache.cli.ch.send(ctx, opCacheGetAndPut, func(output BinaryOutputStream) error {
-		err = cache.writeCacheInfo(cache.cli.ch.protocolContext(), output)
+	cache.channel(ctx).send(ctx, opCacheGetAndPut, func(currCh channel, output BinaryOutputStream) error {
+		err = cache.writeCacheInfo(ctx, currCh.protocolContext(), output)
 		if err != nil {
 			return err
 		}
@@ -141,7 +141,7 @@ func (cache *Cache) GetAndPut(ctx context.Context, key interface{}, value interf
 			return err
 		}
 		return nil
-	}, func(input BinaryInputStream, err0 error) {
+	}, func(_ channel, input BinaryInputStream, err0 error) {
 		if err0 != nil {
 			err = err0
 			return
@@ -161,8 +161,8 @@ func (cache *Cache) GetAndReplace(ctx context.Context, key interface{}, value in
 	}
 	var ret interface{} = nil
 	var err error = nil
-	cache.cli.ch.send(ctx, opCacheGetAndReplace, func(output BinaryOutputStream) error {
-		err = cache.writeCacheInfo(cache.cli.ch.protocolContext(), output)
+	cache.channel(ctx).send(ctx, opCacheGetAndReplace, func(currCh channel, output BinaryOutputStream) error {
+		err = cache.writeCacheInfo(ctx, currCh.protocolContext(), output)
 		if err != nil {
 			return err
 		}
@@ -175,7 +175,7 @@ func (cache *Cache) GetAndReplace(ctx context.Context, key interface{}, value in
 			return err
 		}
 		return nil
-	}, func(input BinaryInputStream, err0 error) {
+	}, func(_ channel, input BinaryInputStream, err0 error) {
 		if err0 != nil {
 			err = err0
 			return
@@ -194,8 +194,8 @@ func (cache *Cache) Put(ctx context.Context, key interface{}, value interface{})
 		return fmt.Errorf("nil value")
 	}
 	var err error = nil
-	cache.cli.ch.send(ctx, opCachePut, func(output BinaryOutputStream) error {
-		err = cache.writeCacheInfo(cache.cli.ch.protocolContext(), output)
+	cache.channel(ctx).send(ctx, opCachePut, func(currCh channel, output BinaryOutputStream) error {
+		err = cache.writeCacheInfo(ctx, currCh.protocolContext(), output)
 		if err != nil {
 			return err
 		}
@@ -208,7 +208,7 @@ func (cache *Cache) Put(ctx context.Context, key interface{}, value interface{})
 			return err
 		}
 		return nil
-	}, func(input BinaryInputStream, err0 error) {
+	}, func(_ channel, input BinaryInputStream, err0 error) {
 		if err0 != nil {
 			err = err0
 			return
@@ -227,8 +227,8 @@ func (cache *Cache) PutIfAbsent(ctx context.Context, key interface{}, value inte
 	}
 	var ret bool
 	var err error = nil
-	cache.cli.ch.send(ctx, opCachePutIfAbsent, func(output BinaryOutputStream) error {
-		err = cache.writeCacheInfo(cache.cli.ch.protocolContext(), output)
+	cache.channel(ctx).send(ctx, opCachePutIfAbsent, func(currCh channel, output BinaryOutputStream) error {
+		err = cache.writeCacheInfo(ctx, currCh.protocolContext(), output)
 		if err != nil {
 			return err
 		}
@@ -241,7 +241,7 @@ func (cache *Cache) PutIfAbsent(ctx context.Context, key interface{}, value inte
 			return err
 		}
 		return nil
-	}, func(input BinaryInputStream, err0 error) {
+	}, func(_ channel, input BinaryInputStream, err0 error) {
 		if err0 != nil {
 			err = err0
 			return
@@ -261,8 +261,8 @@ func (cache *Cache) GetAndPutIfAbsent(ctx context.Context, key interface{}, valu
 	}
 	var ret interface{}
 	var err error = nil
-	cache.cli.ch.send(ctx, opCacheGetAndPutIfAbsent, func(output BinaryOutputStream) error {
-		err = cache.writeCacheInfo(cache.cli.ch.protocolContext(), output)
+	cache.channel(ctx).send(ctx, opCacheGetAndPutIfAbsent, func(currCh channel, output BinaryOutputStream) error {
+		err = cache.writeCacheInfo(ctx, currCh.protocolContext(), output)
 		if err != nil {
 			return err
 		}
@@ -275,7 +275,7 @@ func (cache *Cache) GetAndPutIfAbsent(ctx context.Context, key interface{}, valu
 			return err
 		}
 		return nil
-	}, func(input BinaryInputStream, err0 error) {
+	}, func(_ channel, input BinaryInputStream, err0 error) {
 		if err0 != nil {
 			err = err0
 			return
@@ -292,8 +292,8 @@ func (cache *Cache) ContainsKey(ctx context.Context, key interface{}) (bool, err
 	}
 	var err error = nil
 	var ret bool
-	cache.cli.ch.send(ctx, opCacheContainsKey, func(output BinaryOutputStream) error {
-		err = cache.writeCacheInfo(cache.cli.ch.protocolContext(), output)
+	cache.channel(ctx).send(ctx, opCacheContainsKey, func(currCh channel, output BinaryOutputStream) error {
+		err = cache.writeCacheInfo(ctx, currCh.protocolContext(), output)
 		if err != nil {
 			return err
 		}
@@ -302,7 +302,7 @@ func (cache *Cache) ContainsKey(ctx context.Context, key interface{}) (bool, err
 			return err
 		}
 		return nil
-	}, func(input BinaryInputStream, err0 error) {
+	}, func(_ channel, input BinaryInputStream, err0 error) {
 		if err0 != nil {
 			err = err0
 			return
@@ -319,8 +319,8 @@ func (cache *Cache) ContainsKeys(ctx context.Context, keys ...interface{}) (bool
 	}
 	var err error
 	var ret bool
-	cache.cli.ch.send(ctx, opCacheContainsKeys, func(output BinaryOutputStream) error {
-		err = cache.writeCacheInfo(cache.cli.ch.protocolContext(), output)
+	cache.channel(ctx).send(ctx, opCacheContainsKeys, func(currCh channel, output BinaryOutputStream) error {
+		err = cache.writeCacheInfo(ctx, currCh.protocolContext(), output)
 		if err != nil {
 			return err
 		}
@@ -335,7 +335,7 @@ func (cache *Cache) ContainsKeys(ctx context.Context, keys ...interface{}) (bool
 			return err
 		}
 		return nil
-	}, func(input BinaryInputStream, err0 error) {
+	}, func(_ channel, input BinaryInputStream, err0 error) {
 		if err0 != nil {
 			err = err0
 			return
@@ -352,8 +352,8 @@ func (cache *Cache) GetAll(ctx context.Context, keys ...interface{}) ([]KeyValue
 		return ret, nil
 	}
 	var err error
-	cache.cli.ch.send(ctx, opCacheGetAll, func(output BinaryOutputStream) error {
-		err = cache.writeCacheInfo(cache.cli.ch.protocolContext(), output)
+	cache.channel(ctx).send(ctx, opCacheGetAll, func(currCh channel, output BinaryOutputStream) error {
+		err = cache.writeCacheInfo(ctx, currCh.protocolContext(), output)
 		if err != nil {
 			return err
 		}
@@ -368,7 +368,7 @@ func (cache *Cache) GetAll(ctx context.Context, keys ...interface{}) ([]KeyValue
 			return err
 		}
 		return nil
-	}, func(input BinaryInputStream, err0 error) {
+	}, func(_ channel, input BinaryInputStream, err0 error) {
 		if err0 != nil {
 			err = err0
 			return
@@ -402,8 +402,8 @@ func (cache *Cache) PutAll(ctx context.Context, keysAndValues ...KeyValue) error
 		return nil
 	}
 	var err error
-	cache.cli.ch.send(ctx, opCachePutAll, func(output BinaryOutputStream) error {
-		err = cache.writeCacheInfo(cache.cli.ch.protocolContext(), output)
+	cache.channel(ctx).send(ctx, opCachePutAll, func(currCh channel, output BinaryOutputStream) error {
+		err = cache.writeCacheInfo(ctx, currCh.protocolContext(), output)
 		if err != nil {
 			return err
 		}
@@ -430,7 +430,7 @@ func (cache *Cache) PutAll(ctx context.Context, keysAndValues ...KeyValue) error
 			return err
 		}
 		return nil
-	}, func(input BinaryInputStream, err0 error) {
+	}, func(_ channel, input BinaryInputStream, err0 error) {
 		if err0 != nil {
 			err = err0
 			return
@@ -452,8 +452,8 @@ func (cache *Cache) ReplaceIfEquals(ctx context.Context, key interface{}, oldVal
 	}
 	var ret bool
 	var err error = nil
-	cache.cli.ch.send(ctx, opCacheReplaceIfEquals, func(output BinaryOutputStream) error {
-		err = cache.writeCacheInfo(cache.cli.ch.protocolContext(), output)
+	cache.channel(ctx).send(ctx, opCacheReplaceIfEquals, func(currCh channel, output BinaryOutputStream) error {
+		err = cache.writeCacheInfo(ctx, currCh.protocolContext(), output)
 		if err != nil {
 			return err
 		}
@@ -470,7 +470,7 @@ func (cache *Cache) ReplaceIfEquals(ctx context.Context, key interface{}, oldVal
 			return err
 		}
 		return nil
-	}, func(input BinaryInputStream, err0 error) {
+	}, func(_ channel, input BinaryInputStream, err0 error) {
 		if err0 != nil {
 			err = err0
 			return
@@ -490,8 +490,8 @@ func (cache *Cache) Replace(ctx context.Context, key interface{}, value interfac
 	}
 	var ret bool
 	var err error = nil
-	cache.cli.ch.send(ctx, opCacheReplace, func(output BinaryOutputStream) error {
-		err = cache.writeCacheInfo(cache.cli.ch.protocolContext(), output)
+	cache.channel(ctx).send(ctx, opCacheReplace, func(currCh channel, output BinaryOutputStream) error {
+		err = cache.writeCacheInfo(ctx, currCh.protocolContext(), output)
 		if err != nil {
 			return err
 		}
@@ -504,7 +504,7 @@ func (cache *Cache) Replace(ctx context.Context, key interface{}, value interfac
 			return err
 		}
 		return nil
-	}, func(input BinaryInputStream, err0 error) {
+	}, func(_ channel, input BinaryInputStream, err0 error) {
 		if err0 != nil {
 			err = err0
 			return
@@ -521,8 +521,8 @@ func (cache *Cache) Remove(ctx context.Context, key interface{}) (bool, error) {
 	}
 	var ret bool
 	var err error = nil
-	cache.cli.ch.send(ctx, opCacheRemoveKey, func(output BinaryOutputStream) error {
-		err = cache.writeCacheInfo(cache.cli.ch.protocolContext(), output)
+	cache.channel(ctx).send(ctx, opCacheRemoveKey, func(currCh channel, output BinaryOutputStream) error {
+		err = cache.writeCacheInfo(ctx, currCh.protocolContext(), output)
 		if err != nil {
 			return err
 		}
@@ -531,7 +531,7 @@ func (cache *Cache) Remove(ctx context.Context, key interface{}) (bool, error) {
 			return err
 		}
 		return nil
-	}, func(input BinaryInputStream, err0 error) {
+	}, func(_ channel, input BinaryInputStream, err0 error) {
 		if err0 != nil {
 			err = err0
 			return
@@ -548,8 +548,8 @@ func (cache *Cache) GetAndRemove(ctx context.Context, key interface{}) (interfac
 	}
 	var ret interface{} = nil
 	var err error = nil
-	cache.cli.ch.send(ctx, opCacheGetAndRemove, func(output BinaryOutputStream) error {
-		err = cache.writeCacheInfo(cache.cli.ch.protocolContext(), output)
+	cache.channel(ctx).send(ctx, opCacheGetAndRemove, func(currCh channel, output BinaryOutputStream) error {
+		err = cache.writeCacheInfo(ctx, currCh.protocolContext(), output)
 		if err != nil {
 			return err
 		}
@@ -558,7 +558,7 @@ func (cache *Cache) GetAndRemove(ctx context.Context, key interface{}) (interfac
 			return err
 		}
 		return nil
-	}, func(input BinaryInputStream, err0 error) {
+	}, func(_ channel, input BinaryInputStream, err0 error) {
 		if err0 != nil {
 			err = err0
 			return
@@ -578,8 +578,8 @@ func (cache *Cache) RemoveIfEquals(ctx context.Context, key interface{}, oldValu
 	}
 	var ret bool
 	var err error = nil
-	cache.cli.ch.send(ctx, opCacheRemoveIfEquals, func(output BinaryOutputStream) error {
-		err = cache.writeCacheInfo(cache.cli.ch.protocolContext(), output)
+	cache.channel(ctx).send(ctx, opCacheRemoveIfEquals, func(currCh channel, output BinaryOutputStream) error {
+		err = cache.writeCacheInfo(ctx, currCh.protocolContext(), output)
 		if err != nil {
 			return err
 		}
@@ -592,7 +592,7 @@ func (cache *Cache) RemoveIfEquals(ctx context.Context, key interface{}, oldValu
 			return err
 		}
 		return nil
-	}, func(input BinaryInputStream, err0 error) {
+	}, func(_ channel, input BinaryInputStream, err0 error) {
 		if err0 != nil {
 			err = err0
 			return
@@ -608,8 +608,8 @@ func (cache *Cache) RemoveKeys(ctx context.Context, keys ...interface{}) error {
 		return nil
 	}
 	var err error
-	cache.cli.ch.send(ctx, opCacheRemoveKeys, func(output BinaryOutputStream) error {
-		err = cache.writeCacheInfo(cache.cli.ch.protocolContext(), output)
+	cache.channel(ctx).send(ctx, opCacheRemoveKeys, func(currCh channel, output BinaryOutputStream) error {
+		err = cache.writeCacheInfo(ctx, currCh.protocolContext(), output)
 		if err != nil {
 			return err
 		}
@@ -624,7 +624,7 @@ func (cache *Cache) RemoveKeys(ctx context.Context, keys ...interface{}) error {
 			return err
 		}
 		return nil
-	}, func(input BinaryInputStream, err0 error) {
+	}, func(_ channel, input BinaryInputStream, err0 error) {
 		if err0 != nil {
 			err = err0
 			return
@@ -636,13 +636,13 @@ func (cache *Cache) RemoveKeys(ctx context.Context, keys ...interface{}) error {
 // RemoveAll removes all cache entries.
 func (cache *Cache) RemoveAll(ctx context.Context) error {
 	var err error
-	cache.cli.ch.send(ctx, opCacheRemoveAll, func(output BinaryOutputStream) error {
-		err = cache.writeCacheInfo(cache.cli.ch.protocolContext(), output)
+	cache.channel(ctx).send(ctx, opCacheRemoveAll, func(currCh channel, output BinaryOutputStream) error {
+		err = cache.writeCacheInfo(ctx, currCh.protocolContext(), output)
 		if err != nil {
 			return err
 		}
 		return nil
-	}, func(input BinaryInputStream, err0 error) {
+	}, func(_ channel, input BinaryInputStream, err0 error) {
 		if err0 != nil {
 			err = err0
 			return
@@ -657,8 +657,8 @@ func (cache *Cache) Clear(ctx context.Context, key interface{}) error {
 		return fmt.Errorf("nil key")
 	}
 	var err error = nil
-	cache.cli.ch.send(ctx, opCacheClearKey, func(output BinaryOutputStream) error {
-		err = cache.writeCacheInfo(cache.cli.ch.protocolContext(), output)
+	cache.channel(ctx).send(ctx, opCacheClearKey, func(currCh channel, output BinaryOutputStream) error {
+		err = cache.writeCacheInfo(ctx, currCh.protocolContext(), output)
 		if err != nil {
 			return err
 		}
@@ -667,7 +667,7 @@ func (cache *Cache) Clear(ctx context.Context, key interface{}) error {
 			return err
 		}
 		return nil
-	}, func(input BinaryInputStream, err0 error) {
+	}, func(_ channel, input BinaryInputStream, err0 error) {
 		if err0 != nil {
 			err = err0
 			return
@@ -682,8 +682,8 @@ func (cache *Cache) ClearKeys(ctx context.Context, keys ...interface{}) error {
 		return nil
 	}
 	var err error
-	cache.cli.ch.send(ctx, opCacheClearKeys, func(output BinaryOutputStream) error {
-		err = cache.writeCacheInfo(cache.cli.ch.protocolContext(), output)
+	cache.channel(ctx).send(ctx, opCacheClearKeys, func(currCh channel, output BinaryOutputStream) error {
+		err = cache.writeCacheInfo(ctx, currCh.protocolContext(), output)
 		if err != nil {
 			return err
 		}
@@ -698,7 +698,7 @@ func (cache *Cache) ClearKeys(ctx context.Context, keys ...interface{}) error {
 			return err
 		}
 		return nil
-	}, func(input BinaryInputStream, err0 error) {
+	}, func(_ channel, input BinaryInputStream, err0 error) {
 		if err0 != nil {
 			err = err0
 			return
@@ -710,13 +710,13 @@ func (cache *Cache) ClearKeys(ctx context.Context, keys ...interface{}) error {
 // ClearAll clears all cache entries.
 func (cache *Cache) ClearAll(ctx context.Context) error {
 	var err error
-	cache.cli.ch.send(ctx, opCacheClear, func(output BinaryOutputStream) error {
-		err = cache.writeCacheInfo(cache.cli.ch.protocolContext(), output)
+	cache.channel(ctx).send(ctx, opCacheClear, func(currCh channel, output BinaryOutputStream) error {
+		err = cache.writeCacheInfo(ctx, currCh.protocolContext(), output)
 		if err != nil {
 			return err
 		}
 		return nil
-	}, func(input BinaryInputStream, err0 error) {
+	}, func(_ channel, input BinaryInputStream, err0 error) {
 		if err0 != nil {
 			err = err0
 			return
@@ -748,8 +748,8 @@ func (cache *Cache) WithExpiryPolicy(creation time.Duration, access time.Duratio
 func (cache *Cache) Size(ctx context.Context, peekModes ...CachePeekMode) (uint64, error) {
 	var size uint64 = 0
 	var err error = nil
-	cache.cli.ch.send(ctx, opCacheGetSize, func(output BinaryOutputStream) error {
-		err = cache.writeCacheInfo(cache.cli.ch.protocolContext(), output)
+	cache.channel(ctx).send(ctx, opCacheGetSize, func(currCh channel, output BinaryOutputStream) error {
+		err = cache.writeCacheInfo(ctx, currCh.protocolContext(), output)
 		if err != nil {
 			return err
 		}
@@ -759,7 +759,7 @@ func (cache *Cache) Size(ctx context.Context, peekModes ...CachePeekMode) (uint6
 			output.WriteInt8(int8(peekMode))
 		}
 		return nil
-	}, func(input BinaryInputStream, err0 error) {
+	}, func(_ channel, input BinaryInputStream, err0 error) {
 		if err0 != nil {
 			err = err0
 			return
@@ -774,13 +774,13 @@ func (cache *Cache) Size(ctx context.Context, peekModes ...CachePeekMode) (uint6
 func (cache *Cache) Configuration(ctx context.Context) (CacheConfiguration, error) {
 	var err error
 	var cfg CacheConfiguration
-	cache.cli.ch.send(ctx, opCacheGetConfiguration, func(output BinaryOutputStream) error {
-		err = cache.writeCacheInfo(cache.cli.ch.protocolContext(), output)
+	cache.channel(ctx).send(ctx, opCacheGetConfiguration, func(currCh channel, output BinaryOutputStream) error {
+		err = cache.writeCacheInfo(ctx, currCh.protocolContext(), output)
 		if err != nil {
 			return err
 		}
 		return nil
-	}, func(output BinaryInputStream, err0 error) {
+	}, func(currCh channel, output BinaryInputStream, err0 error) {
 		if err0 != nil {
 			err = err0
 		} else {
@@ -791,7 +791,16 @@ func (cache *Cache) Configuration(ctx context.Context) (CacheConfiguration, erro
 	return cfg, err
 }
 
-func (cache *Cache) writeCacheInfo(protoCtx *ProtocolContext, output BinaryOutputStream) error {
+func (cache *Cache) channel(ctx context.Context) channel {
+	txSess := ctx.Value(txKey{})
+	if txSess == nil {
+		return cache.cli.ch
+	} else {
+		return txSess.(*txSession).ch
+	}
+}
+
+func (cache *Cache) writeCacheInfo(ctx context.Context, protoCtx *ProtocolContext, output BinaryOutputStream) error {
 	output.WriteInt32(cache.id)
 	var flag = keepBinaryMask
 	if cache.expiryPolicy != nil {
@@ -800,11 +809,18 @@ func (cache *Cache) writeCacheInfo(protoCtx *ProtocolContext, output BinaryOutpu
 		}
 		flag |= expiryPolicyMask
 	}
+	txSess := ctx.Value(txKey{})
+	if txSess != nil {
+		flag |= transactionalMask
+	}
 	output.WriteUInt8(flag)
 	if flag&expiryPolicyMask != 0 {
 		output.WriteInt64(durationToMillis(cache.expiryPolicy.Creation()))
 		output.WriteInt64(durationToMillis(cache.expiryPolicy.Update()))
 		output.WriteInt64(durationToMillis(cache.expiryPolicy.Access()))
+	}
+	if flag&transactionalMask != 0 {
+		output.WriteInt32(txSess.(*txSession).txId)
 	}
 	return nil
 }

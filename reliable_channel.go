@@ -21,9 +21,10 @@ type reliableChannel struct {
 	log           *logger.Logger
 }
 
-func (r *reliableChannel) send(ctx context.Context, opCode int16, requestWriter func(output BinaryOutputStream) error, responseReader func(input BinaryInputStream, err error)) {
+func (r *reliableChannel) send(ctx context.Context, opCode int16, requestWriter func(currCh channel, output BinaryOutputStream) error,
+	responseReader func(currCh channel, input BinaryInputStream, err error)) {
 	if r.closed.Load() {
-		responseReader(nil, createClientConnectionError("channel is closed", nil))
+		responseReader(r, nil, createClientConnectionError("channel is closed", nil))
 		return
 	}
 	connectFailed := false
@@ -32,18 +33,18 @@ func (r *reliableChannel) send(ctx context.Context, opCode int16, requestWriter 
 		currCh, err := r.currentChannel(ctx)
 		if err != nil {
 			r.log.Errorf("connection failed: %s", err)
-			responseReader(NewBinaryInputStream(nil, 0), err)
+			responseReader(currCh, NewBinaryInputStream(nil, 0), err)
 			return
 		}
 		attemptsLimit := r.attemptsLimit
 		attemptsCnt++
-		currCh.send(ctx, opCode, requestWriter, func(input BinaryInputStream, err error) {
+		currCh.send(ctx, opCode, requestWriter, func(currCh0 channel, input BinaryInputStream, err error) {
 			var connErr *ClientConnectionError
 			if errors.As(err, &connErr) {
 				connectFailed = true
 			}
 			if !connectFailed || attemptsCnt == attemptsLimit {
-				responseReader(input, err)
+				responseReader(currCh0, input, err)
 			}
 		})
 		if !connectFailed || attemptsCnt == attemptsLimit {
@@ -93,6 +94,10 @@ func (r *reliableChannel) close(ctx context.Context) {
 
 func (r *reliableChannel) isClosed() bool {
 	return r.closed.Load()
+}
+
+func (r *reliableChannel) defaultChannel(ctx context.Context) (channel, error) {
+	return r.currentChannel(ctx)
 }
 
 func (r *reliableChannel) initConnection(ctx context.Context) error {

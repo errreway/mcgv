@@ -107,9 +107,9 @@ func (m *marshallerImpl) checkBinaryConfiguration(ctx context.Context) error {
 	pCtx := m.protocolContext()
 	if pCtx != nil && pCtx.SupportsAttributeFeature(BinaryConfigurationFeature) {
 		var srvCompactFooter bool
-		m.cli.ch.send(ctx, opGetBinaryConfiguration, func(output BinaryOutputStream) error {
+		m.cli.ch.send(ctx, opGetBinaryConfiguration, func(_ channel, output BinaryOutputStream) error {
 			return nil
-		}, func(input BinaryInputStream, err0 error) {
+		}, func(_ channel, input BinaryInputStream, err0 error) {
 			if err0 != nil {
 				err = err0
 				return

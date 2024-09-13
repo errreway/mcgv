@@ -259,10 +259,10 @@ func (r *binaryMetadataRegistryImpl) clearRegistry() {
 func (r *binaryMetadataRegistryImpl) requestAndCacheBinaryMeta(ctx context.Context, typeId int32) (*binaryMetadata, error) {
 	var binaryMeta *binaryMetadata = nil
 	var err error = nil
-	r.cli.ch.send(ctx, opGetBinaryType, func(output BinaryOutputStream) error {
+	r.cli.ch.send(ctx, opGetBinaryType, func(_ channel, output BinaryOutputStream) error {
 		output.WriteInt32(typeId)
 		return nil
-	}, func(input BinaryInputStream, err0 error) {
+	}, func(_ channel, input BinaryInputStream, err0 error) {
 		if err0 != nil {
 			err = err0
 		} else if input.ReadBool() {
@@ -283,7 +283,7 @@ func (r *binaryMetadataRegistryImpl) sendBinaryMeta(ctx context.Context, meta *b
 	if meta.isEnum {
 		panic("enums are not supported")
 	}
-	r.cli.ch.send(ctx, opPutBinaryType, func(output BinaryOutputStream) error {
+	r.cli.ch.send(ctx, opPutBinaryType, func(_ channel, output BinaryOutputStream) error {
 		output.WriteInt32(meta.typeId)
 		marshalString(output, meta.TypeName())
 		// ignite requires null to be written if this field is empty.
@@ -309,7 +309,7 @@ func (r *binaryMetadataRegistryImpl) sendBinaryMeta(ctx context.Context, meta *b
 			})
 		})
 		return err0
-	}, func(_ BinaryInputStream, err0 error) {
+	}, func(_ channel, _ BinaryInputStream, err0 error) {
 		if err0 != nil {
 			err = err0
 		}

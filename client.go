@@ -38,6 +38,10 @@ type ClientError struct {
 	Message string
 }
 
+type ClientTimeoutError struct {
+	ClientError
+}
+
 type ClientConnectionError struct {
 	ClientError
 	err error
@@ -105,9 +109,9 @@ const (
 func (cli *Client) CacheNames(ctx context.Context) ([]string, error) {
 	var err error = nil
 	var names []string
-	cli.ch.send(ctx, opCacheGetNames, func(output BinaryOutputStream) error {
+	cli.ch.send(ctx, opCacheGetNames, func(_ channel, output BinaryOutputStream) error {
 		return nil
-	}, func(input BinaryInputStream, err0 error) {
+	}, func(_ channel, input BinaryInputStream, err0 error) {
 		if err0 != nil {
 			err = err0
 			return
@@ -137,10 +141,10 @@ func (cli *Client) CreateCache(ctx context.Context, name string) (*Cache, error)
 		return nil, errors.New("cache name is empty")
 	}
 	var err error
-	cli.ch.send(ctx, opCacheCreateWithName, func(output BinaryOutputStream) error {
+	cli.ch.send(ctx, opCacheCreateWithName, func(_ channel, output BinaryOutputStream) error {
 		marshalString(output, name)
 		return nil
-	}, func(output BinaryInputStream, err0 error) {
+	}, func(_ channel, output BinaryInputStream, err0 error) {
 		if err0 != nil {
 			err = err0
 		}
@@ -155,12 +159,12 @@ func (cli *Client) CreateCache(ctx context.Context, name string) (*Cache, error)
 // CreateCacheWithConfiguration creates with specified [CacheConfiguration], returns [Cache] instance or error if failed.
 func (cli *Client) CreateCacheWithConfiguration(ctx context.Context, config CacheConfiguration) (*Cache, error) {
 	var err error
-	cli.ch.send(ctx, opCacheCreateWithConfig, func(output BinaryOutputStream) error {
+	cli.ch.send(ctx, opCacheCreateWithConfig, func(_ channel, output BinaryOutputStream) error {
 		if err0 := config.marshal(ctx, cli.marsh, output); err0 != nil {
 			return err0
 		}
 		return nil
-	}, func(output BinaryInputStream, err0 error) {
+	}, func(_ channel, output BinaryInputStream, err0 error) {
 		if err0 != nil {
 			err = err0
 		}
@@ -178,12 +182,12 @@ func (cli *Client) GetOrCreateCache(ctx context.Context, name string) (*Cache, e
 		return nil, errors.New("cache name is empty")
 	}
 	var err error
-	cli.ch.send(ctx, opCacheGetOrCreateWithName, func(output BinaryOutputStream) error {
+	cli.ch.send(ctx, opCacheGetOrCreateWithName, func(_ channel, output BinaryOutputStream) error {
 		if err0 := cli.marsh.marshal(ctx, output, name); err0 != nil {
 			return err0
 		}
 		return nil
-	}, func(output BinaryInputStream, err0 error) {
+	}, func(_ channel, output BinaryInputStream, err0 error) {
 		if err0 != nil {
 			err = err0
 		}
@@ -197,12 +201,12 @@ func (cli *Client) GetOrCreateCache(ctx context.Context, name string) (*Cache, e
 // GetOrCreateCacheWithConfiguration returns already started cache or creates new one with specified [CacheConfiguration], returns [Cache] instance or error if failed.
 func (cli *Client) GetOrCreateCacheWithConfiguration(ctx context.Context, config CacheConfiguration) (*Cache, error) {
 	var err error
-	cli.ch.send(ctx, opCacheGetOrCreateWithConfig, func(output BinaryOutputStream) error {
+	cli.ch.send(ctx, opCacheGetOrCreateWithConfig, func(_ channel, output BinaryOutputStream) error {
 		if err0 := config.marshal(ctx, cli.marsh, output); err0 != nil {
 			return err0
 		}
 		return nil
-	}, func(output BinaryInputStream, err0 error) {
+	}, func(_ channel, output BinaryInputStream, err0 error) {
 		if err0 != nil {
 			err = err0
 		}
@@ -217,10 +221,10 @@ func (cli *Client) GetOrCreateCacheWithConfiguration(ctx context.Context, config
 // DestroyCache destroys cache with specified name.
 func (cli *Client) DestroyCache(ctx context.Context, name string) error {
 	var err error
-	cli.ch.send(ctx, opCacheDestroy, func(output BinaryOutputStream) error {
+	cli.ch.send(ctx, opCacheDestroy, func(_ channel, output BinaryOutputStream) error {
 		output.WriteInt32(internal.HashCode(name))
 		return nil
-	}, func(output BinaryInputStream, err0 error) {
+	}, func(_ channel, output BinaryInputStream, err0 error) {
 		if err0 != nil {
 			err = err0
 		}
@@ -327,6 +331,9 @@ type clientConfiguration struct {
 	enableAutoBinaryConfig bool
 	compactFooter          bool
 	binaryIdMapper         BinaryIdMapper
+	dfltTxTimeout          time.Duration
+	dfltTxIsolationLvl     TransactionIsolationLevel
+	dfltTxConcurrency      TransactionConcurrency
 }
 
 type ClientConfigurationOption func(config *clientConfiguration) error
@@ -476,6 +483,30 @@ func WithBinaryIdMapper(mapper BinaryIdMapper) ClientConfigurationOption {
 	}
 }
 
+// WithDefaultTransactionIsolationLevel returns [ClientConfigurationOption] that sets default transaction's isolation level.
+func WithDefaultTransactionIsolationLevel(lvl TransactionIsolationLevel) ClientConfigurationOption {
+	return func(config *clientConfiguration) error {
+		config.dfltTxIsolationLvl = lvl
+		return nil
+	}
+}
+
+// WithDefaultTransactionConcurrency returns [ClientConfigurationOption] that sets default transaction's concurrency.
+func WithDefaultTransactionConcurrency(concurrency TransactionConcurrency) ClientConfigurationOption {
+	return func(config *clientConfiguration) error {
+		config.dfltTxConcurrency = concurrency
+		return nil
+	}
+}
+
+// WithDefaultTransactionTimeout returns [ClientConfigurationOption] that sets default transaction timeout.
+func WithDefaultTransactionTimeout(timeout time.Duration) ClientConfigurationOption {
+	return func(config *clientConfiguration) error {
+		config.dfltTxTimeout = timeout
+		return nil
+	}
+}
+
 // Start creates and initializes a new Client.
 // Passing opts parameter allows user to configure Client to be created.
 func Start(ctx context.Context, opts ...ClientConfigurationOption) (*Client, error) {
@@ -490,6 +521,9 @@ func Start(ctx context.Context, opts ...ClientConfigurationOption) (*Client, err
 		),
 		compactFooter:          true,
 		enableAutoBinaryConfig: true,
+		dfltTxIsolationLvl:     RepeatableReadLevel,
+		dfltTxConcurrency:      PessimisticConcurrency,
+		dfltTxTimeout:          0,
 	}
 	for _, opt := range opts {
 		if err := opt(&cfg); err != nil {
@@ -522,7 +556,9 @@ func Start(ctx context.Context, opts ...ClientConfigurationOption) (*Client, err
 }
 
 type channel interface {
-	send(ctx context.Context, opCode int16, requestWriter func(output BinaryOutputStream) error, responseReader func(input BinaryInputStream, err error))
+	send(ctx context.Context, opCode int16, requestWriter func(currCh channel, output BinaryOutputStream) error,
+		responseReader func(currCh channel, input BinaryInputStream, err error))
+	defaultChannel(ctx context.Context) (channel, error)
 	protocolContext() *ProtocolContext
 	close(ctx context.Context)
 	isClosed() bool

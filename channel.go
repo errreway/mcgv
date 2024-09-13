@@ -63,7 +63,7 @@ func responseId(packet []byte) (int64, bool) {
 	return 0, false
 }
 
-func newRequest(id int64, opCode int16, requestWriter func(input BinaryOutputStream) error) (*pendingRequest, error) {
+func (ch *tcpChannel) newRequest(id int64, opCode int16, requestWriter func(_ channel, input BinaryOutputStream) error) (*pendingRequest, error) {
 	reqInput := NewBinaryOutputStream(64)
 	reqInput.WriteInt32(0)
 	// Handshake request
@@ -71,7 +71,7 @@ func newRequest(id int64, opCode int16, requestWriter func(input BinaryOutputStr
 		reqInput.WriteInt16(opCode)
 		reqInput.WriteInt64(id)
 	}
-	err := requestWriter(reqInput)
+	err := requestWriter(ch, reqInput)
 	if err != nil {
 		return nil, err
 	}
@@ -94,37 +94,38 @@ func (ch *tcpChannel) protocolContext() *ProtocolContext {
 	return res.(*ProtocolContext)
 }
 
-func (ch *tcpChannel) send(ctx context.Context, opCode int16, requestWriter func(output BinaryOutputStream) error, responseReader func(input BinaryInputStream, err error)) {
+func (ch *tcpChannel) send(ctx context.Context, opCode int16, requestWriter func(_ channel, output BinaryOutputStream) error, responseReader func(_ channel, input BinaryInputStream, err error)) {
 	reqId := ch.requestId()
 	ch.log.Trace(func() string {
 		return fmt.Sprintf("start performing request[id=%d, op=%d] on %s", reqId, opCode, ch)
 	})
 	responseReaderFacade := responseReader
 	if ch.log.Level() <= logger.TraceLevel {
-		responseReaderFacade = func(input BinaryInputStream, err error) {
+		responseReaderFacade = func(currCh channel, input BinaryInputStream, err error) {
 			ch.log.Trace(func() string {
 				if err != nil {
 					return fmt.Sprintf("request[id=%d, op=%d] failed on %s: %s", reqId, opCode, ch, err.Error())
 				}
 				return fmt.Sprintf("request[id=%d, op=%d] succeeded on %s", reqId, opCode, ch)
 			})
-			responseReader(input, err)
+			responseReader(currCh, input, err)
 		}
 	}
 	ch.send0(ctx, reqId, opCode, requestWriter, responseReaderFacade)
 }
 
-func (ch *tcpChannel) send0(ctx context.Context, id int64, opCode int16, requestWriter func(output BinaryOutputStream) error, responseReader func(input BinaryInputStream, err error)) {
+func (ch *tcpChannel) send0(ctx context.Context, id int64, opCode int16, requestWriter func(_ channel, output BinaryOutputStream) error,
+	responseReader func(_ channel, input BinaryInputStream, err error)) {
 	if ch.closed.Load() {
-		responseReader(nil, createClientConnectionError("channel is closed", nil))
+		responseReader(ch, nil, createClientConnectionError("channel is closed", nil))
 		return
 	}
 	ctx, cancel := setContextDeadline(ctx, ch.clientCfg.requestTimeout)
 	defer cancel()
 
-	req, err := newRequest(id, opCode, requestWriter)
+	req, err := ch.newRequest(id, opCode, requestWriter)
 	if err != nil {
-		responseReader(nil, err)
+		responseReader(ch, nil, err)
 		return
 	}
 
@@ -135,20 +136,20 @@ func (ch *tcpChannel) send0(ctx context.Context, id int64, opCode int16, request
 
 	select {
 	case <-ctx.Done():
-		responseReader(nil, ch.processCloseError("request cancelled"))
+		responseReader(ch, nil, ch.processCloseError("request cancelled", true))
 		return
 	case <-ch.doneCh:
-		responseReader(nil, ch.processCloseError("connection closed"))
+		responseReader(ch, nil, ch.processCloseError("connection closed", false))
 		return
 	case <-req.doneCh:
 		if req.err != nil {
-			responseReader(nil, req.err)
+			responseReader(ch, nil, req.err)
 			return
 		}
 		input := NewBinaryInputStream(req.responseData, 0)
 		// process handshake
 		if reqId == -1 {
-			responseReader(input, nil)
+			responseReader(ch, input, nil)
 			return
 		}
 		resId := input.ReadInt64()
@@ -175,14 +176,17 @@ func (ch *tcpChannel) send0(ctx context.Context, id int64, opCode int16, request
 				}
 			}
 		}
-		responseReader(input, req.err)
+		responseReader(ch, input, req.err)
 		return
 	}
 }
 
-func (ch *tcpChannel) processCloseError(defaultMsg string) error {
+func (ch *tcpChannel) processCloseError(defaultMsg string, isTimeout bool) error {
 	closeErr := ch.closeErr.Load()
 	if closeErr == nil {
+		if isTimeout {
+			return &ClientTimeoutError{ClientError{defaultMsg}}
+		}
 		return &ClientError{defaultMsg}
 	}
 	return &ClientConnectionError{ClientError{"connection error"}, closeErr.(error)}
@@ -250,6 +254,10 @@ func (ch *tcpChannel) close(ctx context.Context) {
 
 func (ch *tcpChannel) isClosed() bool {
 	return ch.closed.Load()
+}
+
+func (ch *tcpChannel) defaultChannel(_ context.Context) (channel, error) {
+	return ch, nil
 }
 
 func (ch *tcpChannel) String() string {
@@ -452,7 +460,7 @@ func (ch *tcpChannel) handshake(ctx context.Context, cliProtoCtx *ProtocolContex
 func (ch *tcpChannel) handshakeRound(ctx context.Context, cliProtoCtx *ProtocolContext, cliCfg *clientConfiguration) (*ProtocolContext, error) {
 	var err error = nil
 	var srvProtoCtx *ProtocolContext = nil
-	writer := func(bw BinaryOutputStream) error {
+	writer := func(_ channel, bw BinaryOutputStream) error {
 		bw.WriteInt8(1)
 		cliProtoCtx.marshal(bw)
 		if cliProtoCtx.SupportsAttributeFeature(UserAttributesFeature) {
@@ -474,7 +482,7 @@ func (ch *tcpChannel) handshakeRound(ctx context.Context, cliProtoCtx *ProtocolC
 		}
 		return nil
 	}
-	reader := func(input BinaryInputStream, err0 error) {
+	reader := func(_ channel, input BinaryInputStream, err0 error) {
 		if err0 != nil {
 			err = err0
 			return
