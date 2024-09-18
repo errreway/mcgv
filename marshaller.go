@@ -21,6 +21,13 @@ type marshaller interface {
 	binaryIdMapper() BinaryIdMapper
 }
 
+type MarshallerPlatform int8
+
+const (
+	JavaMarshaller MarshallerPlatform = iota
+	DotNetMarshaller
+)
+
 type TypeDesc = int8
 
 const (
@@ -96,6 +103,14 @@ func (m *marshallerImpl) getSchema(ctx context.Context, typeId int32, schemaId i
 
 func (m *marshallerImpl) putMetadata(ctx context.Context, typeId int32, meta *binaryMetadata) error {
 	return m.reg.putMetadata(ctx, typeId, meta)
+}
+
+func (m *marshallerImpl) getClassName(ctx context.Context, platform MarshallerPlatform, typeId int32) (string, error) {
+	return m.reg.getClassName(ctx, platform, typeId)
+}
+
+func (m *marshallerImpl) registerClassName(ctx context.Context, platform MarshallerPlatform, typeId int32, className string) error {
+	return m.reg.registerClassName(ctx, platform, typeId, className)
 }
 
 func (m *marshallerImpl) clearRegistry() {

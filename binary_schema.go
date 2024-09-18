@@ -7,12 +7,14 @@ import (
 )
 
 const (
-	fnv1OffsetBasis uint32 = 0x811C9DC5
-	fnv1Prime       uint32 = 0x01000193
-	maxOffset1             = 1 << 8
-	maxOffset2             = 1 << 16
-	opGetBinaryType int16  = 3002
-	opPutBinaryType int16  = 3003
+	fnv1OffsetBasis          uint32 = 0x811C9DC5
+	fnv1Prime                uint32 = 0x01000193
+	maxOffset1                      = 1 << 8
+	maxOffset2                      = 1 << 16
+	opGetBinaryTypeName      int16  = 3000
+	opRegisterBinaryTypeName int16  = 3001
+	opGetBinaryType          int16  = 3002
+	opPutBinaryType          int16  = 3003
 )
 
 // BinaryType contains binary object type metadata.
@@ -199,6 +201,8 @@ type binaryMetadataRegistry interface {
 	getMetadata(ctx context.Context, typeId int32) (*binaryMetadata, error)
 	getSchema(ctx context.Context, typeId int32, schemaId int32) (*binarySchema, error)
 	putMetadata(ctx context.Context, typeId int32, meta *binaryMetadata) error
+	getClassName(ctx context.Context, platform MarshallerPlatform, typeId int32) (string, error)
+	registerClassName(ctx context.Context, platform MarshallerPlatform, typeId int32, clsName string) error
 	clearRegistry()
 }
 
@@ -250,6 +254,77 @@ func (r *binaryMetadataRegistryImpl) putMetadata(ctx context.Context, typeId int
 		}
 	}
 	return r.cache.putMetadata(ctx, typeId, meta)
+}
+
+func (r *binaryMetadataRegistryImpl) getClassName(ctx context.Context, platform MarshallerPlatform, typeId int32) (string, error) {
+	clsName, _ := r.cache.getClassName(ctx, platform, typeId)
+	if len(clsName) == 0 {
+		return r.requestAndCacheClassName(ctx, platform, typeId)
+	}
+	return clsName, nil
+}
+
+func (r *binaryMetadataRegistryImpl) registerClassName(ctx context.Context, platform MarshallerPlatform, typeId int32, clsName string) error {
+	oldClsName, _ := r.cache.getClassName(ctx, platform, typeId)
+	if len(oldClsName) > 0 {
+		return nil
+	}
+	var shouldCache bool
+	var err error
+	if shouldCache, err = r.sendClassName(ctx, platform, typeId, clsName); err == nil && shouldCache {
+		return r.cache.registerClassName(ctx, platform, typeId, clsName)
+	}
+	return err
+}
+
+func (r *binaryMetadataRegistryImpl) requestAndCacheClassName(ctx context.Context, platform MarshallerPlatform, typeId int32) (string, error) {
+	var err error
+	clsName := ""
+	r.cli.ch.send(
+		ctx, opGetBinaryTypeName,
+		func(_ channel, output BinaryOutputStream) error {
+			output.WriteInt8(int8(platform))
+			output.WriteInt32(typeId)
+			return nil
+		},
+		func(_ channel, input BinaryInputStream, err0 error) {
+			if err0 != nil {
+				err = err0
+				return
+			}
+			clsName, err = unmarshalString(input)
+		},
+	)
+	if err == nil && len(clsName) > 0 {
+		_ = r.cache.registerClassName(ctx, platform, typeId, clsName)
+	}
+	return clsName, err
+}
+
+func (r *binaryMetadataRegistryImpl) sendClassName(
+	ctx context.Context,
+	platform MarshallerPlatform,
+	typeId int32,
+	clsName string,
+) (bool, error) {
+	shouldRegister := false
+	var err error
+	r.cli.ch.send(
+		ctx, opRegisterBinaryTypeName,
+		func(_ channel, output BinaryOutputStream) error {
+			output.WriteInt8(int8(platform))
+			output.WriteInt32(typeId)
+			marshalString(output, clsName)
+			return nil
+		},
+		func(currCh channel, input BinaryInputStream, err0 error) {
+			if err0 != nil {
+				err = err0
+				return
+			}
+			shouldRegister = input.ReadBool()
+		})
+	return shouldRegister, err
 }
 
 func (r *binaryMetadataRegistryImpl) clearRegistry() {
@@ -359,21 +434,28 @@ func unmarshalBinaryMeta(reader BinaryInputStream) (*binaryMetadata, error) {
 	return bMeta, err
 }
 
+type typeKey struct {
+	typeId   int32
+	platform MarshallerPlatform
+}
+
 type binaryMetadataCache struct {
-	mu   sync.Mutex
-	data map[int32]*binaryMetadata
+	mu          sync.Mutex
+	nameMapping map[typeKey]string
+	metaData    map[int32]*binaryMetadata
 }
 
 func newBinaryMetadataCache() binaryMetadataRegistry {
 	return &binaryMetadataCache{
-		data: make(map[int32]*binaryMetadata),
+		metaData:    make(map[int32]*binaryMetadata),
+		nameMapping: make(map[typeKey]string),
 	}
 }
 
 func (r *binaryMetadataCache) getMetadata(_ context.Context, typeId int32) (*binaryMetadata, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	meta := r.data[typeId]
+	meta := r.metaData[typeId]
 	if meta == nil {
 		return nil, nil
 	}
@@ -383,7 +465,7 @@ func (r *binaryMetadataCache) getMetadata(_ context.Context, typeId int32) (*bin
 func (r *binaryMetadataCache) getSchema(_ context.Context, typeId int32, schemaId int32) (*binarySchema, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	meta := r.data[typeId]
+	meta := r.metaData[typeId]
 	if meta == nil {
 		return nil, nil
 	}
@@ -398,12 +480,31 @@ func (r *binaryMetadataCache) getSchema(_ context.Context, typeId int32, schemaI
 func (r *binaryMetadataCache) putMetadata(_ context.Context, typeId int32, meta *binaryMetadata) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	changed, err := mergeMetadata(r.data[typeId], meta)
+	changed, err := mergeMetadata(r.metaData[typeId], meta)
 	if err != nil {
 		return err
 	}
 	if changed {
-		r.data[typeId] = meta
+		r.metaData[typeId] = meta
+	}
+	return nil
+}
+
+func (r *binaryMetadataCache) getClassName(_ context.Context, platform MarshallerPlatform, typeId int32) (string, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	clsName, ok := r.nameMapping[typeKey{typeId, platform}]
+	if !ok {
+		return "", nil
+	}
+	return clsName, nil
+}
+
+func (r *binaryMetadataCache) registerClassName(_ context.Context, platform MarshallerPlatform, typeId int32, clsName string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if len(clsName) != 0 {
+		r.nameMapping[typeKey{typeId, platform}] = clsName
 	}
 	return nil
 }
@@ -411,8 +512,11 @@ func (r *binaryMetadataCache) putMetadata(_ context.Context, typeId int32, meta 
 func (r *binaryMetadataCache) clearRegistry() {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	for id := range r.data {
-		delete(r.data, id)
+	for id := range r.metaData {
+		delete(r.metaData, id)
+	}
+	for id := range r.nameMapping {
+		delete(r.nameMapping, id)
 	}
 }
 

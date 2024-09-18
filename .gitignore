@@ -5,3 +5,4 @@
 **/ignite-config-*.xml
 test-report.xml
 coverage.out
+/internal/testing/java/target/

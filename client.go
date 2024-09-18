@@ -34,6 +34,13 @@ const (
 	AuthFailed            ErrorCode = 2000
 )
 
+type ServerClosurePlatform int8
+
+const (
+	JavaServerClosure ServerClosurePlatform = iota + 1
+	DotNetServerClosure
+)
+
 type ClientError struct {
 	Message string
 }
@@ -287,6 +294,13 @@ func WithNullField(name string, typeId TypeDesc) func(opt *binaryObjectOptions) 
 	}
 }
 
+// WithMarshallerPlatform sets specific platform when register binary type in cluster.
+func WithMarshallerPlatform(platform MarshallerPlatform) func(opt *binaryObjectOptions) {
+	return func(opt *binaryObjectOptions) {
+		opt.platform = platform
+	}
+}
+
 // CreateBinaryObject creates BinaryObject with specified type name and options.
 func (cli *Client) CreateBinaryObject(ctx context.Context, typeName string, opts ...func(*binaryObjectOptions)) (BinaryObject, error) {
 	typeName = strings.TrimSpace(typeName)
@@ -297,6 +311,7 @@ func (cli *Client) CreateBinaryObject(ctx context.Context, typeName string, opts
 		typeName:     typeName,
 		fields:       make(map[string]*boField),
 		fieldsOrder:  make([]string, 0),
+		platform:     JavaMarshaller,
 		isRegistered: true, // should be true by default, false only for testing
 	}
 	for _, opt := range opts {

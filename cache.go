@@ -98,7 +98,7 @@ func (cache *Cache) Get(ctx context.Context, key interface{}) (interface{}, erro
 	var err error = nil
 	var ret interface{}
 	cache.channel(ctx).send(ctx, opCacheGet, func(currCh channel, output BinaryOutputStream) error {
-		err = cache.writeCacheInfo(ctx, currCh.protocolContext(), output)
+		err = cache.writeCacheInfo(ctx, currCh.protocolContext(), output, false)
 		if err != nil {
 			return err
 		}
@@ -128,7 +128,7 @@ func (cache *Cache) GetAndPut(ctx context.Context, key interface{}, value interf
 	var ret interface{}
 	var err error = nil
 	cache.channel(ctx).send(ctx, opCacheGetAndPut, func(currCh channel, output BinaryOutputStream) error {
-		err = cache.writeCacheInfo(ctx, currCh.protocolContext(), output)
+		err = cache.writeCacheInfo(ctx, currCh.protocolContext(), output, false)
 		if err != nil {
 			return err
 		}
@@ -162,7 +162,7 @@ func (cache *Cache) GetAndReplace(ctx context.Context, key interface{}, value in
 	var ret interface{} = nil
 	var err error = nil
 	cache.channel(ctx).send(ctx, opCacheGetAndReplace, func(currCh channel, output BinaryOutputStream) error {
-		err = cache.writeCacheInfo(ctx, currCh.protocolContext(), output)
+		err = cache.writeCacheInfo(ctx, currCh.protocolContext(), output, false)
 		if err != nil {
 			return err
 		}
@@ -195,7 +195,7 @@ func (cache *Cache) Put(ctx context.Context, key interface{}, value interface{})
 	}
 	var err error = nil
 	cache.channel(ctx).send(ctx, opCachePut, func(currCh channel, output BinaryOutputStream) error {
-		err = cache.writeCacheInfo(ctx, currCh.protocolContext(), output)
+		err = cache.writeCacheInfo(ctx, currCh.protocolContext(), output, false)
 		if err != nil {
 			return err
 		}
@@ -228,7 +228,7 @@ func (cache *Cache) PutIfAbsent(ctx context.Context, key interface{}, value inte
 	var ret bool
 	var err error = nil
 	cache.channel(ctx).send(ctx, opCachePutIfAbsent, func(currCh channel, output BinaryOutputStream) error {
-		err = cache.writeCacheInfo(ctx, currCh.protocolContext(), output)
+		err = cache.writeCacheInfo(ctx, currCh.protocolContext(), output, false)
 		if err != nil {
 			return err
 		}
@@ -262,7 +262,7 @@ func (cache *Cache) GetAndPutIfAbsent(ctx context.Context, key interface{}, valu
 	var ret interface{}
 	var err error = nil
 	cache.channel(ctx).send(ctx, opCacheGetAndPutIfAbsent, func(currCh channel, output BinaryOutputStream) error {
-		err = cache.writeCacheInfo(ctx, currCh.protocolContext(), output)
+		err = cache.writeCacheInfo(ctx, currCh.protocolContext(), output, false)
 		if err != nil {
 			return err
 		}
@@ -293,7 +293,7 @@ func (cache *Cache) ContainsKey(ctx context.Context, key interface{}) (bool, err
 	var err error = nil
 	var ret bool
 	cache.channel(ctx).send(ctx, opCacheContainsKey, func(currCh channel, output BinaryOutputStream) error {
-		err = cache.writeCacheInfo(ctx, currCh.protocolContext(), output)
+		err = cache.writeCacheInfo(ctx, currCh.protocolContext(), output, false)
 		if err != nil {
 			return err
 		}
@@ -320,7 +320,7 @@ func (cache *Cache) ContainsKeys(ctx context.Context, keys ...interface{}) (bool
 	var err error
 	var ret bool
 	cache.channel(ctx).send(ctx, opCacheContainsKeys, func(currCh channel, output BinaryOutputStream) error {
-		err = cache.writeCacheInfo(ctx, currCh.protocolContext(), output)
+		err = cache.writeCacheInfo(ctx, currCh.protocolContext(), output, false)
 		if err != nil {
 			return err
 		}
@@ -353,7 +353,7 @@ func (cache *Cache) GetAll(ctx context.Context, keys ...interface{}) ([]KeyValue
 	}
 	var err error
 	cache.channel(ctx).send(ctx, opCacheGetAll, func(currCh channel, output BinaryOutputStream) error {
-		err = cache.writeCacheInfo(ctx, currCh.protocolContext(), output)
+		err = cache.writeCacheInfo(ctx, currCh.protocolContext(), output, false)
 		if err != nil {
 			return err
 		}
@@ -403,7 +403,7 @@ func (cache *Cache) PutAll(ctx context.Context, keysAndValues ...KeyValue) error
 	}
 	var err error
 	cache.channel(ctx).send(ctx, opCachePutAll, func(currCh channel, output BinaryOutputStream) error {
-		err = cache.writeCacheInfo(ctx, currCh.protocolContext(), output)
+		err = cache.writeCacheInfo(ctx, currCh.protocolContext(), output, false)
 		if err != nil {
 			return err
 		}
@@ -453,7 +453,7 @@ func (cache *Cache) ReplaceIfEquals(ctx context.Context, key interface{}, oldVal
 	var ret bool
 	var err error = nil
 	cache.channel(ctx).send(ctx, opCacheReplaceIfEquals, func(currCh channel, output BinaryOutputStream) error {
-		err = cache.writeCacheInfo(ctx, currCh.protocolContext(), output)
+		err = cache.writeCacheInfo(ctx, currCh.protocolContext(), output, false)
 		if err != nil {
 			return err
 		}
@@ -491,7 +491,7 @@ func (cache *Cache) Replace(ctx context.Context, key interface{}, value interfac
 	var ret bool
 	var err error = nil
 	cache.channel(ctx).send(ctx, opCacheReplace, func(currCh channel, output BinaryOutputStream) error {
-		err = cache.writeCacheInfo(ctx, currCh.protocolContext(), output)
+		err = cache.writeCacheInfo(ctx, currCh.protocolContext(), output, false)
 		if err != nil {
 			return err
 		}
@@ -522,7 +522,7 @@ func (cache *Cache) Remove(ctx context.Context, key interface{}) (bool, error) {
 	var ret bool
 	var err error = nil
 	cache.channel(ctx).send(ctx, opCacheRemoveKey, func(currCh channel, output BinaryOutputStream) error {
-		err = cache.writeCacheInfo(ctx, currCh.protocolContext(), output)
+		err = cache.writeCacheInfo(ctx, currCh.protocolContext(), output, false)
 		if err != nil {
 			return err
 		}
@@ -549,7 +549,7 @@ func (cache *Cache) GetAndRemove(ctx context.Context, key interface{}) (interfac
 	var ret interface{} = nil
 	var err error = nil
 	cache.channel(ctx).send(ctx, opCacheGetAndRemove, func(currCh channel, output BinaryOutputStream) error {
-		err = cache.writeCacheInfo(ctx, currCh.protocolContext(), output)
+		err = cache.writeCacheInfo(ctx, currCh.protocolContext(), output, false)
 		if err != nil {
 			return err
 		}
@@ -579,7 +579,7 @@ func (cache *Cache) RemoveIfEquals(ctx context.Context, key interface{}, oldValu
 	var ret bool
 	var err error = nil
 	cache.channel(ctx).send(ctx, opCacheRemoveIfEquals, func(currCh channel, output BinaryOutputStream) error {
-		err = cache.writeCacheInfo(ctx, currCh.protocolContext(), output)
+		err = cache.writeCacheInfo(ctx, currCh.protocolContext(), output, false)
 		if err != nil {
 			return err
 		}
@@ -609,7 +609,7 @@ func (cache *Cache) RemoveKeys(ctx context.Context, keys ...interface{}) error {
 	}
 	var err error
 	cache.channel(ctx).send(ctx, opCacheRemoveKeys, func(currCh channel, output BinaryOutputStream) error {
-		err = cache.writeCacheInfo(ctx, currCh.protocolContext(), output)
+		err = cache.writeCacheInfo(ctx, currCh.protocolContext(), output, false)
 		if err != nil {
 			return err
 		}
@@ -637,7 +637,7 @@ func (cache *Cache) RemoveKeys(ctx context.Context, keys ...interface{}) error {
 func (cache *Cache) RemoveAll(ctx context.Context) error {
 	var err error
 	cache.channel(ctx).send(ctx, opCacheRemoveAll, func(currCh channel, output BinaryOutputStream) error {
-		err = cache.writeCacheInfo(ctx, currCh.protocolContext(), output)
+		err = cache.writeCacheInfo(ctx, currCh.protocolContext(), output, false)
 		if err != nil {
 			return err
 		}
@@ -658,7 +658,7 @@ func (cache *Cache) Clear(ctx context.Context, key interface{}) error {
 	}
 	var err error = nil
 	cache.channel(ctx).send(ctx, opCacheClearKey, func(currCh channel, output BinaryOutputStream) error {
-		err = cache.writeCacheInfo(ctx, currCh.protocolContext(), output)
+		err = cache.writeCacheInfo(ctx, currCh.protocolContext(), output, false)
 		if err != nil {
 			return err
 		}
@@ -683,7 +683,7 @@ func (cache *Cache) ClearKeys(ctx context.Context, keys ...interface{}) error {
 	}
 	var err error
 	cache.channel(ctx).send(ctx, opCacheClearKeys, func(currCh channel, output BinaryOutputStream) error {
-		err = cache.writeCacheInfo(ctx, currCh.protocolContext(), output)
+		err = cache.writeCacheInfo(ctx, currCh.protocolContext(), output, false)
 		if err != nil {
 			return err
 		}
@@ -711,7 +711,7 @@ func (cache *Cache) ClearKeys(ctx context.Context, keys ...interface{}) error {
 func (cache *Cache) ClearAll(ctx context.Context) error {
 	var err error
 	cache.channel(ctx).send(ctx, opCacheClear, func(currCh channel, output BinaryOutputStream) error {
-		err = cache.writeCacheInfo(ctx, currCh.protocolContext(), output)
+		err = cache.writeCacheInfo(ctx, currCh.protocolContext(), output, false)
 		if err != nil {
 			return err
 		}
@@ -749,7 +749,7 @@ func (cache *Cache) Size(ctx context.Context, peekModes ...CachePeekMode) (uint6
 	var size uint64 = 0
 	var err error = nil
 	cache.channel(ctx).send(ctx, opCacheGetSize, func(currCh channel, output BinaryOutputStream) error {
-		err = cache.writeCacheInfo(ctx, currCh.protocolContext(), output)
+		err = cache.writeCacheInfo(ctx, currCh.protocolContext(), output, false)
 		if err != nil {
 			return err
 		}
@@ -775,7 +775,7 @@ func (cache *Cache) Configuration(ctx context.Context) (CacheConfiguration, erro
 	var err error
 	var cfg CacheConfiguration
 	cache.channel(ctx).send(ctx, opCacheGetConfiguration, func(currCh channel, output BinaryOutputStream) error {
-		err = cache.writeCacheInfo(ctx, currCh.protocolContext(), output)
+		err = cache.writeCacheInfo(ctx, currCh.protocolContext(), output, false)
 		if err != nil {
 			return err
 		}
@@ -791,6 +791,148 @@ func (cache *Cache) Configuration(ctx context.Context) (CacheConfiguration, erro
 	return cfg, err
 }
 
+type scanQueryOpts struct {
+	partition  int
+	pageSz     int
+	keepBinary bool
+	isLocal    bool
+	filterOpts *closureOpts
+}
+
+type closureOpts struct {
+	cls      string
+	opts     []func(*binaryObjectOptions)
+	platform ServerClosurePlatform
+}
+
+func makeClosureObject(ctx context.Context, cli *Client, cloOpts closureOpts) (BinaryObject, error) {
+	var marshPlatform MarshallerPlatform
+	switch cloOpts.platform {
+	case JavaServerClosure:
+		marshPlatform = JavaMarshaller
+	case DotNetServerClosure:
+		marshPlatform = DotNetMarshaller
+	}
+	cloOpts.opts = append(cloOpts.opts, WithMarshallerPlatform(marshPlatform))
+	return cli.CreateBinaryObject(ctx, cloOpts.cls, cloOpts.opts...)
+}
+
+// WithClosureField sets field value to server closure.
+func WithClosureField(name string, value interface{}) func(*closureOpts) {
+	return func(opts *closureOpts) {
+		opts.opts = append(opts.opts, WithField(name, value))
+	}
+}
+
+// WithServerClosurePlatform sets closure platform, [JavaServerClosure] by default
+func WithServerClosurePlatform(platform ServerClosurePlatform) func(*closureOpts) {
+	return func(opts *closureOpts) {
+		opts.platform = platform
+	}
+}
+
+// WithScanQueryKeepBinary sets flag that tell cluster to handle cache values as BinaryObject, not POJO.
+func WithScanQueryKeepBinary() func(*scanQueryOpts) {
+	return func(opts *scanQueryOpts) {
+		opts.keepBinary = true
+	}
+}
+
+// WithScanQueryFilter sets filter closure for filtering entries on cluster.
+func WithScanQueryFilter(clsName string, filterOpts ...func(cloOpts *closureOpts)) func(*scanQueryOpts) {
+	return func(opts *scanQueryOpts) {
+		cloOpts := closureOpts{
+			cls:      clsName,
+			platform: JavaServerClosure,
+		}
+		for _, filterOpt := range filterOpts {
+			filterOpt(&cloOpts)
+		}
+		opts.filterOpts = &cloOpts
+	}
+}
+
+// WithScanQueryPageSize sets cursor's page size.
+func WithScanQueryPageSize(sz int) func(queryOpts *scanQueryOpts) {
+	return func(queryOpts *scanQueryOpts) {
+		if sz > 0 {
+			queryOpts.pageSz = sz
+		}
+	}
+}
+
+// WithScanQueryLocal sets flag to perform query on local node (to which client is connected).
+func WithScanQueryLocal() func(queryOpts *scanQueryOpts) {
+	return func(queryOpts *scanQueryOpts) {
+		queryOpts.isLocal = true
+	}
+}
+
+// WithScanQueryPartition sets partition to scan.
+func WithScanQueryPartition(part int) func(queryOpts *scanQueryOpts) {
+	return func(queryOpts *scanQueryOpts) {
+		if part > 0 {
+			queryOpts.partition = part
+		}
+	}
+}
+
+// Scan performs scan query over all entries of cache.
+func (cache *Cache) Scan(ctx context.Context, opts ...func(*scanQueryOpts)) (Cursor, error) {
+	queryOpts := &scanQueryOpts{
+		keepBinary: false,
+		partition:  -1,
+		pageSz:     1024,
+		isLocal:    false,
+		filterOpts: nil,
+	}
+	for _, opt := range opts {
+		opt(queryOpts)
+	}
+	var err error
+	var filterObj BinaryObject = nil
+	var cloPlatform ServerClosurePlatform
+	if queryOpts.filterOpts != nil {
+		cloPlatform = queryOpts.filterOpts.platform
+		filterObj, err = makeClosureObject(ctx, cache.cli, *queryOpts.filterOpts)
+		if err != nil {
+			return nil, err
+		}
+	}
+	var cur Cursor
+	cache.channel(ctx).send(ctx, opQueryScan,
+		func(currCh channel, output BinaryOutputStream) error {
+			err0 := cache.writeCacheInfo(ctx, currCh.protocolContext(), output, queryOpts.keepBinary)
+			if err0 != nil {
+				return err0
+			}
+			if filterObj != nil {
+				err0 = cache.cli.marsh.marshal(ctx, output, filterObj)
+				if err0 != nil {
+					return err0
+				}
+				output.WriteInt8(int8(cloPlatform))
+			} else {
+				output.WriteNull()
+			}
+			output.WriteInt32(int32(queryOpts.pageSz))
+			output.WriteInt32(int32(queryOpts.partition))
+			output.WriteBool(queryOpts.isLocal)
+			return nil
+		},
+		func(currCh channel, input BinaryInputStream, err0 error) {
+			if err0 != nil {
+				err = err0
+				return
+			}
+			scanCur := newScanCursor(ctx, currCh, cache.cli.marsh, input.ReadInt64())
+			if err = scanCur.readData(input); err == nil {
+				cur = scanCur
+			}
+		})
+	return cur, err
+}
+
 func (cache *Cache) channel(ctx context.Context) channel {
 	txSess := ctx.Value(txKey{})
 	if txSess == nil {
@@ -800,9 +942,12 @@ func (cache *Cache) channel(ctx context.Context) channel {
 	}
 }
 
-func (cache *Cache) writeCacheInfo(ctx context.Context, protoCtx *ProtocolContext, output BinaryOutputStream) error {
+func (cache *Cache) writeCacheInfo(ctx context.Context, protoCtx *ProtocolContext, output BinaryOutputStream, keepBinary bool) error {
 	output.WriteInt32(cache.id)
-	var flag = keepBinaryMask
+	var flag byte = 0
+	if keepBinary {
+		flag |= keepBinaryMask
+	}
 	if cache.expiryPolicy != nil {
 		if !protoCtx.SupportsExpiryPolicy() {
 			return fmt.Errorf("expiry policies are not supported for protocol %v", protoCtx.Version())

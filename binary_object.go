@@ -251,6 +251,7 @@ type binaryObjectOptions struct {
 	affKeyName   string
 	fields       map[string]*boField
 	fieldsOrder  []string
+	platform     MarshallerPlatform
 	isRegistered bool // should be true by default, only for testing
 }
 
@@ -358,9 +359,13 @@ func newBinaryObject(ctx context.Context, marsh marshaller, opts *binaryObjectOp
 	outStream.WriteInt32(int32(offset))
 	// Add schema to registry
 	binaryMeta.addSchema(schema)
-	err = marsh.putMetadata(ctx, typeId, binaryMeta)
-	if err != nil {
+	if err = marsh.putMetadata(ctx, typeId, binaryMeta); err != nil {
 		return nil, err
+	}
+	if opts.isRegistered {
+		if err = marsh.registerClassName(ctx, opts.platform, typeId, opts.typeName); err != nil {
+			return nil, err
+		}
 	}
 	// Calculate and write hashcode
 	hashCode := outStream.HashCode(startPos+headerLength, startPos+offset)

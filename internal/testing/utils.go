@@ -55,6 +55,9 @@ func (ign *igniteInstanceImpl) ClientPort() uint16 {
 }
 
 func (ign *igniteInstanceImpl) Kill() error {
+	defer func() {
+		clearWorkDirectories()
+	}()
 	if ign.doneCh != nil {
 		ign.doneCh <- nil
 	}
@@ -65,9 +68,6 @@ func (ign *igniteInstanceImpl) Kill() error {
 	if err != nil {
 		return err
 	}
-	defer func() {
-		clearWorkDirectories()
-	}()
 	return syscall.Kill(-pgid, syscall.SIGKILL)
 }
 
@@ -85,16 +85,33 @@ func GetIgnitePath() string {
 	return path.Join(parentDir, "ignite")
 }
 
+func SetUserLibs() error {
+	filterLibPath := path.Join(getTestDir(), "java/target")
+	jarPaths, err := filepath.Glob(path.Join(filterLibPath, "*.jar"))
+	if err != nil {
+		return err
+	}
+	oldUserLibs := os.Getenv("USER_LIBS")
+	if len(oldUserLibs) > 0 {
+		jarPaths = append(jarPaths, oldUserLibs)
+	}
+	return os.Setenv("USER_LIBS", strings.Join(jarPaths, ":"))
+}
+
 func GetLogFiles(idx int) ([]string, error) {
 	pattern := path.Join(getTestDir(), "logs", fmt.Sprintf("ignite-log-%d*.txt", idx))
 	return filepath.Glob(pattern)
 }
 
 func clearWorkDirectories() {
-	workDir := path.Join(getTestDir(), "work")
+	workDir := getWorkDirectory()
 	if _, err := os.Stat(workDir); !os.IsNotExist(err) {
 		_ = os.RemoveAll(workDir)
 	}
+}
+
+func getWorkDirectory() string {
+	return path.Join(getTestDir(), "work")
 }
 
 func ClearLogs(idx int) {
@@ -180,6 +197,12 @@ func StartIgnite(opts ...func(params *IgniteParams)) (IgniteInstance, error) {
 	}
 	var configPath string
 	if configPath, err = createConfigFile(params); err != nil {
+		return nil, err
+	}
+	if err = SetUserLibs(); err != nil {
+		return nil, err
+	}
+	if err = os.Setenv("IGNITE_WORK_DIR", getWorkDirectory()); err != nil {
 		return nil, err
 	}
 	cmd := exec.Command(runner, configPath)

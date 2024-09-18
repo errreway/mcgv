@@ -1,4 +1,4 @@
-.PHONY: generate build lint test test-ci clean
+.PHONY: generate build lint test test-ci clean build-java
 
 PACKAGES = $(shell go list ./... | grep -v benchmarks)
 TEST_FLAGS ?= -v
@@ -8,9 +8,13 @@ WARMUPS=3
 IGNITE_HOSTS=localhost:10800
 IGNITE_START_TIMEOUT=30
 JUNIT_REPORTER_FLAGS=""
+JAVA_TEST_PATH="internal/testing/java"
 
 build: generate lint
 	go build $(PACKAGES)
+
+build-java:
+	mvn -f $(JAVA_TEST_PATH) clean package
 
 generate:
 	go get .
@@ -26,11 +30,11 @@ lint:
 kill-ignite:
 	jps -v | grep ignite | cut -d' ' -f1 | xargs -r kill -9
 
-test: build kill-ignite
+test: build build-java kill-ignite
 	@echo "IGNITE_HOME="$(IGNITE_HOME)
 	IGNITE_START_TIMEOUT=$(IGNITE_START_TIMEOUT) go test -race --tags=testing $(TEST_FLAGS) $(PACKAGES)
 
-test-ci: build kill-ignite
+test-ci: build build-java kill-ignite
 	go install github.com/jstemmer/go-junit-report/v2@v2.1.0
 	IGNITE_START_TIMEOUT=$(IGNITE_START_TIMEOUT) go test -race --tags=testing -coverprofile=coverage.out $(TEST_FLAGS) $(PACKAGES)  2>&1 | $(GOPATH)/bin/go-junit-report $(JUNIT_REPORTER_FLAGS) > test-report.xml
 
@@ -43,4 +47,5 @@ clean:
 	find . -name 'ignite-log-*.txt' -delete
 	find . -name 'test-report.xml' -delete
 	find . -name 'coverage.out' -delete
+	rm -rf $(JAVA_TEST_PATH)/target
 
