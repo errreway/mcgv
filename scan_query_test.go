@@ -305,6 +305,15 @@ func testCursorScan[T any](suite *ScanQueryTestSuite, exp T) {
 	require.Equal(suite.T(), expKey, key)
 	RequireIgniteTypesEqual(suite.T(), exp, val)
 
+	var pkey *string
+	var pval *T
+	err = rows.Scan(&pkey, &pval)
+	require.NoError(suite.T(), err)
+	require.NotNil(suite.T(), expKey)
+	require.Equal(suite.T(), expKey, *pkey)
+	require.NotNil(suite.T(), pval)
+	RequireIgniteTypesEqual(suite.T(), exp, *pval)
+
 	var ikey interface{}
 	var ival interface{}
 	err = rows.Scan(&ikey, &ival)

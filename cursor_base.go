@@ -137,5 +137,13 @@ func convertAssign(dest interface{}, src interface{}) error {
 		dv.Set(sv)
 		return nil
 	}
+	if src == nil {
+		dv.Set(reflect.Zero(dv.Type()))
+		return nil
+	}
+	if dv.Kind() == reflect.Pointer {
+		dv.Set(reflect.New(dv.Type().Elem()))
+		return convertAssign(dv.Interface(), src)
+	}
 	return fmt.Errorf("cannot assign %T(%v) to %v", src, src, dv.Type())
 }
