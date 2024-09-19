@@ -7,6 +7,8 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"github.com/stretchr/testify/require"
+	"io"
 	"math/rand"
 	"os"
 	"os/exec"
@@ -19,6 +21,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"syscall"
+	"testing"
 	"text/template"
 	"time"
 )
@@ -386,4 +389,38 @@ func MakeRandomString(n int) string {
 		b[i] = letterRunes[rand.Intn(len(letterRunes))]
 	}
 	return string(b)
+}
+
+func TestExample(t *testing.T, example func(), expOut string) {
+	ignite, err := StartIgnite()
+	require.NoError(t, err)
+
+	defer func() {
+		_ = ignite.Kill()
+	}()
+
+	r, w, err := os.Pipe()
+	require.NoError(t, err)
+
+	var curOut strings.Builder
+	copyDone := make(chan error, 1)
+	go func() {
+		_, err = io.Copy(&curOut, r)
+		copyDone <- err
+	}()
+
+	prevStdout := os.Stdout
+	os.Stdout = w
+
+	defer func() {
+		os.Stdout = prevStdout
+		_ = r.Close()
+		_ = w.Close()
+	}()
+
+	example()
+
+	require.NoError(t, w.Close())
+	require.NoError(t, <-copyDone)
+	require.Equal(t, expOut, curOut.String())
 }

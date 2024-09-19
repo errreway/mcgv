@@ -1,6 +1,7 @@
 .PHONY: generate build lint test test-ci clean build-java
 
-PACKAGES = $(shell go list ./... | grep -v benchmarks)
+PRODUCTION_PACKAGES = $(shell go list ./... | grep -v -e benchmarks -e examples)
+TEST_PACKAGES = $(shell go list ./... | grep -v benchmarks )
 TEST_FLAGS ?= -v
 GOPATH=$(shell go env GOPATH)
 BENCH="."
@@ -18,7 +19,7 @@ build-java:
 
 generate:
 	go get .
-	go generate $(PACKAGES)
+	go generate $(PRODUCTION_PACKAGES)
 
 lint:
 	go install honnef.co/go/tools/cmd/staticcheck@v0.4.7;
@@ -32,11 +33,11 @@ kill-ignite:
 
 test: build build-java kill-ignite
 	@echo "IGNITE_HOME="$(IGNITE_HOME)
-	IGNITE_START_TIMEOUT=$(IGNITE_START_TIMEOUT) go test -race --tags=testing $(TEST_FLAGS) $(PACKAGES)
+	IGNITE_START_TIMEOUT=$(IGNITE_START_TIMEOUT) go test -p 1 -race --tags=testing $(TEST_FLAGS) $(TEST_PACKAGES)
 
 test-ci: build build-java kill-ignite
 	go install github.com/jstemmer/go-junit-report/v2@v2.1.0
-	IGNITE_START_TIMEOUT=$(IGNITE_START_TIMEOUT) go test -race --tags=testing -coverprofile=coverage.out $(TEST_FLAGS) $(PACKAGES)  2>&1 | $(GOPATH)/bin/go-junit-report $(JUNIT_REPORTER_FLAGS) > test-report.xml
+	IGNITE_START_TIMEOUT=$(IGNITE_START_TIMEOUT) go test -p 1 -race --tags=testing -coverprofile=coverage.out $(TEST_FLAGS) $(TEST_PACKAGES)  2>&1 | $(GOPATH)/bin/go-junit-report $(JUNIT_REPORTER_FLAGS) > test-report.xml
 
 bench: build
 	IGNITE_START_TIMEOUT=$(IGNITE_START_TIMEOUT) WARMUPS=$(WARMUPS) IGNITE_HOSTS=$(IGNITE_HOSTS) go test -bench=$(BENCH) -test.benchtime=10s -timeout=40m --tags=testing $(TEST_FLAGS) ./benchmarks
