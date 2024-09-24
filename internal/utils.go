@@ -30,7 +30,7 @@ func HashCode(name string) int32 {
 func SliceHashCode(data []byte) int32 {
 	var hash int32 = 1
 	for _, b := range data {
-		hash = 31*hash + int32(b)
+		hash = 31*hash + int32(int8(b))
 	}
 	return hash
 }
