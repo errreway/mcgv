@@ -239,6 +239,70 @@ func (cli *Client) DestroyCache(ctx context.Context, name string) error {
 	return err
 }
 
+// SqlQuery executes SQL query with the specified parameters on the Ignite server side and returns a Cursor for result obtaining.
+func (cli *Client) SqlQuery(ctx context.Context, sql string, opts ...func(queryOpts *sqlQueryOpts) error) (Cursor, error) {
+	queryOpts := &sqlQueryOpts{
+		timeout:         -1,
+		pageSize:        1024,
+		updateBatchSize: 1,
+	}
+	for _, opt := range opts {
+		err := opt(queryOpts)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	var cursor *sqlQueryCursor
+	var err error
+	cli.ch.send(ctx, opSqlQuery,
+		func(currCh channel, output BinaryOutputStream) error {
+			if err := writeCacheInfo(ctx, currCh.protocolContext(), output, 0, nil, true); err != nil {
+				return err
+			}
+			marshalEmptyStringAsNull(output, queryOpts.schema)
+			output.WriteInt32(int32(queryOpts.pageSize))
+			output.WriteInt32(-1) // No limit
+			if err := cli.marsh.marshal(ctx, output, sql); err != nil {
+				return err
+			}
+			if err := writeQueryArguments(ctx, output, cli.marsh, queryOpts.args); err != nil {
+				return err
+			}
+			output.WriteInt8(0) // statement type - ANY
+			output.WriteBool(queryOpts.isDistributedJoins)
+			output.WriteBool(queryOpts.isLocal)
+			output.WriteBool(false) // // Deprecated isReplicatedOnly flag
+			output.WriteBool(queryOpts.isJoinOrderEnforced)
+			output.WriteBool(queryOpts.isColocated)
+			output.WriteBool(true) // Deprecated Lazy flag
+			output.WriteInt64(queryOpts.timeout.Milliseconds())
+			output.WriteBool(true) // Include column names
+			if currCh.protocolContext().SupportsAttributeFeature(QueryPartitionsBatchSizeFeature) {
+				if err := writeQueryPartitions(output, queryOpts.partitions); err != nil {
+					return err
+				}
+				output.WriteInt32(int32(queryOpts.updateBatchSize))
+			}
+			return nil
+		},
+		func(currCh channel, input BinaryInputStream, err0 error) {
+			if err0 != nil {
+				err = err0
+				return
+			}
+			sqlQueryCursor := newSqlQueryCursor(ctx, currCh, cli.marsh, input.ReadInt64())
+			if err = sqlQueryCursor.readDataColumns(input); err != nil {
+				return
+			}
+			if err = sqlQueryCursor.readData(input); err != nil {
+				return
+			}
+			cursor = sqlQueryCursor
+		})
+	return cursor, err
+}
+
 func (cli *Client) newCache(name string) *Cache {
 	return &Cache{
 		cli:  cli,
@@ -533,6 +597,8 @@ func Start(ctx context.Context, opts ...ClientConfigurationOption) (*Client, err
 			ProtocolVersion{1, 7, 0},
 			UserAttributesFeature,
 			BinaryConfigurationFeature,
+			DefaultQueryTimeoutFeature,
+			QueryPartitionsBatchSizeFeature,
 		),
 		compactFooter:          true,
 		enableAutoBinaryConfig: true,

@@ -116,6 +116,73 @@ func (suite *CacheConfigTestSuite) TestCacheConfig() {
 	}
 }
 
+func (suite *CacheConfigTestSuite) TestSqlTableCacheConfiguration() {
+	cursor, err := suite.cli.SqlQuery(context.Background(), "CREATE TABLE TEST_SCHEMA.TEST_TABLE ("+
+		"ID BIGINT"+
+		", COMPANY VARCHAR NOT NULL"+
+		", NAME VARCHAR(255) DEFAULT('DEFAULT_VALUE')"+
+		", SALARY DECIMAL(10, 3) NOT NULL"+
+		", PRIMARY KEY(ID, COMPANY))"+
+		" WITH "+
+		"\"TEMPLATE=PARTITIONED"+
+		", ATOMICITY=ATOMIC"+
+		", KEY_TYPE=KEY_TYPE"+
+		", VALUE_TYPE=VALUE_TYPE"+
+		", CACHE_NAME=TEST_CACHE"+
+		", CACHE_GROUP=TEST_GROUP"+
+		", BACKUPS=2"+
+		", WRITE_SYNCHRONIZATION_MODE=FULL_SYNC"+
+		", DATA_REGION=SmallDataRegion"+
+		", AFFINITY_KEY=COMPANY"+
+		", PARALLELISM=2 \"")
+	require.NoError(suite.T(), err)
+	defer func() {
+		_ = cursor.Close()
+	}()
+
+	cache, err := suite.cli.GetOrCreateCache(context.Background(), "TEST_CACHE")
+	require.NoError(suite.T(), err)
+
+	configuration, err := cache.Configuration(context.Background())
+	require.NoError(suite.T(), err)
+
+	var exp = CreateCacheConfiguration(
+		"TEST_CACHE",
+		WithCopyOnRead(true),
+		WithEagerTtl(true),
+		WithPartitionLossPolicy(IgnoreLossPolicy),
+		WithMaxConcurrentAsyncOperations(500),
+		WithMaxQueryIteratorsCount(1024),
+		WithReadFromBackup(true),
+		WithRebalanceMode(AsyncRebalanceMode),
+		WithSqlEscapeAll(true),
+		WithSqlIndexMaxInlineSize(-1),
+		WithBackupsCount(2),
+		WithCacheMode(PartitionedCacheMode),
+		WithCacheAtomicityMode(AtomicAtomicityMode),
+		WithDataRegionName("SmallDataRegion"),
+		WithCacheGroupName("TEST_GROUP"),
+		WithQueryParallelism(2),
+		WithSqlSchema("\"TEST_SCHEMA\""),
+		WithWriteSynchronizationMode(FullSyncSynchronizationMode),
+		WithCacheKeyConfiguration("KEY_TYPE", "COMPANY"),
+		WithQueryEntity("KEY_TYPE", "VALUE_TYPE",
+			WithTableName("TEST_TABLE"),
+			WithQueryField("ID", "java.lang.Long", WithKey()),
+			WithQueryField("COMPANY", "java.lang.String", WithKey(), WithNotNull()),
+			WithQueryField("NAME", "java.lang.String",
+				WithPrecision(255),
+				WithDefaultValue("DEFAULT_VALUE")),
+			WithQueryField("SALARY", "java.math.BigDecimal",
+				WithPrecision(10),
+				WithScale(3),
+				WithNotNull()),
+		),
+	)
+
+	requireEqualsCacheConfiguration(suite.T(), &exp, &configuration)
+}
+
 func (suite *CacheConfigTestSuite) TestCopyCacheConfig() {
 	cfg := testCacheCfg.Copy(WithCacheName("test-1"))
 	require.Equal(suite.T(), "test-1", cfg.Name())

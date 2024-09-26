@@ -943,12 +943,16 @@ func (cache *Cache) channel(ctx context.Context) channel {
 }
 
 func (cache *Cache) writeCacheInfo(ctx context.Context, protoCtx *ProtocolContext, output BinaryOutputStream, keepBinary bool) error {
-	output.WriteInt32(cache.id)
+	return writeCacheInfo(ctx, protoCtx, output, cache.id, cache.expiryPolicy, keepBinary)
+}
+
+func writeCacheInfo(ctx context.Context, protoCtx *ProtocolContext, output BinaryOutputStream, cacheId int32, expiryPolicy *ExpiryPolicy, keepBinary bool) error {
+	output.WriteInt32(cacheId)
 	var flag byte = 0
 	if keepBinary {
 		flag |= keepBinaryMask
 	}
-	if cache.expiryPolicy != nil {
+	if expiryPolicy != nil {
 		if !protoCtx.SupportsExpiryPolicy() {
 			return fmt.Errorf("expiry policies are not supported for protocol %v", protoCtx.Version())
 		}
@@ -960,9 +964,9 @@ func (cache *Cache) writeCacheInfo(ctx context.Context, protoCtx *ProtocolContex
 	}
 	output.WriteUInt8(flag)
 	if flag&expiryPolicyMask != 0 {
-		output.WriteInt64(durationToMillis(cache.expiryPolicy.Creation()))
-		output.WriteInt64(durationToMillis(cache.expiryPolicy.Update()))
-		output.WriteInt64(durationToMillis(cache.expiryPolicy.Access()))
+		output.WriteInt64(durationToMillis(expiryPolicy.Creation()))
+		output.WriteInt64(durationToMillis(expiryPolicy.Update()))
+		output.WriteInt64(durationToMillis(expiryPolicy.Access()))
 	}
 	if flag&transactionalMask != 0 {
 		output.WriteInt32(txSess.(*txSession).txId)

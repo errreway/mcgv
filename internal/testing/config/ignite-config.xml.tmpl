@@ -103,5 +103,15 @@
                 <constructor-arg type="java.lang.String" value="config/log4j-{{ .InstanceIdx }}.xml"/>
             </bean>
         </property>
+
+         <property name="sqlConfiguration">
+                <bean class="org.apache.ignite.configuration.SqlConfiguration">
+                    <property name="sqlSchemas">
+                        <list>
+                            <value>TEST_SCHEMA</value>
+                        </list>
+                    </property>
+                </bean>
+            </property>
     </bean>
 </beans>

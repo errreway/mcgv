@@ -59,11 +59,11 @@ func main() {
 
 	obj = doPutGet(cache, "keyIgniteTime", igniteTime)
 	igniteTimeObj := obj.(ignite.Time)
-	fmt.Printf(">>> Value == `%s`\n", igniteTimeObj.Time().In(time.UTC))
+	fmt.Printf(">>> Value == `%s`\n", igniteTimeObj.Time().UTC().Format("15:04:05"))
 
 	obj = doPutGet(cache, "keyIgniteDate", igniteDate)
 	igniteDateObj := obj.(ignite.Date)
-	fmt.Printf(">>> Value == `%s`\n", igniteDateObj.Time().In(time.UTC))
+	fmt.Printf(">>> Value == `%v`\n", igniteDateObj.Time().UTC())
 }
 
 func doPutGet(cache *ignite.Cache, key string, val interface{}) interface{} {

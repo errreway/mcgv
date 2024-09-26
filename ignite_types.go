@@ -10,8 +10,8 @@ type Time int64
 type Date int64
 
 func NewTime(val time.Time) Time {
-	utcVal := val.UTC()
-	return Time(utcVal.Unix()*1000 + int64(utcVal.Nanosecond())/int64(time.Millisecond))
+	utcTime := val.UTC()
+	return Time(utcTime.Sub(time.Date(utcTime.Year(), utcTime.Month(), utcTime.Day(), 0, 0, 0, 0, time.UTC)).Milliseconds())
 }
 
 func (t Time) Time() time.Time {

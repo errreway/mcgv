@@ -15,7 +15,7 @@ func TestIgniteSpecialTypesExample(t *testing.T) {
 			">>> Value == [igniteMapKind=1, map=map[mapKey:mapVal]]\n"+
 			">>> Entry for key == `keyIgniteTime` was written to cache `example-cache`\n"+
 			">>> Requesting value for key == `keyIgniteTime` from cache `example-cache`\n"+
-			">>> Value == `2009-07-02 04:17:46 +0000 UTC`\n"+
+			">>> Value == `04:17:46`\n"+
 			">>> Entry for key == `keyIgniteDate` was written to cache `example-cache`\n"+
 			">>> Requesting value for key == `keyIgniteDate` from cache `example-cache`\n"+
 			">>> Value == `2009-07-02 04:17:46 +0000 UTC`\n")
