@@ -5,6 +5,8 @@ import (
 	"encoding/binary"
 	"fmt"
 	"gitverse.ru/sbertech/ignite-go-client/internal"
+	"reflect"
+	"sort"
 	"strings"
 )
 
@@ -31,37 +33,16 @@ type BinaryObject interface {
 	Type(ctx context.Context) (BinaryType, error)
 	// Field returns value of field with specified name.
 	Field(ctx context.Context, name string) (interface{}, error)
+	// ScanField set value of field to dest.
+	ScanField(ctx context.Context, fldName string, dest interface{}) error
 	// Size returns the underlying byte slice size.
 	Size() int
 	// Data returns the underlying byte slice
 	Data() []byte
 	// HashCode returns hash code according to ApacheIgnite binary format specification.
 	HashCode() int32
-}
-
-// FieldGetter is a helper for easy retrieving field data from BinaryObject.
-type FieldGetter[T any] struct {
-	obj     BinaryObject
-	fldName string
-}
-
-// NewFieldGetter creates [FieldGetter] for specified [BinaryObject] and field.
-func NewFieldGetter[T any](obj BinaryObject, fldName string) *FieldGetter[T] {
-	return &FieldGetter[T]{obj, fldName}
-}
-
-// Get retrieves field value and set it to specified pointer.
-func (getter *FieldGetter[T]) Get(ctx context.Context, in *T) error {
-	val, err := getter.obj.Field(ctx, getter.fldName)
-	if err != nil {
-		return err
-	}
-	val0, ok := val.(T)
-	if !ok {
-		return fmt.Errorf("cannot cast %v to %T", val, &in)
-	}
-	*in = val0
-	return nil
+	// internal method
+	getTypeId() (int32, error)
 }
 
 type BinaryIdMapper interface {
@@ -161,6 +142,14 @@ func (b *binaryObjectImpl) Field(ctx context.Context, fldName string) (interface
 	return b.marsh.unmarshal(ctx, NewBinaryInputStream(b.data, fldOffset))
 }
 
+func (b *binaryObjectImpl) ScanField(ctx context.Context, fldName string, dest interface{}) error {
+	src, err := b.Field(ctx, fldName)
+	if err != nil {
+		return err
+	}
+	return convertAssign(dest, src)
+}
+
 func (b *binaryObjectImpl) Size() int {
 	return len(b.data)
 }
@@ -247,19 +236,17 @@ type boField struct {
 }
 
 type binaryObjectOptions struct {
-	typeName     string
-	affKeyName   string
-	fields       map[string]*boField
-	fieldsOrder  []string
-	platform     MarshallerPlatform
-	isRegistered bool // should be true by default, only for testing
+	typeName             string
+	affKeyName           string
+	fields               map[string]*boField
+	fieldsOrder          []string
+	platform             MarshallerPlatform
+	skipTypeRegistration bool // default is false, true is only for testing.
 }
 
-func newBinaryObject(ctx context.Context, marsh marshaller, opts *binaryObjectOptions) (BinaryObject, error) {
+func newBinaryObject(ctx context.Context, marsh marshaller, opts *binaryObjectOptions) (ret BinaryObject, err error) {
 	bIdMapper := marsh.binaryIdMapper()
 	typeId := bIdMapper.TypeId(opts.typeName)
-
-	schemaBuilder := newBinarySchemaBuilder()
 
 	oldMeta, err := marsh.getMetadata(ctx, typeId)
 	if err != nil {
@@ -275,11 +262,101 @@ func newBinaryObject(ctx context.Context, marsh marshaller, opts *binaryObjectOp
 				opts.typeName, typeId, oldMeta.affKeyName, opts.affKeyName)
 		}
 	}
-	binaryMeta := newBinaryMetadata(typeId, opts.typeName, opts.affKeyName)
+	// For testing of class name registration
+	if opts.skipTypeRegistration {
+		typeId = int32(unregisteredType)
+	}
 
+	newMeta := newBinaryMetadata(typeId, opts.typeName, opts.affKeyName)
 	outStream := NewBinaryOutputStream(headerLength)
+	bWriter := newBinaryWriterImpl(marsh, outStream, newMeta, oldMeta)
+
+	for _, fldName := range opts.fieldsOrder {
+		field := opts.fields[fldName]
+		if err = bWriter.writeField0(ctx, fldName, field); err != nil {
+			return
+		}
+	}
+	if err = bWriter.finalize(ctx); err != nil {
+		return
+	}
+	if typeId != int32(unregisteredType) {
+		if err = marsh.registerClassName(ctx, opts.platform, typeId, opts.typeName); err != nil {
+			return
+		}
+	}
+	ret = &binaryObjectImpl{
+		data:  outStream.Slice(bWriter.startPos, outStream.Position()),
+		marsh: bWriter.marsh,
+	}
+	return
+}
+
+func marshalBinarylizable(ctx context.Context, marsh marshaller, outStream BinaryOutputStream, value Binarylizable) error {
+	bIdMapper := marsh.binaryIdMapper()
+	var typeName string
+	if typeNameAware, ok := value.(TypeNameAware); ok {
+		typeName = typeNameAware.TypeName()
+	} else {
+		typeName = reflect.ValueOf(value).Elem().Type().Name()
+	}
+	affKeyName := ""
+	if affKewAwareVal, ok := value.(AffinityKeyAware); ok {
+		affKeyName = affKewAwareVal.AffinityKeyName()
+	}
+	typeId := bIdMapper.TypeId(typeName)
+
+	oldMeta, err := marsh.getMetadata(ctx, typeId)
+	if err != nil {
+		return fmt.Errorf("failed to get metadata: %w", err)
+	}
+	if oldMeta != nil {
+		if typeName != oldMeta.typeName {
+			return fmt.Errorf("types have the same typeId %d: old %s vs %s", typeId, oldMeta.typeName,
+				typeName)
+		}
+		if affKeyName != oldMeta.affKeyName {
+			return fmt.Errorf("type %s with typeId %d has different affinity key field: %s vs %s",
+				typeName, typeId, oldMeta.affKeyName, affKeyName)
+		}
+	}
+
+	newMeta := newBinaryMetadata(typeId, typeName, affKeyName)
+	bWriter := newBinaryWriterImpl(marsh, outStream, newMeta, oldMeta)
+
+	if err = value.Write(ctx, bWriter); err != nil {
+		return err
+	}
+	if err = bWriter.finalize(ctx); err != nil {
+		return err
+	}
+	marshPlatform := JavaMarshaller
+	if marshPlatformAwareVal, ok := value.(MarshallerPlatformAware); ok {
+		marshPlatform = marshPlatformAwareVal.Platform()
+	}
+	if err = marsh.registerClassName(ctx, marshPlatform, typeId, typeName); err != nil {
+		return err
+	}
+	return nil
+}
+
+type binaryWriterImpl struct {
+	newMeta   *binaryMetadata
+	oldMeta   *binaryMetadata
+	marsh     marshaller
+	schemaBld *binarySchemaBuilder
+	outStream BinaryOutputStream
+	startPos  int
+	offset    int
+	flags     uint16
+}
+
+func newBinaryWriterImpl(marsh marshaller, outStream BinaryOutputStream, newMeta *binaryMetadata, oldMeta *binaryMetadata) *binaryWriterImpl {
+	schemaBuilder := newBinarySchemaBuilder()
+
+	outStream.EnsureAvailable(headerLength)
 	startPos := outStream.Position()
-	outStream.SetPosition(headerLength)
+	outStream.SetPosition(startPos + headerLength)
 
 	flags := flagUserType
 	if marsh.isCompactFooter() {
@@ -287,94 +364,176 @@ func newBinaryObject(ctx context.Context, marsh marshaller, opts *binaryObjectOp
 	}
 
 	var offset int
-	if !opts.isRegistered {
-		marshalString(outStream, opts.typeName)
-		offset = outStream.Position()
+	if newMeta.typeId == int32(unregisteredType) {
+		marshalString(outStream, newMeta.TypeName())
+		offset = outStream.Position() - startPos
 	} else {
 		offset = headerLength
 	}
-	if len(opts.fields) > 0 {
-		flags |= flagHasSchema
-		for _, fldName := range opts.fieldsOrder {
-			field := opts.fields[fldName]
-			fieldId := bIdMapper.FieldId(typeId, fldName)
-			// set old field metadata if exists
-			var oldFieldMeta *binaryFieldMeta = nil
-			if oldMeta != nil {
-				if fMeta, ok := oldMeta.fields[fldName]; ok {
-					oldFieldMeta = &fMeta
-				}
-			}
-			// set field type if not have been set already
-			if field.typeId < 0 {
-				if field.value != nil {
-					fldTypeId, err := GetTypeId(field.value)
-					if err != nil {
-						return nil, fmt.Errorf("failed to get type id for field %s: %w", fldName, err)
-					}
-					field.typeId = int32(fldTypeId)
-				} else if oldFieldMeta != nil {
-					field.typeId = oldFieldMeta.typeId
-				} else {
-					field.typeId = int32(BinaryObjectType)
-				}
-			}
-			// check type compliance for oldMeta
-			if oldFieldMeta != nil && field.typeId != oldFieldMeta.typeId {
-				return nil, fmt.Errorf("type %s with typeId %d has different type for field %s: old %d vs %d",
-					opts.typeName, typeId, fldName, oldFieldMeta.typeId, typeId)
-			}
-			// add new field to meta if oldFieldMeta is nil
-			if oldFieldMeta == nil {
-				binaryMeta.addField(fldName, field.typeId, fieldId)
-			}
-			schemaBuilder.AddField(fieldId, int32(outStream.Position()-startPos))
-			if err = marsh.marshal(ctx, outStream, field.value); err != nil {
-				return nil, fmt.Errorf("failed to marshall field %s: %w", fldName, err)
-			}
+
+	return &binaryWriterImpl{
+		newMeta:   newMeta,
+		oldMeta:   oldMeta,
+		marsh:     marsh,
+		schemaBld: schemaBuilder,
+		outStream: outStream,
+		startPos:  startPos,
+		offset:    offset,
+		flags:     flags,
+	}
+}
+
+func (bWriter *binaryWriterImpl) WriteField(ctx context.Context, fldName string, value interface{}) error {
+	return bWriter.writeField0(ctx, fldName, &boField{
+		typeId: -1,
+		value:  value,
+	})
+}
+
+func (bWriter *binaryWriterImpl) WriteNullField(ctx context.Context, fldName string, typeId TypeDesc) error {
+	return bWriter.writeField0(ctx, fldName, &boField{
+		typeId: int32(typeId),
+		value:  nil,
+	})
+}
+
+func (bWriter *binaryWriterImpl) writeField0(ctx context.Context, fldName string, field *boField) error {
+	var err error
+	if bWriter.flags&flagHasSchema != flagHasSchema {
+		bWriter.flags |= flagHasSchema
+	}
+	newMeta := bWriter.newMeta
+	bIdMapper := bWriter.marsh.binaryIdMapper()
+	typeId := bWriter.newMeta.TypeId()
+	fieldId := bIdMapper.FieldId(typeId, fldName)
+	// set old field metadata if exists
+	var oldFieldMeta *binaryFieldMeta = nil
+	oldMeta := bWriter.oldMeta
+	if oldMeta != nil {
+		if fMeta, ok := oldMeta.fields[fldName]; ok {
+			oldFieldMeta = &fMeta
 		}
-		offset = outStream.Position() - startPos
-		fldSize := schemaBuilder.WriteFooter(outStream, marsh.isCompactFooter())
+	}
+	// set field type if not have been set already
+	if field.typeId < 0 {
+		if field.value != nil {
+			fldTypeId, err := getTypeId(field.value)
+			if err != nil {
+				return fmt.Errorf("failed to get type id for field %s: %w", fldName, err)
+			}
+			field.typeId = int32(fldTypeId)
+		} else if oldFieldMeta != nil {
+			field.typeId = oldFieldMeta.typeId
+		} else {
+			field.typeId = int32(BinaryObjectType)
+		}
+	}
+	// check type compliance for oldMeta
+	if oldFieldMeta != nil && field.typeId != oldFieldMeta.typeId {
+		return fmt.Errorf("type %s with typeId %d has different type for field %s: old %d vs %d",
+			newMeta.typeName, typeId, fldName, oldFieldMeta.typeId, typeId)
+	}
+	// add new field to meta if oldFieldMeta is nil
+	if oldFieldMeta == nil {
+		newMeta.addField(fldName, field.typeId, fieldId)
+	}
+	outStream := bWriter.outStream
+	bWriter.schemaBld.AddField(fieldId, int32(outStream.Position()-bWriter.startPos))
+	if err = bWriter.marsh.marshal(ctx, outStream, field.value); err != nil {
+		return fmt.Errorf("failed to marshall field %s: %w", fldName, err)
+	}
+	return nil
+}
+
+func (bWriter *binaryWriterImpl) finalize(ctx context.Context) error {
+	outStream := bWriter.outStream
+	schemaBld := bWriter.schemaBld
+	marsh := bWriter.marsh
+	if bWriter.flags&flagHasSchema == flagHasSchema {
+		bWriter.offset = outStream.Position() - bWriter.startPos
+		fldSize := schemaBld.WriteFooter(outStream, marsh.isCompactFooter())
 		if fldSize == 1 {
-			flags |= flagOffsetOneByte
+			bWriter.flags |= flagOffsetOneByte
 		} else if fldSize == 2 {
-			flags |= flagOffsetTwoBytes
+			bWriter.flags |= flagOffsetTwoBytes
 		}
 	}
-	// Write header
-	schema := schemaBuilder.Build()
+	schema := schemaBld.Build()
 	retPos := outStream.Position()
-	outStream.SetPosition(startPos)
-	outStream.WriteInt8(BinaryObjectType)
+	outStream.SetPosition(bWriter.startPos)
+	outStream.WriteType(BinaryObjectType)
 	outStream.WriteInt8(protoVersion)
-	outStream.WriteUInt16(flags)
-	if !opts.isRegistered {
-		outStream.WriteInt32(int32(unregisteredType))
-	} else {
-		outStream.WriteInt32(typeId)
-	}
-	outStream.SetPosition(startPos + lenPos)
-	outStream.WriteInt32(int32(retPos - startPos))
+	outStream.WriteUInt16(bWriter.flags)
+	outStream.WriteInt32(bWriter.newMeta.TypeId())
+	outStream.SetPosition(bWriter.startPos + lenPos)
+	outStream.WriteInt32(int32(retPos - bWriter.startPos))
 	outStream.WriteInt32(schema.schemaId)
-	outStream.WriteInt32(int32(offset))
+	outStream.WriteInt32(int32(bWriter.offset))
 	// Add schema to registry
-	binaryMeta.addSchema(schema)
-	if err = marsh.putMetadata(ctx, typeId, binaryMeta); err != nil {
-		return nil, err
+	bWriter.newMeta.addSchema(schema)
+
+	meta := bWriter.newMeta
+	if meta.typeId == int32(unregisteredType) {
+		meta = meta.copy(func(cpy *binaryMetadata) {
+			cpy.typeId = marsh.binaryIdMapper().TypeId(meta.TypeName())
+		})
 	}
-	if opts.isRegistered {
-		if err = marsh.registerClassName(ctx, opts.platform, typeId, opts.typeName); err != nil {
-			return nil, err
-		}
+	if err := marsh.putMetadata(ctx, meta.TypeId(), meta); err != nil {
+		return err
 	}
 	// Calculate and write hashcode
-	hashCode := outStream.HashCode(startPos+headerLength, startPos+offset)
-	outStream.SetPosition(startPos + hashCodePos)
+	hashCode := outStream.HashCode(bWriter.startPos+headerLength, bWriter.startPos+bWriter.offset)
+	outStream.SetPosition(bWriter.startPos + hashCodePos)
 	outStream.WriteInt32(hashCode)
 	// Restore final stream position
 	outStream.SetPosition(retPos)
-	return &binaryObjectImpl{
-		data:  outStream.Data(),
-		marsh: marsh,
-	}, nil
+	return nil
+}
+
+type binaryReaderImpl struct {
+	bo     BinaryObject
+	fields []string
+}
+
+func newBinaryReaderImpl(bo BinaryObject, meta *binaryMetadata) (BinaryReader, error) {
+	fields := meta.Fields()
+	sort.Strings(fields)
+	return &binaryReaderImpl{bo: bo, fields: fields}, nil
+}
+
+func (bReader *binaryReaderImpl) ReadField(ctx context.Context, fldName string, dest any) error {
+	fields := bReader.fields
+	_, ok := sort.Find(len(fields), func(i int) int {
+		return strings.Compare(fldName, fields[i])
+	})
+	if ok {
+		return bReader.bo.ScanField(ctx, fldName, dest)
+	}
+	return fmt.Errorf("field %s not found", fldName)
+}
+
+type BinaryReader interface {
+	ReadField(ctx context.Context, fldName string, dest interface{}) error
+}
+
+type BinaryWriter interface {
+	WriteField(ctx context.Context, fldName string, data interface{}) error
+	WriteNullField(ctx context.Context, fldName string, typeId TypeDesc) error
+}
+
+type MarshallerPlatformAware interface {
+	Platform() MarshallerPlatform
+}
+
+type AffinityKeyAware interface {
+	AffinityKeyName() string
+}
+
+type TypeNameAware interface {
+	TypeName() string
+}
+
+type Binarylizable interface {
+	Write(ctx context.Context, writer BinaryWriter) error
+	Read(ctx context.Context, reader BinaryReader) error
 }

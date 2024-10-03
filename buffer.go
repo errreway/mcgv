@@ -19,9 +19,11 @@ const (
 
 type BinaryOutputStream interface {
 	Data() []byte
+	Slice(offset int, limit int) []byte
 	Position() int
 	Available() int
 	SetPosition(pos int)
+	WriteType(typ TypeDesc)
 	WriteNull()
 	WriteBool(v bool)
 	WriteUInt8(v uint8)
@@ -47,6 +49,7 @@ type BinaryOutputStream interface {
 	WriteInt64Slice(v []int64)
 	WriteFloat32Slice(val []float32)
 	WriteFloat64Slice(val []float64)
+	EnsureAvailable(size int)
 	HashCode(start int, end int) int32
 }
 
@@ -115,6 +118,10 @@ func (bw *binaryOutputStreamImpl) Data() []byte {
 	return bw.buffer[:bw.position]
 }
 
+func (bw *binaryOutputStreamImpl) Slice(offset int, limit int) []byte {
+	return bw.buffer[offset:limit]
+}
+
 func (bw *binaryOutputStreamImpl) Available() int {
 	return len(bw.buffer) - bw.position
 }
@@ -127,7 +134,7 @@ func (bw *binaryOutputStreamImpl) SetPosition(pos int) {
 	bw.position = pos
 }
 
-func (bw *binaryOutputStreamImpl) ensureAvailable(size int) {
+func (bw *binaryOutputStreamImpl) EnsureAvailable(size int) {
 	if math.MaxInt32-bw.position < size {
 		panic(fmt.Sprintf("Buffer length overflow: position=%d, required size=%d", bw.position, size))
 	}
@@ -138,12 +145,16 @@ func (bw *binaryOutputStreamImpl) ensureAvailable(size int) {
 	}
 }
 
+func (bw *binaryOutputStreamImpl) WriteType(typ TypeDesc) {
+	bw.WriteInt8(int8(typ))
+}
+
 func (bw *binaryOutputStreamImpl) WriteNull() {
-	bw.WriteInt8(NullType)
+	bw.WriteType(NullType)
 }
 
 func (bw *binaryOutputStreamImpl) WriteBool(v bool) {
-	bw.ensureAvailable(boolBytes)
+	bw.EnsureAvailable(boolBytes)
 	bw.writeBool(v)
 }
 
@@ -157,12 +168,12 @@ func (bw *binaryOutputStreamImpl) writeBool(v bool) {
 }
 
 func (bw *binaryOutputStreamImpl) WriteUInt8(v uint8) {
-	bw.ensureAvailable(byteBytes)
+	bw.EnsureAvailable(byteBytes)
 	bw.writeByte(v)
 }
 
 func (bw *binaryOutputStreamImpl) WriteInt8(v int8) {
-	bw.ensureAvailable(byteBytes)
+	bw.EnsureAvailable(byteBytes)
 	bw.writeByte(uint8(v))
 }
 
@@ -172,12 +183,12 @@ func (bw *binaryOutputStreamImpl) writeByte(v byte) {
 }
 
 func (bw *binaryOutputStreamImpl) WriteInt16(v int16) {
-	bw.ensureAvailable(shortBytes)
+	bw.EnsureAvailable(shortBytes)
 	bw.writeShort(uint16(v))
 }
 
 func (bw *binaryOutputStreamImpl) WriteUInt16(v uint16) {
-	bw.ensureAvailable(shortBytes)
+	bw.EnsureAvailable(shortBytes)
 	bw.writeShort(v)
 }
 
@@ -187,12 +198,12 @@ func (bw *binaryOutputStreamImpl) writeShort(v uint16) {
 }
 
 func (bw *binaryOutputStreamImpl) WriteInt32(v int32) {
-	bw.ensureAvailable(intBytes)
+	bw.EnsureAvailable(intBytes)
 	bw.writeInt(uint32(v))
 }
 
 func (bw *binaryOutputStreamImpl) WriteUInt32(v uint32) {
-	bw.ensureAvailable(intBytes)
+	bw.EnsureAvailable(intBytes)
 	bw.writeInt(v)
 }
 
@@ -202,12 +213,12 @@ func (bw *binaryOutputStreamImpl) writeInt(v uint32) {
 }
 
 func (bw *binaryOutputStreamImpl) WriteUInt64(v uint64) {
-	bw.ensureAvailable(longBytes)
+	bw.EnsureAvailable(longBytes)
 	bw.writeLong(v)
 }
 
 func (bw *binaryOutputStreamImpl) WriteInt64(v int64) {
-	bw.ensureAvailable(longBytes)
+	bw.EnsureAvailable(longBytes)
 	bw.writeLong(uint64(v))
 }
 
@@ -226,7 +237,7 @@ func (bw *binaryOutputStreamImpl) WriteFloat64(v float64) {
 
 func (bw *binaryOutputStreamImpl) WriteBytes(v []byte) {
 	length := len(v)
-	bw.ensureAvailable(length)
+	bw.EnsureAvailable(length)
 	copy(bw.buffer[bw.position:], v)
 	bw.position += length
 }
@@ -546,7 +557,7 @@ type primitives interface {
 
 func writePrimitiveSliceFast[T primitives](bw *binaryOutputStreamImpl, val []T, elemSz int) {
 	length := len(val) * elemSz
-	bw.ensureAvailable(length)
+	bw.EnsureAvailable(length)
 	raw := unsafe.Slice((*byte)(unsafe.Pointer(&val[0])), length)
 	copy(bw.buffer[bw.position:bw.position+length], raw)
 	bw.position += length

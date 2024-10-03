@@ -232,16 +232,16 @@ func (suite *ScanQueryTestSuite) TestCursorScan() {
 		{"date", func(t *testing.T) { testCursorScan(suite, NewDate(timestamp)) }},
 		{"timestamp", func(t *testing.T) { testCursorScan(suite, timestamp) }},
 		{"decimal", func(t *testing.T) { testCursorScan(suite, apd.New(100500, -3)) }},
-		{"stringArray", func(t *testing.T) { testCursorScan(suite, createPSlice("test1", "test2")) }},
-		{"uuidArray", func(t *testing.T) { testCursorScan(suite, createPSlice(uuid.New(), uuid.New(), uuid.New())) }},
+		{"stringArray", func(t *testing.T) { testCursorScan(suite, testing2.CreatePSlice("test1", "test2")) }},
+		{"uuidArray", func(t *testing.T) { testCursorScan(suite, testing2.CreatePSlice(uuid.New(), uuid.New(), uuid.New())) }},
 		{"timeArray", func(t *testing.T) {
-			testCursorScan(suite, createPSlice(NewTime(timestamp), NewTime(timestamp.Add(time.Minute*10)), NewTime(timestamp.Add(time.Minute*20))))
+			testCursorScan(suite, testing2.CreatePSlice(NewTime(timestamp), NewTime(timestamp.Add(time.Minute*10)), NewTime(timestamp.Add(time.Minute*20))))
 		}},
 		{"dateArray", func(t *testing.T) {
-			testCursorScan(suite, createPSlice(NewDate(timestamp), NewDate(timestamp.Add(time.Minute*10)), NewDate(timestamp.Add(time.Minute*20))))
+			testCursorScan(suite, testing2.CreatePSlice(NewDate(timestamp), NewDate(timestamp.Add(time.Minute*10)), NewDate(timestamp.Add(time.Minute*20))))
 		}},
 		{"timeStampArray", func(t *testing.T) {
-			testCursorScan(suite, createPSlice(timestamp, timestamp.Add(time.Minute*10), timestamp.Add(time.Minute*20)))
+			testCursorScan(suite, testing2.CreatePSlice(timestamp, timestamp.Add(time.Minute*10), timestamp.Add(time.Minute*20)))
 		}},
 		{"decimalArray", func(t *testing.T) {
 			testCursorScan(suite, []*apd.Decimal{apd.New(100500, -3), apd.New(0, 3), apd.New(31415926, 7)})
@@ -374,4 +374,34 @@ func scanChecker[K any, V any](suite *ScanQueryTestSuite, rows Cursor) {
 	ival1, err := suite.cache.Get(ctx, ikey)
 	require.NoError(suite.T(), err)
 	require.Equal(suite.T(), val, ival1)
+}
+
+func TestConvertAssign(t *testing.T) {
+	var pStr *int32
+	err := convertAssign(&pStr, nil)
+	require.NoError(t, err)
+	require.Nil(t, pStr)
+	err = convertAssign(&pStr, int32(100))
+	require.NoError(t, err)
+	require.Equal(t, int32(100), *pStr)
+
+	var m Map
+	err = convertAssign(&m, nil)
+	require.NoError(t, err)
+	require.True(t, m.IsNull())
+
+	var pm *Map
+	err = convertAssign(&pm, nil)
+	require.NoError(t, err)
+	require.Nil(t, pm)
+
+	var col Collection
+	err = convertAssign(&col, nil)
+	require.NoError(t, err)
+	require.True(t, col.IsNull())
+
+	var pcol *Collection
+	err = convertAssign(&pcol, nil)
+	require.NoError(t, err)
+	require.Nil(t, pcol)
 }

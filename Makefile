@@ -1,6 +1,5 @@
 .PHONY: generate build lint test test-ci clean build-java
 
-PRODUCTION_PACKAGES = $(shell go list ./... | grep -v -e benchmarks -e examples)
 TEST_PACKAGES = $(shell go list ./... | grep -v benchmarks )
 TEST_FLAGS ?= -v
 GOPATH=$(shell go env GOPATH)
@@ -8,20 +7,16 @@ BENCH="."
 WARMUPS=3
 IGNITE_HOSTS=localhost:10800
 IGNITE_START_TIMEOUT=30
-JUNIT_REPORTER_FLAGS=""
 JAVA_TEST_PATH="internal/testing/java"
-
-build: generate lint
-	go build $(PACKAGES)
 
 build-java:
 	mvn -f $(JAVA_TEST_PATH) clean package
 
 generate:
-	go get .
-	go generate $(PRODUCTION_PACKAGES)
+	go get -tags=testing ./...
+	go generate -tags=testing ./...
 
-lint:
+lint: generate
 	go install honnef.co/go/tools/cmd/staticcheck@v0.4.7;
 	go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.52.2;
 	$(GOPATH)/bin/staticcheck --tags=testing ./...
@@ -31,15 +26,15 @@ lint:
 kill-ignite:
 	jps -v | grep ignite | cut -d' ' -f1 | xargs -r kill -9
 
-test: build build-java kill-ignite
+test: generate build-java kill-ignite
 	@echo "IGNITE_HOME="$(IGNITE_HOME)
 	IGNITE_START_TIMEOUT=$(IGNITE_START_TIMEOUT) go test -p 1 -race --tags=testing $(TEST_FLAGS) $(TEST_PACKAGES)
 
-test-ci: build build-java kill-ignite
+test-ci: generate build-java kill-ignite
 	go install github.com/jstemmer/go-junit-report/v2@v2.1.0
-	IGNITE_START_TIMEOUT=$(IGNITE_START_TIMEOUT) go test -p 1 -race --tags=testing -coverprofile=coverage.out $(TEST_FLAGS) $(TEST_PACKAGES)  2>&1 | $(GOPATH)/bin/go-junit-report $(JUNIT_REPORTER_FLAGS) > test-report.xml
+	IGNITE_START_TIMEOUT=$(IGNITE_START_TIMEOUT) go test -p 1 -race --tags=testing -coverprofile=coverage.out $(TEST_FLAGS) $(TEST_PACKAGES)  2>&1 | $(GOPATH)/bin/go-junit-report > test-report.xml
 
-bench: build
+bench: generate
 	IGNITE_START_TIMEOUT=$(IGNITE_START_TIMEOUT) WARMUPS=$(WARMUPS) IGNITE_HOSTS=$(IGNITE_HOSTS) go test -bench=$(BENCH) -test.benchtime=10s -timeout=40m --tags=testing $(TEST_FLAGS) ./benchmarks
 
 clean:

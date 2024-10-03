@@ -36,7 +36,9 @@ func (d Date) String() string {
 	return d.Time().String()
 }
 
-type CollectionKind = int8
+//go:generate go run golang.org/x/tools/cmd/stringer -type=CollectionKind,MapKind
+
+type CollectionKind int8
 
 const (
 	UserSet CollectionKind = iota - 1
@@ -46,13 +48,20 @@ const (
 	HashSet
 	LinkedHashSet
 	SingletonList
-	HashMap       CollectionKind = 1
-	LinkedHashMap CollectionKind = 2
+)
+
+type MapKind int8
+
+const (
+	UserMap MapKind = iota
+	HashMap
+	LinkedHashMap
 )
 
 type Collection struct {
-	kind   CollectionKind
-	values []interface{}
+	kind      CollectionKind
+	values    []interface{}
+	isNotNull bool
 }
 
 func (col *Collection) Kind() CollectionKind {
@@ -65,6 +74,10 @@ func (col *Collection) Values() []interface{} {
 
 func (col *Collection) Size() int {
 	return len(col.values)
+}
+
+func (col *Collection) IsNull() bool {
+	return !col.isNotNull
 }
 
 func NewUserCollection[T any](values ...T) Collection {
@@ -91,23 +104,41 @@ func NewLinkedHashSet[T any](values ...T) Collection {
 	return newIgniteCollection(LinkedHashSet, values...)
 }
 
+func ToSlice[T any](coll Collection) (ret []T, err error) {
+	if coll.IsNull() {
+		return
+	}
+	ret = make([]T, coll.Size())
+	for i, val := range coll.Values() {
+		var val0 T
+		if err = convertAssign(&val0, val); err != nil {
+			err = fmt.Errorf("invalid key type: %w", err)
+			return
+		}
+		ret[i] = val0
+	}
+	return
+}
+
 func newIgniteCollection[T any](kind CollectionKind, values ...T) Collection {
 	values0 := make([]interface{}, 0, len(values))
 	for _, value := range values {
 		values0 = append(values0, value)
 	}
 	return Collection{
-		kind:   kind,
-		values: values0,
+		kind:      kind,
+		values:    values0,
+		isNotNull: true,
 	}
 }
 
 type Map struct {
-	kind    CollectionKind
-	entries []KeyValue
+	kind      MapKind
+	entries   []KeyValue
+	isNotNull bool
 }
 
-func (m *Map) Kind() CollectionKind {
+func (m *Map) Kind() MapKind {
 	return m.kind
 }
 
@@ -119,12 +150,16 @@ func (m *Map) Size() int {
 	return len(m.entries)
 }
 
+func (m *Map) IsNull() bool {
+	return !m.isNotNull
+}
+
 func NewUserMap(entries ...KeyValue) Map {
-	return newIgniteMap(UserCollection, entries...)
+	return newIgniteMap(UserMap, entries...)
 }
 
 func ToUserMap[K comparable, V any](m map[K]V) Map {
-	return toIgniteMap(UserCollection, m)
+	return toIgniteMap(UserMap, m)
 }
 
 func NewHashMap(entries ...KeyValue) Map {
@@ -143,26 +178,35 @@ func ToLinkedHashMap[K comparable, V any](m map[K]V) Map {
 	return toIgniteMap(LinkedHashMap, m)
 }
 
-func ToMap[K comparable, V any](igniteMap Map) (map[K]V, error) {
-	ret := make(map[K]V, len(igniteMap.entries))
+func ToMap[K comparable, V any](igniteMap Map) (ret map[K]V, err error) {
+	if igniteMap.IsNull() {
+		return
+	}
+	ret = make(map[K]V, igniteMap.Size())
 	for _, entry := range igniteMap.entries {
 		var key K
 		var val V
-		var ok bool
-		if key, ok = entry.Key.(K); !ok {
-			return nil, fmt.Errorf("invalid key type: %T", entry.Key)
+		if err = convertAssign(&key, entry.Key); err != nil {
+			err = fmt.Errorf("invalid key type: %w", err)
+			return
 		}
 		if entry.Value != nil {
-			if val, ok = entry.Value.(V); !ok {
-				return nil, fmt.Errorf("invalid value type: %T", entry.Value)
+			if err = convertAssign(&val, entry.Value); err != nil {
+				err = fmt.Errorf("invalid value type: %w", err)
+				return
 			}
 		}
 		ret[key] = val
 	}
-	return ret, nil
+	return
 }
 
-func toIgniteMap[K comparable, V any](kind CollectionKind, m map[K]V) Map {
+func toIgniteMap[K comparable, V any](kind MapKind, m map[K]V) Map {
+	if m == nil {
+		return Map{
+			kind: kind,
+		}
+	}
 	entries := make([]KeyValue, 0, len(m))
 	for k, v := range m {
 		entries = append(entries, KeyValue{Key: k, Value: v})
@@ -170,9 +214,10 @@ func toIgniteMap[K comparable, V any](kind CollectionKind, m map[K]V) Map {
 	return newIgniteMap(kind, entries...)
 }
 
-func newIgniteMap(kind CollectionKind, entries ...KeyValue) Map {
+func newIgniteMap(kind MapKind, entries ...KeyValue) Map {
 	return Map{
-		kind:    kind,
-		entries: entries,
+		kind:      kind,
+		entries:   entries,
+		isNotNull: true,
 	}
 }

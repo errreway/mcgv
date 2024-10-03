@@ -467,9 +467,9 @@ func (ch *tcpChannel) handshakeRound(ctx context.Context, cliProtoCtx *ProtocolC
 			if len(cliCfg.attrs) == 0 {
 				bw.WriteNull()
 			} else {
-				bw.WriteInt8(MapType)
+				bw.WriteType(MapType)
 				bw.WriteInt32(int32(len(cliCfg.attrs)))
-				bw.WriteInt8(HashMap)
+				bw.WriteInt8(int8(HashMap))
 				for k, v := range cliCfg.attrs {
 					marshalString(bw, k)
 					marshalString(bw, v)

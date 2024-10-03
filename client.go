@@ -372,16 +372,19 @@ func (cli *Client) CreateBinaryObject(ctx context.Context, typeName string, opts
 		return nil, fmt.Errorf("type name is empty")
 	}
 	boOpts := &binaryObjectOptions{
-		typeName:     typeName,
-		fields:       make(map[string]*boField),
-		fieldsOrder:  make([]string, 0),
-		platform:     JavaMarshaller,
-		isRegistered: true, // should be true by default, false only for testing
+		typeName:    typeName,
+		fields:      make(map[string]*boField),
+		fieldsOrder: make([]string, 0),
+		platform:    JavaMarshaller,
 	}
 	for _, opt := range opts {
 		opt(boOpts)
 	}
 	return newBinaryObject(ctx, cli.marsh, boOpts)
+}
+
+func (cli *Client) RegisterBinarylizable(factory func() Binarylizable) {
+	cli.marsh.registerBinarylizable(factory)
 }
 
 // Version returns current connection protocol version.

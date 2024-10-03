@@ -9,10 +9,10 @@ func TestIgniteSpecialTypesExample(t *testing.T) {
 	igniteTesting.TestExample(t, main,
 		">>> Entry for key == `keyIgniteUserCollection` was written to cache `example-cache`\n"+
 			">>> Requesting value for key == `keyIgniteUserCollection` from cache `example-cache`\n"+
-			">>> Value == [igniteCollectionKind=1, arr=[element]]\n"+
+			">>> Value == [igniteCollectionKind=ArrayList, arr=[element]]\n"+
 			">>> Entry for key == `keyIgniteUserMap` was written to cache `example-cache`\n"+
 			">>> Requesting value for key == `keyIgniteUserMap` from cache `example-cache`\n"+
-			">>> Value == [igniteMapKind=1, map=map[mapKey:mapVal]]\n"+
+			">>> Value == [igniteMapKind=HashMap, map=map[mapKey:mapVal]]\n"+
 			">>> Entry for key == `keyIgniteTime` was written to cache `example-cache`\n"+
 			">>> Requesting value for key == `keyIgniteTime` from cache `example-cache`\n"+
 			">>> Value == `04:17:46`\n"+

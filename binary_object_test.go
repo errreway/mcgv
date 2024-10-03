@@ -91,8 +91,13 @@ func testPutGetAllBinaryObject(t *testing.T, cli *Client, cache *Cache) {
 		key0 := kv0.Key.(BinaryObject)
 		value0 := kv0.Value.(BinaryObject)
 		var id0 int64
-		err := NewFieldGetter[int64](key0, "id").Get(ctx, &id0)
+		err = key0.ScanField(ctx, "id", &id0)
 		require.NoError(t, err)
+
+		var pid0 *int64
+		err = key0.ScanField(ctx, "id0", &pid0)
+		require.NoError(t, err)
+		require.Nil(t, pid0)
 
 		kv, ok := keyValuesMap[int(id0)]
 		require.True(t, ok)
@@ -188,18 +193,18 @@ func testDifferentFieldTypes(t *testing.T, cli *Client, cache *Cache) {
 		{"string", "test"}, {"uuid", uuid.New()}, {"time", NewTime(timestamp)},
 		{"date", NewDate(timestamp)}, {"timestamp", timestamp},
 		{"decimal", apd.New(100500, -3)},
-		{"stringPArray", createPSlice("test1", "test2", "test3")},
+		{"stringPArray", testing2.CreatePSlice("test1", "test2", "test3")},
 		{"stringArray", []string{"test1", "test2", "test3"}},
-		{"uuidPArray", createPSlice(uuid.New(), uuid.New(), uuid.New())},
+		{"uuidPArray", testing2.CreatePSlice(uuid.New(), uuid.New(), uuid.New())},
 		{"uuidArray", []uuid.UUID{uuid.New(), uuid.New(), uuid.New()}},
-		{"timePArray", createPSlice(NewTime(timestamp), NewTime(timestamp.Add(time.Minute*10)), NewTime(timestamp.Add(time.Minute*20)))},
+		{"timePArray", testing2.CreatePSlice(NewTime(timestamp), NewTime(timestamp.Add(time.Minute*10)), NewTime(timestamp.Add(time.Minute*20)))},
 		{"timeArray", []Time{NewTime(timestamp), NewTime(timestamp.Add(time.Minute * 10)), NewTime(timestamp.Add(time.Minute * 20))}},
-		{"datePArray", createPSlice(NewDate(timestamp), NewDate(timestamp.Add(time.Minute*10)), NewDate(timestamp.Add(time.Minute*20)))},
+		{"datePArray", testing2.CreatePSlice(NewDate(timestamp), NewDate(timestamp.Add(time.Minute*10)), NewDate(timestamp.Add(time.Minute*20)))},
 		{"dateArray", []Date{NewDate(timestamp), NewDate(timestamp.Add(time.Minute * 10)), NewDate(timestamp.Add(time.Minute * 20))}},
-		{"timeStampPArray", createPSlice(timestamp, timestamp.Add(time.Minute*10), timestamp.Add(time.Minute*20))},
+		{"timeStampPArray", testing2.CreatePSlice(timestamp, timestamp.Add(time.Minute*10), timestamp.Add(time.Minute*20))},
 		{"timeStampArray", []time.Time{timestamp, timestamp.Add(time.Minute * 10), timestamp.Add(time.Minute * 20)}},
 		{"decimalPArray", []*apd.Decimal{apd.New(100500, -3), apd.New(0, 3), apd.New(31415926, 7)}},
-		{"decimalArray", fromPSlice([]*apd.Decimal{apd.New(100500, -3), apd.New(0, 3), apd.New(31415926, 7)})},
+		{"decimalArray", testing2.FromPSlice([]*apd.Decimal{apd.New(100500, -3), apd.New(0, 3), apd.New(31415926, 7)})},
 		{"binaryObject", createTestBinaryObject(t, cli, 100500)},
 		{"singletonList", NewSingletonList("test")},
 		{"objectArray", []BinaryObject{createTestBinaryObject(t, cli, 10), createTestBinaryObject(t, cli, 20), nil}},
@@ -253,16 +258,16 @@ func testMergeMetadata_WithoutClearRegistry(t *testing.T, cli *Client, cache *Ca
 func testUnregisteredTypes(t *testing.T, cli *Client, cache *Cache) {
 	ctx := context.Background()
 	typeName := "UNREGISTERED"
-	expTypId := cli.marsh.binaryIdMapper().TypeId(typeName)
+	expTypeId := cli.marsh.binaryIdMapper().TypeId(typeName)
 	exp, err := cli.CreateBinaryObject(ctx, typeName, WithField("id", uuid.New()), func(options *binaryObjectOptions) {
-		options.isRegistered = false
+		options.skipTypeRegistration = true
 	})
 	require.Equal(t, int32(unregisteredType), exp.(*binaryObjectImpl).getRawTypeId())
 	require.NoError(t, err)
 	typ, err := exp.Type(ctx)
 	require.NoError(t, err)
 	require.Equal(t, typeName, typ.TypeName())
-	require.Equal(t, expTypId, typ.TypeId())
+	require.Equal(t, expTypeId, typ.TypeId())
 
 	err = cache.Put(ctx, "key", exp)
 	require.NoError(t, err)

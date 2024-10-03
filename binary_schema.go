@@ -63,7 +63,7 @@ func (meta *binaryMetadata) addSchema(schema binarySchema) {
 	meta.schemas[schema.schemaId] = &cpy
 }
 
-func (meta *binaryMetadata) copy() *binaryMetadata {
+func (meta *binaryMetadata) copy(opts ...func(metadata *binaryMetadata)) *binaryMetadata {
 	cpy := binaryMetadata{
 		typeId:      meta.typeId,
 		typeName:    meta.typeName,
@@ -80,6 +80,9 @@ func (meta *binaryMetadata) copy() *binaryMetadata {
 	for k, v := range meta.schemas {
 		scCpy := v.copy()
 		cpy.schemas[k] = &scCpy
+	}
+	for _, opt := range opts {
+		opt(&cpy)
 	}
 	return &cpy
 }
@@ -111,12 +114,15 @@ type binarySchema struct {
 	fieldIds []int32
 }
 
-func (s *binarySchema) copy() binarySchema {
+func (s *binarySchema) copy(opts ...func(schema *binarySchema)) binarySchema {
 	cpy := binarySchema{
 		schemaId: s.schemaId,
 		fieldIds: make([]int32, len(s.fieldIds)),
 	}
 	copy(cpy.fieldIds, s.fieldIds)
+	for _, opt := range opts {
+		opt(&cpy)
+	}
 	return cpy
 }
 

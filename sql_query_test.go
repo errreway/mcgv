@@ -439,8 +439,8 @@ func checkSelect(suite *SqlQueryTestSuite, keyBinObj BinaryObject, valBinObj Bin
 			&nullValueField,
 		)
 		require.NoError(suite.T(), err)
-		require.Equal(suite.T(), keyBinObj, key)
-		require.Equal(suite.T(), valBinObj, val)
+		RequireBinaryObjectsEqual(suite.T(), keyBinObj, key)
+		RequireBinaryObjectsEqual(suite.T(), valBinObj, val)
 		require.Equal(suite.T(), "0", stringKeyField)
 		require.Equal(suite.T(), id, uuidKeyField)
 		require.Equal(suite.T(), true, boolValueField)

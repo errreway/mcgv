@@ -2,6 +2,7 @@ package ignite
 
 import (
 	"github.com/stretchr/testify/require"
+	testing2 "gitverse.ru/sbertech/ignite-go-client/internal/testing"
 	"math/rand"
 	"testing"
 )
@@ -175,9 +176,5 @@ func TestReadWritePrimitiveSlices(t *testing.T) {
 }
 
 func createRandPrimitiveArray[T primitives](randFactory func() T) []T {
-	ret := make([]T, testArrSize)
-	for i := 0; i < len(ret); i++ {
-		ret[i] = randFactory()
-	}
-	return ret
+	return testing2.MakeRandomPrimitiveArray[T](testArrSize, randFactory)
 }

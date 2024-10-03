@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/cockroachdb/apd/v3"
 	"reflect"
 )
 
@@ -131,14 +132,26 @@ func convertAssign(dest interface{}, src interface{}) error {
 	if dpv.IsNil() {
 		return errors.New("destination is nil")
 	}
+	// decimal case:
+	switch destDec := dest.(type) {
+	case *apd.Decimal:
+		switch srcDec := src.(type) {
+		case *apd.Decimal:
+			*destDec = *srcDec
+			return nil
+		case nil:
+			*destDec = apd.Decimal{}
+			return nil
+		}
+	}
 	dv := reflect.Indirect(dpv)
+	if src == nil {
+		dv.Set(reflect.Zero(dv.Type()))
+		return nil
+	}
 	sv := reflect.ValueOf(src)
 	if sv.IsValid() && sv.Type().AssignableTo(dv.Type()) {
 		dv.Set(sv)
-		return nil
-	}
-	if src == nil {
-		dv.Set(reflect.Zero(dv.Type()))
 		return nil
 	}
 	if dv.Kind() == reflect.Pointer {

@@ -391,6 +391,36 @@ func MakeRandomString(n int) string {
 	return string(b)
 }
 
+type Primitives interface {
+	~bool | ~int | ~int8 | ~int16 | ~int32 | ~int64 | ~uint | uint8 | uint16 | uint32 | uint64 | float32 | float64
+}
+
+func MakeRandomPrimitiveArray[T Primitives](sz int, randFactory func() T) []T {
+	ret := make([]T, sz)
+	for i := 0; i < len(ret); i++ {
+		ret[i] = randFactory()
+	}
+	return ret
+}
+
+func CreatePSlice[T any](vals ...T) []*T {
+	ret := make([]*T, len(vals))
+	for i, v := range vals {
+		ret[i] = &v
+	}
+	return ret
+}
+
+func FromPSlice[T any](pSlice []*T) []T {
+	ret := make([]T, len(pSlice))
+	for i, v := range pSlice {
+		if v != nil {
+			ret[i] = *v
+		}
+	}
+	return ret
+}
+
 func TestExample(t *testing.T, example func(), expOut string) {
 	ignite, err := StartIgnite()
 	require.NoError(t, err)

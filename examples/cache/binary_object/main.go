@@ -66,9 +66,9 @@ func main() {
 		panic(fmt.Errorf("failed to get Binary Object field [name=`name`]: %w", err))
 	}
 
-	// Field Getter automatically checks and casts unmarshalled field value to the specified type.
+	// ScanField automatically checks and casts unmarshalled field value to the specified type.
 	var ageField int16
-	err = ignite.NewFieldGetter[int16](binObj, "age").Get(context.Background(), &ageField)
+	err = binObj.ScanField(context.Background(), "age", &ageField)
 	if err != nil {
 		panic(fmt.Errorf("failed to get Binary Object field [name=`age`]: %w", err))
 	}

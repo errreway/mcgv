@@ -7,6 +7,7 @@ import (
 	"github.com/cockroachdb/apd/v3"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
+	testing2 "gitverse.ru/sbertech/ignite-go-client/internal/testing"
 	"math/rand"
 	"reflect"
 	"testing"
@@ -119,18 +120,18 @@ func (suite *CacheTestSuite) TestSpecialArrays() {
 		name string
 		arr  interface{}
 	}{
-		{"StringPArray", createPSlice("test1", "test2", "test3")},
+		{"StringPArray", testing2.CreatePSlice("test1", "test2", "test3")},
 		{"StringArray", []string{"test1", "test2", "test3"}},
-		{"UuidPArray", createPSlice(uuid.New(), uuid.New(), uuid.New())},
+		{"UuidPArray", testing2.CreatePSlice(uuid.New(), uuid.New(), uuid.New())},
 		{"UuidArray", []uuid.UUID{uuid.New(), uuid.New(), uuid.New()}},
-		{"TimePArray", createPSlice(NewTime(timestamp), NewTime(timestamp.Add(time.Minute*10)), NewTime(timestamp.Add(time.Minute*20)))},
+		{"TimePArray", testing2.CreatePSlice(NewTime(timestamp), NewTime(timestamp.Add(time.Minute*10)), NewTime(timestamp.Add(time.Minute*20)))},
 		{"TimeArray", []Time{NewTime(timestamp), NewTime(timestamp.Add(time.Minute * 10)), NewTime(timestamp.Add(time.Minute * 20))}},
-		{"DatePArray", createPSlice(NewDate(timestamp), NewDate(timestamp.Add(time.Minute*10)), NewDate(timestamp.Add(time.Minute*20)))},
+		{"DatePArray", testing2.CreatePSlice(NewDate(timestamp), NewDate(timestamp.Add(time.Minute*10)), NewDate(timestamp.Add(time.Minute*20)))},
 		{"DateArray", []Date{NewDate(timestamp), NewDate(timestamp.Add(time.Minute * 10)), NewDate(timestamp.Add(time.Minute * 20))}},
-		{"TimeStampPArray", createPSlice(timestamp, timestamp.Add(time.Minute*10), timestamp.Add(time.Minute*20))},
+		{"TimeStampPArray", testing2.CreatePSlice(timestamp, timestamp.Add(time.Minute*10), timestamp.Add(time.Minute*20))},
 		{"TimeStampArray", []time.Time{timestamp, timestamp.Add(time.Minute * 10), timestamp.Add(time.Minute * 20)}},
 		{"DecimalPArray", []*apd.Decimal{apd.New(100500, -3), apd.New(0, 3), apd.New(31415926, 7)}},
-		{"DecimalArray", fromPSlice([]*apd.Decimal{apd.New(100500, -3), apd.New(0, 3), apd.New(31415926, 7)})},
+		{"DecimalArray", testing2.FromPSlice([]*apd.Decimal{apd.New(100500, -3), apd.New(0, 3), apd.New(31415926, 7)})},
 	}
 
 	for _, fixture := range fixtures {
@@ -228,12 +229,14 @@ func RequireIgniteTypesEqual(t *testing.T, expected, actual interface{}) {
 		require.Equal(t, expArr, actual.([]int64))
 	case Collection:
 		{
+			actualCol := actual.(Collection)
 			if expected.Kind() == UserCollection {
-				require.Equal(t, ArrayList, actual.(Collection).kind) // quirk of ignite serialization.
+				require.Equal(t, ArrayList, actualCol.Kind()) // quirk of ignite serialization.
 			} else {
-				require.Equal(t, expected.Kind(), actual.(Collection).kind)
+				require.Equal(t, expected.Kind(), actualCol.Kind())
 			}
-			RequireArraysEqual(t, expected.values, actual.(Collection).values)
+			require.Equal(t, expected.IsNull(), actualCol.IsNull())
+			RequireArraysEqual(t, expected.Values(), actualCol.Values())
 		}
 	case []interface{}:
 		{
@@ -279,11 +282,13 @@ func RequireMapEqualGoMap(t *testing.T, expected reflect.Value, actual Map) {
 }
 
 func RequireMapEqual(t *testing.T, expected Map, actual Map) {
-	if expected.Kind() == UserCollection {
+	if expected.Kind() == UserMap {
 		require.Equal(t, HashMap, actual.Kind())
 	} else {
 		require.Equal(t, expected.Kind(), actual.Kind())
 	}
+	require.Equal(t, expected.Size(), actual.Size())
+	require.Equal(t, expected.IsNull(), actual.IsNull())
 loop:
 	for _, el := range expected.Entries() {
 		for _, actualEl := range actual.Entries() {
@@ -380,24 +385,6 @@ func createTestBinaryObject(t *testing.T, cli *Client, id int32) BinaryObject {
 	ret, err := cli.CreateBinaryObject(context.Background(), "TEST_VALUE",
 		WithField("id", id), WithField("name", fmt.Sprintf("name_%d", id)))
 	require.NoError(t, err)
-	return ret
-}
-
-func createPSlice[T any](vals ...T) []*T {
-	ret := make([]*T, len(vals))
-	for i, v := range vals {
-		ret[i] = &v
-	}
-	return ret
-}
-
-func fromPSlice[T any](pSlice []*T) []T {
-	ret := make([]T, len(pSlice))
-	for i, v := range pSlice {
-		if v != nil {
-			ret[i] = *v
-		}
-	}
 	return ret
 }
 

@@ -47,7 +47,11 @@ func main() {
 
 	obj := doPutGet(cache, "keyIgniteUserCollection", igniteUserCollection)
 	igniteColObj := obj.(ignite.Collection)
-	fmt.Printf(">>> Value == [igniteCollectionKind=%v, arr=%v]\n", igniteColObj.Kind(), igniteColObj.Values())
+	goSlice, err := ignite.ToSlice[string](igniteColObj)
+	if err != nil {
+		panic(fmt.Errorf("failed to convert ignite.Collection to slice: %w", err))
+	}
+	fmt.Printf(">>> Value == [igniteCollectionKind=%v, arr=%v]\n", igniteColObj.Kind(), goSlice)
 
 	obj = doPutGet(cache, "keyIgniteUserMap", igniteUserMap)
 	igniteMapObj := obj.(ignite.Map)
