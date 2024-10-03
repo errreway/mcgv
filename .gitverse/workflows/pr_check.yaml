@@ -4,6 +4,8 @@ on:
   push:
     branches:
       - master
+  schedule:
+    - cron: "0 1,22 * * *"
 
 env:
   GOPROXY: 'https://proxy.golang.org/cached-only'
