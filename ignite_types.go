@@ -15,7 +15,8 @@ func NewTime(val time.Time) Time {
 }
 
 func (t Time) Time() time.Time {
-	return time.Unix(int64(t)/1000, (int64(t)%1000)*int64(time.Millisecond))
+	locTime := time.UnixMilli(int64(t))
+	return time.UnixMilli(locTime.Sub(time.Date(locTime.Year(), locTime.Month(), locTime.Day(), 0, 0, 0, 0, time.Local)).Milliseconds())
 }
 
 func (t Time) String() string {
