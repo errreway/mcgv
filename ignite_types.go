@@ -11,12 +11,20 @@ type Date int64
 
 func NewTime(val time.Time) Time {
 	utcTime := val.UTC()
+	// Following java contract we return current time as milliseconds since January 1, 1970, 00:00:00 UTC
 	return Time(utcTime.Sub(time.Date(utcTime.Year(), utcTime.Month(), utcTime.Day(), 0, 0, 0, 0, time.UTC)).Milliseconds())
 }
 
 func (t Time) Time() time.Time {
 	locTime := time.UnixMilli(int64(t))
-	return time.UnixMilli(locTime.Sub(time.Date(locTime.Year(), locTime.Month(), locTime.Day(), 0, 0, 0, 0, time.Local)).Milliseconds())
+	// The month, day and year components are fixed to January 1, 1970, even after converting the time to the local time zone.
+	// This makes the behavior deterministic and predictable, given that the Ignite Go Client can receive time
+	// 1. in milliseconds since January 1, 1970, 00:00:00 UTC - in which case, after applying the local time zone offset,
+	//    we might get January 1, 1970 or January 2, 1970.
+	// 2. as an offset in milliseconds since January 1, 1970, 00:00:00 UTC, which includes the server-side time zone
+	//    offset (e.g. time returned by Ignite's H2 and Calcite SQL engines). The offset can even be negative, but after
+	//    applying server-side time zone offset it can be converted to the correct time value.
+	return time.Date(1970, 1, 1, locTime.Hour(), locTime.Minute(), locTime.Second(), locTime.Nanosecond(), time.Local)
 }
 
 func (t Time) String() string {

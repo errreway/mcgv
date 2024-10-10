@@ -186,7 +186,8 @@ func runInsertGetSelectTest(suite *SqlQueryTestSuite, createTable func() *Cache)
 			float32(0.4),
 			float64(0.5),
 			apd.New(6, -1),
-			NewTime(timestamp), timestamp,
+			NewTime(timestamp),
+			timestamp,
 			NewDate(timestamp),
 			"0",
 			id,
@@ -247,9 +248,9 @@ func runInsertGetSelectTest(suite *SqlQueryTestSuite, createTable func() *Cache)
 	require.Equal(suite.T(), float32(0.4), realValueField)
 	require.Equal(suite.T(), float64(0.5), doubleValueField)
 	require.Equal(suite.T(), *apd.New(6, -1), *decimalValueField.(*apd.Decimal))
-	require.Equal(suite.T(), NewTime(timestamp).Time(), timeValueField.(Time).Time())
+	require.True(suite.T(), NewTime(timestamp).Time().Equal(timeValueField.(Time).Time()))
 	require.Equal(suite.T(), timestamp, timestampValueField)
-	require.Equal(suite.T(), NewDate(timestamp).Time(), dateValueField.(Date).Time())
+	require.True(suite.T(), NewDate(timestamp).Time().Equal(dateValueField.(Date).Time()))
 	require.Equal(suite.T(), "0", varcharValueField)
 	require.Equal(suite.T(), id, uuidValueField)
 	require.Equal(suite.T(), []byte{1, 0}, binaryValueField)
@@ -451,9 +452,9 @@ func checkSelect(suite *SqlQueryTestSuite, keyBinObj BinaryObject, valBinObj Bin
 		require.Equal(suite.T(), float32(0.4), realValueField)
 		require.Equal(suite.T(), float64(0.5), doubleValueField)
 		require.Equal(suite.T(), *apd.New(6, -1), *decimalValueField)
-		require.Equal(suite.T(), NewTime(timestamp).Time(), timeValueField.Time())
+		require.True(suite.T(), NewTime(timestamp).Time().Equal(timeValueField.Time()))
 		require.Equal(suite.T(), timestamp, timestampValueField)
-		require.Equal(suite.T(), NewDate(timestamp).Time(), dateValueField) // H2 engine handles Date as Timestamp
+		require.True(suite.T(), NewDate(timestamp).Time().Equal(dateValueField)) // H2 engine handles Date as Timestamp
 		require.Equal(suite.T(), "0", varcharValueField)
 		require.Equal(suite.T(), id, uuidValueField)
 		require.Equal(suite.T(), []byte{1, 0}, binaryValueField)
