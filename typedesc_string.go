@@ -36,12 +36,17 @@ func _() {
 	_ = x[CollectionType-24]
 	_ = x[MapType-25]
 	_ = x[wrappedObjectType-27]
+	_ = x[EnumType-28]
+	_ = x[EnumArrayType-29]
 	_ = x[DecimalType-30]
 	_ = x[DecimalArrayType-31]
+	_ = x[ClassType-32]
 	_ = x[TimestampType-33]
 	_ = x[TimestampArrayType-34]
+	_ = x[ProxyType-35]
 	_ = x[TimeType-36]
 	_ = x[TimeArrayType-37]
+	_ = x[BinaryEnumType-38]
 	_ = x[NullType-101]
 	_ = x[handleType-102]
 	_ = x[BinaryObjectType-103]
@@ -49,19 +54,14 @@ func _() {
 
 const (
 	_TypeDesc_name_0 = "objectTypeunregisteredTypeByteTypeShortTypeIntTypeLongTypeFloatTypeDoubleTypeCharTypeBoolTypeStringTypeUuidTypeDateTypeByteArrayTypeShortArrayTypeIntArrayTypeLongArrayTypeFloatArrayTypeDoubleArrayTypeCharArrayTypeBoolArrayTypeStringArrayTypeUuidArrayTypeDateArrayTypeObjectArrayTypeCollectionTypeMapType"
-	_TypeDesc_name_1 = "wrappedObjectType"
-	_TypeDesc_name_2 = "DecimalTypeDecimalArrayType"
-	_TypeDesc_name_3 = "TimestampTypeTimestampArrayType"
-	_TypeDesc_name_4 = "TimeTypeTimeArrayType"
-	_TypeDesc_name_5 = "NullTypehandleTypeBinaryObjectType"
+	_TypeDesc_name_1 = "wrappedObjectTypeEnumTypeEnumArrayTypeDecimalTypeDecimalArrayTypeClassTypeTimestampTypeTimestampArrayTypeProxyTypeTimeTypeTimeArrayTypeBinaryEnumType"
+	_TypeDesc_name_2 = "NullTypehandleTypeBinaryObjectType"
 )
 
 var (
 	_TypeDesc_index_0 = [...]uint16{0, 10, 26, 34, 43, 50, 58, 67, 77, 85, 93, 103, 111, 119, 132, 146, 158, 171, 185, 200, 213, 226, 241, 254, 267, 282, 296, 303}
-	_TypeDesc_index_2 = [...]uint8{0, 11, 27}
-	_TypeDesc_index_3 = [...]uint8{0, 13, 31}
-	_TypeDesc_index_4 = [...]uint8{0, 8, 21}
-	_TypeDesc_index_5 = [...]uint8{0, 8, 18, 34}
+	_TypeDesc_index_1 = [...]uint8{0, 17, 25, 38, 49, 65, 74, 87, 105, 114, 122, 135, 149}
+	_TypeDesc_index_2 = [...]uint8{0, 8, 18, 34}
 )
 
 func (i TypeDesc) String() string {
@@ -69,20 +69,12 @@ func (i TypeDesc) String() string {
 	case -1 <= i && i <= 25:
 		i -= -1
 		return _TypeDesc_name_0[_TypeDesc_index_0[i]:_TypeDesc_index_0[i+1]]
-	case i == 27:
-		return _TypeDesc_name_1
-	case 30 <= i && i <= 31:
-		i -= 30
-		return _TypeDesc_name_2[_TypeDesc_index_2[i]:_TypeDesc_index_2[i+1]]
-	case 33 <= i && i <= 34:
-		i -= 33
-		return _TypeDesc_name_3[_TypeDesc_index_3[i]:_TypeDesc_index_3[i+1]]
-	case 36 <= i && i <= 37:
-		i -= 36
-		return _TypeDesc_name_4[_TypeDesc_index_4[i]:_TypeDesc_index_4[i+1]]
+	case 27 <= i && i <= 38:
+		i -= 27
+		return _TypeDesc_name_1[_TypeDesc_index_1[i]:_TypeDesc_index_1[i+1]]
 	case 101 <= i && i <= 103:
 		i -= 101
-		return _TypeDesc_name_5[_TypeDesc_index_5[i]:_TypeDesc_index_5[i+1]]
+		return _TypeDesc_name_2[_TypeDesc_index_2[i]:_TypeDesc_index_2[i+1]]
 	default:
 		return "TypeDesc(" + strconv.FormatInt(int64(i), 10) + ")"
 	}

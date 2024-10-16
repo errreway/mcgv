@@ -9,6 +9,7 @@ import (
 	"golang.org/x/tools/imports"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -77,8 +78,9 @@ func generate(fname string) (err error) {
 		IsDir:          fInfo.IsDir(),
 		Aliases:        make(map[string]string),
 		ReverseAliases: make(map[string]string),
+		Enums:          make(map[string]*IgniteEnum),
 	}
-	if err := p.Parse(); err != nil {
+	if err = p.Parse(); err != nil {
 		return fmt.Errorf("error parsing %v: %v", p.FileName, err)
 	}
 
@@ -133,29 +135,91 @@ func (g *generator) printStructs() (*bytes.Buffer, error) {
 
 	for _, strct := range g.Structs {
 		if strct.TypeName != strct.Name {
-			outbuf.WriteString("func (o *" + strct.Name + ") TypeName() string {\n")
-			outbuf.WriteString("return \"" + strct.TypeName + "\"\n")
-			outbuf.WriteString("}\n\n")
+			g.writeTypeNameAware(outbuf, "o", "*"+strct.Name, strct.TypeName)
 		}
-
-		outbuf.WriteString(fmt.Sprintf("func (o *%s) Platform() %s{\n", strct.Name, g.getAliasedGoType("ignite", "MarshallerPlatform")))
-		var marshStr string
-		switch strct.Platform {
-		case ignite.DotNetMarshaller:
-			marshStr = g.getAliasedGoType("ignite", "DotNetMarshaller")
-		default:
-			marshStr = g.getAliasedGoType("ignite", "JavaMarshaller")
-		}
-		outbuf.WriteString(fmt.Sprintf("return %s\n", marshStr))
-		outbuf.WriteString("}\n\n")
-
+		g.writePlatformAware(outbuf, "o", "*"+strct.Name, strct.Platform)
 		g.writeWriter(outbuf, strct)
 		g.writeReader(outbuf, strct)
+	}
+
+	for _, enum := range g.Enums {
+		if len(enum.Values) == 0 {
+			continue
+		}
+		if enum.Name != enum.TypeName {
+			g.writeTypeNameAware(outbuf, "e", enum.Name, enum.TypeName)
+		}
+		g.writePlatformAware(outbuf, "e", enum.Name, enum.Platform)
+
+		// Write Ordinal()
+		outbuf.WriteString(fmt.Sprintf("func (e %s) Ordinal() int {\n", enum.Name))
+		outbuf.WriteString("return int(e)\n")
+		outbuf.WriteString("}\n\n")
+
+		// Write Name()
+		outbuf.WriteString(fmt.Sprintf("func (e %s) Name() string {\n", enum.Name))
+		outbuf.WriteString(fmt.Sprintf("return _%s_ord2name[e]\n", enum.Name))
+		outbuf.WriteString("}\n\n")
+
+		// extract and sort values
+		values := make([]EnumValue, 0)
+		for _, val := range enum.Values {
+			values = append(values, val)
+		}
+		sort.Slice(values, func(i, j int) bool {
+			return values[i].Name < values[j].Name
+		})
+
+		// Write Values()
+		outbuf.WriteString(fmt.Sprintf("func (e %s) Values() []%s {\n", enum.Name, g.getAliasedGoType("ignite", "Enum")))
+		outbuf.WriteString(fmt.Sprintf("return _%s_values\n", enum.Name))
+		outbuf.WriteString("}\n\n")
+
+		sb := strings.Builder{}
+		ord2name := make(map[string]string)
+		startIdx := 0
+		for _, val := range values {
+			sb.WriteString(val.Name)
+			endIdx := startIdx + len(val.Name)
+			ord2name[val.Name] = fmt.Sprintf("%d:%d", startIdx, endIdx)
+			startIdx = endIdx
+		}
+		outbuf.WriteString(fmt.Sprintf("const _%s_names = \"%s\"\n", enum.Name, sb.String()))
+		outbuf.WriteString(fmt.Sprintf("var _%s_ord2name = map[%s]string{\n", enum.Name, enum.Name))
+		for _, val := range values {
+			outbuf.WriteString(fmt.Sprintf("%s: _%s_names[%s], \n", val.GoName, enum.Name, ord2name[val.Name]))
+		}
+		outbuf.WriteString("}\n\n")
+		outbuf.WriteString(fmt.Sprintf("var _%s_values = []%s{\n", enum.Name, g.getAliasedGoType("ignite", "Enum")))
+		for _, val := range values {
+			outbuf.WriteString(fmt.Sprintf("%s,\n", val.GoName))
+		}
+		outbuf.WriteString("}\n")
+
 	}
 	if *writeRegisterFunc {
 		g.writeRegisterFunction(outbuf)
 	}
 	return outbuf, nil
+}
+
+func (g *generator) writeTypeNameAware(b *bytes.Buffer, receiverName, receiverType, typeName string) {
+	b.WriteString(fmt.Sprintf("func (%s %s) TypeName() string {\n", receiverName, receiverType))
+	b.WriteString("return \"" + typeName + "\"\n")
+	b.WriteString("}\n\n")
+}
+
+func (g *generator) writePlatformAware(b *bytes.Buffer, receiverName, receiverType string, platform ignite.MarshallerPlatform) {
+	b.WriteString(fmt.Sprintf("func (%s %s) Platform() %s{\n", receiverName, receiverType, g.getAliasedGoType("ignite", "MarshallerPlatform")))
+	var marshStr string
+	switch platform {
+	case ignite.DotNetMarshaller:
+		marshStr = g.getAliasedGoType("ignite", "DotNetMarshaller")
+	default:
+		marshStr = g.getAliasedGoType("ignite", "JavaMarshaller")
+	}
+	b.WriteString(fmt.Sprintf("return %s\n", marshStr))
+	b.WriteString("}\n\n")
 }
 
 func (g *generator) writeWriter(b *bytes.Buffer, strct IgniteStruct) {
@@ -318,12 +382,23 @@ func writeImportHeader(b *bytes.Buffer, imports ...string) {
 
 func (g *generator) writeRegisterFunction(b *bytes.Buffer) {
 	structs := g.Structs
-	if len(structs) == 0 {
+	enums := g.Enums
+	if len(structs) == 0 && len(enums) == 0 {
 		return
 	}
 	var funcName string
-	if len(structs) == 1 {
-		funcName = fmt.Sprintf("Register%s", toCamelCase(structs[0].Name))
+	if len(structs)+len(enums) == 1 {
+		if len(structs) == 1 {
+			funcName = fmt.Sprintf("Register%s", toCamelCase(structs[0].Name))
+		} else {
+			for _, enum := range enums {
+				if len(enum.Values) == 0 {
+					return
+				}
+				funcName = fmt.Sprintf("Register%s", toCamelCase(enum.Name))
+				break
+			}
+		}
 	} else {
 		if !g.IsDir {
 			funcName = strings.TrimSuffix(g.FileName, ".go")
@@ -332,13 +407,21 @@ func (g *generator) writeRegisterFunction(b *bytes.Buffer) {
 		}
 		funcName = fmt.Sprintf("Register%sIgniteTypes", toCamelCase(funcName))
 	}
-	b.WriteString(fmt.Sprintf("func %s(cli *%s) {\n", funcName, g.getAliasedGoType("ignite", "Client")))
+	b.WriteString(fmt.Sprintf("func %s(cli *%s) error {\n", funcName, g.getAliasedGoType("ignite", "Client")))
 	for _, ignStruct := range structs {
-		b.WriteString(fmt.Sprintf("cli.RegisterBinarylizable(func() %s {\n", g.getAliasedGoType("ignite", "Binarylizable")))
-		b.WriteString(fmt.Sprintf("return &%s{}\n", ignStruct.Name))
-		b.WriteString("})\n")
+		writeErrorCheck(b, fmt.Sprintf("%s[*%s](cli)", g.getAliasedGoType("ignite", "RegisterType"), ignStruct.Name))
 	}
-	b.WriteString("}\n")
+	if len(enums) > 0 {
+		names := make([]string, 0, len(enums))
+		for _, enum := range enums {
+			names = append(names, enum.Name)
+		}
+		sort.Slice(names, func(i, j int) bool { return names[i] < names[j] })
+		for _, name := range names {
+			writeErrorCheck(b, fmt.Sprintf("%s[%s](cli)", g.getAliasedGoType("ignite", "RegisterEnum"), name))
+		}
+	}
+	b.WriteString("return nil\n}\n")
 }
 
 func (g *generator) printFile(file string) error {
@@ -426,7 +509,7 @@ func main() {
 
 	for _, fname := range files {
 		if err := generate(fname); err != nil {
-			fmt.Fprintln(os.Stderr, err)
+			_, _ = fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}
 	}

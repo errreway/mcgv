@@ -13,6 +13,8 @@ import (
 	"unsafe"
 )
 
+//go:generate go run golang.org/x/tools/cmd/stringer -type=TypeDesc
+
 type marshaller interface {
 	binaryMetadataRegistry
 	marshal(ctx context.Context, writer BinaryOutputStream, payload interface{}) error
@@ -21,10 +23,9 @@ type marshaller interface {
 	isCompactFooter() bool
 	binaryIdMapper() BinaryIdMapper
 	registerBinarylizable(factory func() Binarylizable)
-	clearBinarylizableFactories() // only for testing
+	registerEnum(factory func(ord int) Enum)
+	clearTypeFactories() // only for testing
 }
-
-//go:generate go run golang.org/x/tools/cmd/stringer -type=TypeDesc
 
 type MarshallerPlatform int8
 
@@ -50,13 +51,13 @@ const (
 	UuidType
 	DateType
 	ByteArrayType
-	ShortArrayType  //lint:ignore U1000 reserved for future
-	IntArrayType    //lint:ignore U1000 reserved for future
-	LongArrayType   //lint:ignore U1000 reserved for future
-	FloatArrayType  //lint:ignore U1000 reserved for future
-	DoubleArrayType //lint:ignore U1000 reserved for future
-	CharArrayType   //lint:ignore U1000 reserved for future
-	BoolArrayType   //lint:ignore U1000 reserved for future
+	ShortArrayType
+	IntArrayType
+	LongArrayType
+	FloatArrayType
+	DoubleArrayType
+	CharArrayType
+	BoolArrayType
 	StringArrayType
 	UuidArrayType
 	DateArrayType
@@ -64,12 +65,17 @@ const (
 	CollectionType
 	MapType
 	wrappedObjectType  TypeDesc = 27
+	EnumType           TypeDesc = 28
+	EnumArrayType      TypeDesc = 29
 	DecimalType        TypeDesc = 30
 	DecimalArrayType   TypeDesc = 31
+	ClassType          TypeDesc = 32
 	TimestampType      TypeDesc = 33
 	TimestampArrayType TypeDesc = 34
+	ProxyType          TypeDesc = 35
 	TimeType           TypeDesc = 36
 	TimeArrayType      TypeDesc = 37
+	BinaryEnumType     TypeDesc = 38
 	NullType           TypeDesc = 101
 	handleType         TypeDesc = 102 //lint:ignore U1000 reserved for future
 	BinaryObjectType   TypeDesc = 103
@@ -80,11 +86,11 @@ const (
 )
 
 type marshallerImpl struct {
-	cli                    *Client
-	reg                    binaryMetadataRegistry
-	compactFooter          bool
-	idMapper               BinaryIdMapper
-	binarylizableFactories sync.Map
+	cli           *Client
+	reg           binaryMetadataRegistry
+	compactFooter bool
+	idMapper      BinaryIdMapper
+	typeFactories sync.Map
 }
 
 func (m *marshallerImpl) protocolContext() *ProtocolContext {
@@ -107,8 +113,8 @@ func (m *marshallerImpl) getSchema(ctx context.Context, typeId int32, schemaId i
 	return m.reg.getSchema(ctx, typeId, schemaId)
 }
 
-func (m *marshallerImpl) putMetadata(ctx context.Context, typeId int32, meta *binaryMetadata) error {
-	return m.reg.putMetadata(ctx, typeId, meta)
+func (m *marshallerImpl) putMetadata(ctx context.Context, meta *binaryMetadata) error {
+	return m.reg.putMetadata(ctx, meta)
 }
 
 func (m *marshallerImpl) getClassName(ctx context.Context, platform MarshallerPlatform, typeId int32) (string, error) {
@@ -125,30 +131,54 @@ func (m *marshallerImpl) clearRegistry() {
 
 func (m *marshallerImpl) registerBinarylizable(factory func() Binarylizable) {
 	empty := factory()
-	var typeName string
-	if typeNameAware, ok := empty.(TypeNameAware); ok {
-		typeName = typeNameAware.TypeName()
-	} else {
-		typeName = reflect.ValueOf(empty).Elem().Type().Name()
-	}
-	typeId := m.idMapper.TypeId(typeName)
-	m.binarylizableFactories.Store(typeId, factory)
+	m.registerTypeFactory(empty, factory)
 }
 
-func (m *marshallerImpl) clearBinarylizableFactories() {
-	m.binarylizableFactories.Range(func(key, value interface{}) bool {
-		m.binarylizableFactories.Delete(key)
-		return true
-	})
+func (m *marshallerImpl) registerEnum(factory func(ord int) Enum) {
+	empty := factory(0)
+	m.registerTypeFactory(empty, factory)
+}
+
+func (m *marshallerImpl) registerTypeFactory(emptyVal interface{}, factory interface{}) {
+	typeName, err := typeNameByReflection(emptyVal)
+	if err != nil {
+		panic(fmt.Errorf("failed to register type %T: %w", emptyVal, err))
+	}
+	typeId := m.idMapper.TypeId(typeName)
+	m.typeFactories.Store(typeId, factory)
 }
 
 func (m *marshallerImpl) getBinarylizableFactory(typeId int32) (func() Binarylizable, bool) {
-	val, ok := m.binarylizableFactories.Load(typeId)
+	val, ok := m.typeFactories.Load(typeId)
 	if ok {
-		return val.(func() Binarylizable), ok
+		factory, ok := val.(func() Binarylizable)
+		if !ok {
+			return nil, false
+		}
+		return factory, ok
 	} else {
 		return nil, false
 	}
+}
+
+func (m *marshallerImpl) getEnumFactory(typeId int32) (func(int) Enum, bool) {
+	val, ok := m.typeFactories.Load(typeId)
+	if ok {
+		factory, ok := val.(func(int) Enum)
+		if !ok {
+			return nil, false
+		}
+		return factory, ok
+	} else {
+		return nil, false
+	}
+}
+
+func (m *marshallerImpl) clearTypeFactories() {
+	m.typeFactories.Range(func(key, value interface{}) bool {
+		m.typeFactories.Delete(key)
+		return true
+	})
 }
 
 func (m *marshallerImpl) checkBinaryConfiguration(ctx context.Context) error {
@@ -488,31 +518,20 @@ func (m *marshallerImpl) marshal(ctx context.Context, writer BinaryOutputStream,
 		}
 	case []interface{}:
 		{
-			writer.WriteType(ObjectArrayType)
-			if err := m.writeInterfaceSlice(ctx, writer, val); err != nil {
+			if err := m.marshallObjectArray(ctx, writer, val); err != nil {
 				return err
 			}
 		}
 	case Collection:
 		{
-			if val.IsNull() {
-				writer.WriteType(NullType)
-			} else {
-				writer.WriteType(CollectionType)
-				if err := m.writeCollection(ctx, writer, val); err != nil {
-					return err
-				}
+			if err := m.marshallCollection(ctx, writer, val); err != nil {
+				return err
 			}
 		}
 	case Map:
 		{
-			if val.IsNull() {
-				writer.WriteType(NullType)
-			} else {
-				writer.WriteType(MapType)
-				if err := m.writeMap(ctx, writer, val); err != nil {
-					return err
-				}
+			if err := m.marshallMap(ctx, writer, val); err != nil {
+				return err
 			}
 		}
 	case BinaryObject:
@@ -525,19 +544,46 @@ func (m *marshallerImpl) marshal(ctx context.Context, writer BinaryOutputStream,
 				return err
 			}
 		}
+	case BinaryEnumArray:
+		{
+			if val.IsNull() {
+				writer.WriteType(NullType)
+			} else {
+				writer.WriteType(EnumArrayType)
+				writeClass(writer, &igniteType{
+					typeId:   val.elType.TypeId(),
+					typeName: val.elType.TypeName(),
+				})
+				err := writeSequence(writer, len(val.data), func(output BinaryOutputStream, idx int) error {
+					enum := val.data[idx]
+					if enum != nil {
+						writer.WriteBytes(enum.Data())
+					} else {
+						writer.WriteType(NullType)
+					}
+					return nil
+				})
+				if err != nil {
+					return err
+				}
+			}
+		}
+	case Enum:
+		if err := marshalEnum(ctx, m, writer, val); err != nil {
+			return err
+		}
 	default:
-		switch reflect.ValueOf(val).Kind() {
+		t := reflect.TypeOf(val)
+		switch t.Kind() {
 		case reflect.Map:
 			{
-				writer.WriteType(MapType)
-				if err := m.writeGoMap(ctx, writer, reflect.ValueOf(val)); err != nil {
+				if err := m.marshallReflectMap(ctx, writer, reflect.ValueOf(val)); err != nil {
 					return err
 				}
 			}
 		case reflect.Slice:
 			{
-				writer.WriteType(ObjectArrayType)
-				if err := m.writeReflectSlice(ctx, writer, reflect.ValueOf(val)); err != nil {
+				if err := m.marshallReflectSlice(ctx, writer, reflect.ValueOf(val)); err != nil {
 					return err
 				}
 			}
@@ -675,9 +721,25 @@ func getTypeId(val interface{}) (TypeDesc, error) {
 		{
 			return DecimalArrayType, nil
 		}
-	case BinaryObject, Binarylizable:
+	case BinaryObject:
+		{
+			if t.IsEnum() {
+				return EnumType, nil
+			} else {
+				return BinaryObjectType, nil
+			}
+		}
+	case Binarylizable:
 		{
 			return BinaryObjectType, nil
+		}
+	case BinaryEnumArray:
+		{
+			return EnumArrayType, nil
+		}
+	case Enum:
+		{
+			return EnumType, nil
 		}
 	case []interface{}:
 		{
@@ -693,8 +755,13 @@ func getTypeId(val interface{}) (TypeDesc, error) {
 		}
 	default:
 		{
-			switch reflect.ValueOf(t).Kind() {
+			t := reflect.TypeOf(val)
+			switch t.Kind() {
 			case reflect.Slice:
+				_, ok := reflect.Zero(t.Elem()).Interface().(Enum)
+				if ok {
+					return EnumArrayType, nil
+				}
 				return ObjectArrayType, nil
 			case reflect.Map:
 				return MapType, nil
@@ -931,6 +998,26 @@ func (m *marshallerImpl) unmarshal(ctx context.Context, reader BinaryInputStream
 			}
 			return m.tryConvertToBinarylizable(ctx, bo)
 		}
+	case EnumType, BinaryEnumType, EnumArrayType:
+		{
+			startPos := reader.Position() - 1
+			enumCls, err := readClass(reader)
+			if err != nil {
+				return nil, fmt.Errorf("failed to read enum cls: %w", err)
+			}
+			factory, hasFactory := m.getEnumFactory(enumCls.typeId)
+			if payloadType == EnumArrayType {
+				if hasFactory {
+					return m.readEnumArray(reader, factory)
+				}
+				return m.readBinaryEnumArray(ctx, reader, &enumCls)
+			} else {
+				if hasFactory {
+					return m.readEnum(reader, factory)
+				}
+				return m.readBinaryEnum(ctx, reader, &enumCls, startPos)
+			}
+		}
 	case wrappedObjectType:
 		{
 			bo, err := m.readBinaryObject(reader, true)
@@ -939,6 +1026,8 @@ func (m *marshallerImpl) unmarshal(ctx context.Context, reader BinaryInputStream
 			}
 			return m.tryConvertToBinarylizable(ctx, bo)
 		}
+	case ClassType:
+		return readClass(reader)
 	default:
 		return nil, fmt.Errorf("type %d is not supported", payloadType)
 	}
@@ -1003,50 +1092,186 @@ func (m *marshallerImpl) readBinaryObject(reader BinaryInputStream, wrapped bool
 	}, nil
 }
 
-func (m *marshallerImpl) readIgniteObjectArray(ctx context.Context, reader BinaryInputStream) ([]interface{}, error) {
-	if reader.ReadInt32() == int32(unregisteredType) {
-		if _, err := unmarshalString(reader); err != nil {
-			return nil, err
+func (m *marshallerImpl) readBinaryEnumArray(ctx context.Context, reader BinaryInputStream, cls *igniteType) (arr BinaryEnumArray, err error) {
+	typeId := cls.typeId
+	if typeId == int32(unregisteredType) {
+		typeId = m.binaryIdMapper().TypeId(cls.typeName)
+	}
+	meta, err0 := m.getMetadata(ctx, typeId)
+	if err0 != nil {
+		err = fmt.Errorf("failed to read enum array: %w", err)
+		return
+	}
+	if meta == nil {
+		err = fmt.Errorf("no metadata found for typeId=%d", typeId)
+		return
+	}
+	arr.elType = meta
+	arr.data, err = readSlice[BinaryObject](reader, func(i int, stream BinaryInputStream) (BinaryObject, error) {
+		if err0 := ensureAvailable(reader, byteBytes); err0 != nil {
+			return nil, err0
 		}
+		t := TypeDesc(reader.ReadInt8())
+		switch t {
+		case NullType:
+			return nil, nil
+		case EnumType, BinaryEnumType:
+			startPos := reader.Position() - 1
+			enumCls, err0 := readClass(reader)
+			if err0 != nil {
+				return nil, fmt.Errorf("failed to read enum array: %w", err0)
+			}
+			return m.readBinaryEnum(ctx, stream, &enumCls, startPos)
+		default:
+			return nil, fmt.Errorf("failed to read enum array, type is not expected: %s", t)
+		}
+	})
+	if err == nil {
+		arr.isNotNull = true
+	}
+	return
+}
+
+func (m *marshallerImpl) readBinaryEnum(ctx context.Context, reader BinaryInputStream, enumCls *igniteType, startPos int) (BinaryObject, error) {
+	enum := &binaryEnum{
+		typeId:   enumCls.typeId,
+		typeName: enumCls.typeName,
+		marsh:    m,
+	}
+	if err := ensureAvailable(reader, intBytes); err != nil {
+		return nil, err
+	}
+	enum.ord = reader.ReadInt32()
+	size := reader.Position() - startPos
+	reader.SetPosition(startPos)
+	enum.data = reader.ReadBytes(size)
+	enum.data[0] = byte(EnumType)
+	meta, err := m.getMetadata(ctx, enum.typeId)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get binary object metadata: %w", err)
+	}
+	if !meta.isEnum {
+		return nil, fmt.Errorf("invalid data from server: type id=%d is not an enum: %s", enum.typeId, enum.typeName)
+	}
+	enum.name = meta.ordToName[enum.ord]
+	return enum, nil
+}
+
+func (m *marshallerImpl) readEnumArray(reader BinaryInputStream, factory func(int) Enum) (ret interface{}, err error) {
+	if err = ensureAvailable(reader, intBytes); err != nil {
+		return
+	}
+	sz := int(reader.ReadInt32())
+	empty := factory(0)
+	enumT := reflect.TypeOf(empty)
+	slice := reflect.MakeSlice(reflect.SliceOf(enumT), 0, sz)
+	zero := reflect.Zero(enumT)
+
+	err = readSequence(reader, sz, func(i int, stream BinaryInputStream) error {
+		if err0 := ensureAvailable(reader, byteBytes); err0 != nil {
+			return err0
+		}
+		t := TypeDesc(reader.ReadInt8())
+		switch t {
+		case NullType:
+			slice = reflect.Append(slice, zero)
+			return nil
+		case EnumType, BinaryEnumType:
+			_, err0 := readClass(reader)
+			if err0 != nil {
+				return fmt.Errorf("failed to read enum array: %w", err0)
+			}
+			enum, err0 := m.readEnum(reader, factory)
+			if err0 != nil {
+				return fmt.Errorf("failed to read enum array: %w", err0)
+			}
+			slice = reflect.Append(slice, reflect.ValueOf(enum))
+			return nil
+		default:
+			return fmt.Errorf("failed to read enum array, type is not expected: %s", t)
+		}
+	})
+	if err == nil {
+		ret = slice.Interface()
+	}
+	return
+}
+
+func (m *marshallerImpl) readEnum(reader BinaryInputStream, factory func(int) Enum) (Enum, error) {
+	if err := ensureAvailable(reader, intBytes); err != nil {
+		return nil, err
+	}
+	ord := int(reader.ReadInt32())
+	return factory(ord), nil
+}
+
+func (m *marshallerImpl) readIgniteObjectArray(ctx context.Context, reader BinaryInputStream) ([]interface{}, error) {
+	if _, err := readClass(reader); err != nil {
+		return nil, fmt.Errorf("failed to read object array: %w", err)
 	}
 	return readSlice(reader, func(_ int, reader BinaryInputStream) (interface{}, error) {
 		return m.unmarshal(ctx, reader)
 	})
 }
 
-func (m *marshallerImpl) readIgniteCollection(ctx context.Context, reader BinaryInputStream) (Collection, error) {
-	var err error
-	ret := Collection{isNotNull: true}
-	ret.values, err = readSlice(reader, func(idx int, reader0 BinaryInputStream) (interface{}, error) {
-		if idx == 0 {
-			ret.kind = CollectionKind(reader0.ReadInt8())
+func (m *marshallerImpl) readIgniteCollection(ctx context.Context, reader BinaryInputStream) (coll Collection, err error) {
+	if err = ensureAvailable(reader, intBytes); err != nil {
+		return
+	}
+	sz := int(reader.ReadInt32())
+	if err = ensureAvailable(reader, byteBytes); err != nil {
+		return
+	}
+	coll.kind = CollectionKind(reader.ReadInt8())
+	coll.values = make([]interface{}, sz)
+	err = readSequence(reader, sz, func(idx int, reader0 BinaryInputStream) error {
+		el, err0 := m.unmarshal(ctx, reader0)
+		if err0 != nil {
+			return err0
 		}
-		return m.unmarshal(ctx, reader0)
+		coll.values[idx] = el
+		return nil
 	})
-	return ret, err
+	if err == nil {
+		coll.isNotNull = true
+	}
+	return
 }
 
-func (m *marshallerImpl) readIgniteMap(ctx context.Context, reader BinaryInputStream) (Map, error) {
-	var err error
-	ret := Map{isNotNull: true}
-	ret.entries, err = readSlice(reader, func(idx int, reader0 BinaryInputStream) (KeyValue, error) {
-		if idx == 0 {
-			ret.kind = MapKind(reader0.ReadInt8())
-		}
-		kv := KeyValue{}
+func (m *marshallerImpl) readIgniteMap(ctx context.Context, reader BinaryInputStream) (coll Map, err error) {
+	if err = ensureAvailable(reader, intBytes); err != nil {
+		return
+	}
+	sz := int(reader.ReadInt32())
+	if err = ensureAvailable(reader, byteBytes); err != nil {
+		return
+	}
+	coll.kind = MapKind(reader.ReadInt8())
+	coll.entries = make([]KeyValue, sz)
+	err = readSequence(reader, sz, func(idx int, reader0 BinaryInputStream) error {
+		var key, val interface{}
 		var err0 error
-		if kv.Key, err0 = m.unmarshal(ctx, reader0); err0 != nil {
-			return kv, err0
+		if key, err0 = m.unmarshal(ctx, reader0); err0 != nil {
+			return err0
 		}
-		if kv.Value, err0 = m.unmarshal(ctx, reader0); err0 != nil {
-			return kv, err0
+		if val, err0 = m.unmarshal(ctx, reader0); err0 != nil {
+			return err0
 		}
-		return kv, err0
+		coll.entries[idx] = KeyValue{key, val}
+		return nil
 	})
-	return ret, err
+	if err == nil {
+		coll.isNotNull = true
+	}
+	return
 }
 
-func (m *marshallerImpl) writeInterfaceSlice(ctx context.Context, writer BinaryOutputStream, objArr []interface{}) error {
+func (m *marshallerImpl) marshallObjectArray(ctx context.Context, writer BinaryOutputStream, objArr []interface{}) error {
+	if objArr == nil {
+		writer.WriteType(NullType)
+		return nil
+	}
+	writer.WriteType(ObjectArrayType)
 	writer.WriteInt32(int32(objectType))
 	return writeSequence(writer, len(objArr), func(output BinaryOutputStream, idx int) error {
 		if err := m.marshal(ctx, output, objArr[idx]); err != nil {
@@ -1056,20 +1281,39 @@ func (m *marshallerImpl) writeInterfaceSlice(ctx context.Context, writer BinaryO
 	})
 }
 
-func (m *marshallerImpl) writeReflectSlice(ctx context.Context, writer BinaryOutputStream, objArr reflect.Value) error {
-	writer.WriteInt32(int32(objectType))
-	return writeSequence(writer, objArr.Len(), func(output BinaryOutputStream, idx int) error {
-		value := objArr.Index(idx).Interface()
-		return m.marshal(ctx, writer, value)
+func (m *marshallerImpl) marshallReflectSlice(ctx context.Context, writer BinaryOutputStream, val reflect.Value) error {
+	elType := val.Type().Elem()
+	zVal, ok := reflect.Zero(elType).Interface().(Enum)
+	if ok {
+		writer.WriteType(EnumArrayType)
+
+		typeName, err := typeNameByReflection(zVal)
+		if err != nil {
+			return fmt.Errorf("failed to marshal enum array: %w", err)
+		}
+		typeId := m.binaryIdMapper().TypeId(typeName)
+		writeClass(writer, &igniteType{
+			typeId:   typeId,
+			typeName: typeName,
+		})
+	} else {
+		writer.WriteType(ObjectArrayType)
+		writer.WriteInt32(int32(objectType))
+	}
+	return writeSequence(writer, val.Len(), func(output BinaryOutputStream, idx int) error {
+		value := val.Index(idx).Interface()
+		return m.marshal(ctx, output, value)
 	})
 }
 
-func (m *marshallerImpl) writeCollection(ctx context.Context, writer BinaryOutputStream, collection Collection) error {
+func (m *marshallerImpl) marshallCollection(ctx context.Context, writer BinaryOutputStream, collection Collection) error {
+	if collection.IsNull() {
+		writer.WriteType(NullType)
+		return nil
+	}
+	writer.WriteType(CollectionType)
 	values := collection.Values()
-	return writeSequence(writer, len(values), func(output BinaryOutputStream, idx int) error {
-		if idx == 0 {
-			output.WriteInt8(int8(collection.Kind()))
-		}
+	return writeSequenceWithKind(writer, len(values), int8(collection.Kind()), func(output BinaryOutputStream, idx int) error {
 		if err := m.marshal(ctx, output, values[idx]); err != nil {
 			return err
 		}
@@ -1077,12 +1321,14 @@ func (m *marshallerImpl) writeCollection(ctx context.Context, writer BinaryOutpu
 	})
 }
 
-func (m *marshallerImpl) writeMap(ctx context.Context, writer BinaryOutputStream, collection Map) error {
+func (m *marshallerImpl) marshallMap(ctx context.Context, writer BinaryOutputStream, collection Map) error {
+	if collection.IsNull() {
+		writer.WriteType(NullType)
+		return nil
+	}
+	writer.WriteType(MapType)
 	entries := collection.Entries()
-	return writeSequence(writer, len(entries), func(output BinaryOutputStream, idx int) error {
-		if idx == 0 {
-			output.WriteInt8(int8(collection.Kind()))
-		}
+	return writeSequenceWithKind(writer, len(entries), int8(collection.Kind()), func(output BinaryOutputStream, idx int) error {
 		entry := entries[idx]
 		if err := m.marshal(ctx, output, entry.Key); err != nil {
 			return err
@@ -1094,12 +1340,14 @@ func (m *marshallerImpl) writeMap(ctx context.Context, writer BinaryOutputStream
 	})
 }
 
-func (m *marshallerImpl) writeGoMap(ctx context.Context, writer BinaryOutputStream, collection reflect.Value) error {
+func (m *marshallerImpl) marshallReflectMap(ctx context.Context, writer BinaryOutputStream, collection reflect.Value) error {
+	if collection.IsNil() {
+		writer.WriteType(NullType)
+		return nil
+	}
+	writer.WriteType(MapType)
 	keys := collection.MapKeys()
-	return writeSequence(writer, len(keys), func(output BinaryOutputStream, idx int) error {
-		if idx == 0 {
-			output.WriteInt8(int8(HashMap))
-		}
+	return writeSequenceWithKind(writer, len(keys), int8(HashMap), func(output BinaryOutputStream, idx int) error {
 		key := keys[idx]
 		if err := m.marshal(ctx, output, key.Interface()); err != nil {
 			return err
@@ -1204,7 +1452,7 @@ func checkNotNull(reader BinaryInputStream, expected TypeDesc) (bool, error) {
 		}
 	default:
 		{
-			return false, fmt.Errorf("unexpected type %d in stream", t)
+			return false, fmt.Errorf("unexpected type %s in stream", t)
 		}
 	}
 }
@@ -1263,6 +1511,29 @@ func unmarshalUuid(reader BinaryInputStream) (uuid.UUID, error) {
 		return uuid.Nil, err
 	}
 	return readUuid(reader)
+}
+
+func readClass(reader BinaryInputStream) (ret igniteType, err error) {
+	err = ensureAvailable(reader, intBytes)
+	if err != nil {
+		return
+	}
+	ret.typeId = reader.ReadInt32()
+	if ret.typeId == int32(unregisteredType) {
+		ret.typeName, err = unmarshalString(reader)
+		if err != nil {
+			err = fmt.Errorf("failed to read className for typeId %d: %w", ret.typeId, err)
+			return
+		}
+	}
+	return
+}
+
+func writeClass(writer BinaryOutputStream, cls *igniteType) {
+	writer.WriteInt32(cls.typeId)
+	if cls.typeId == int32(unregisteredType) {
+		marshalString(writer, cls.typeName)
+	}
 }
 
 func readTime(reader BinaryInputStream) (Time, error) {

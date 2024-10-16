@@ -801,7 +801,7 @@ type scanQueryOpts struct {
 
 type closureOpts struct {
 	cls      string
-	opts     []func(*binaryObjectOptions)
+	opts     []BinaryObjectOption
 	platform ServerClosurePlatform
 }
 
@@ -817,29 +817,33 @@ func makeClosureObject(ctx context.Context, cli *Client, cloOpts closureOpts) (B
 	return cli.CreateBinaryObject(ctx, cloOpts.cls, cloOpts.opts...)
 }
 
+type ClosureOption func(opts *closureOpts)
+
 // WithClosureField sets field value to server closure.
-func WithClosureField(name string, value interface{}) func(*closureOpts) {
+func WithClosureField(name string, value interface{}) ClosureOption {
 	return func(opts *closureOpts) {
 		opts.opts = append(opts.opts, WithField(name, value))
 	}
 }
 
 // WithServerClosurePlatform sets closure platform, [JavaServerClosure] by default
-func WithServerClosurePlatform(platform ServerClosurePlatform) func(*closureOpts) {
+func WithServerClosurePlatform(platform ServerClosurePlatform) ClosureOption {
 	return func(opts *closureOpts) {
 		opts.platform = platform
 	}
 }
 
+type ScanQueryOption func(opts *scanQueryOpts)
+
 // WithScanQueryKeepBinary sets flag that tell cluster to handle cache values as BinaryObject, not POJO.
-func WithScanQueryKeepBinary() func(*scanQueryOpts) {
+func WithScanQueryKeepBinary() ScanQueryOption {
 	return func(opts *scanQueryOpts) {
 		opts.keepBinary = true
 	}
 }
 
 // WithScanQueryFilter sets filter closure for filtering entries on cluster.
-func WithScanQueryFilter(clsName string, filterOpts ...func(cloOpts *closureOpts)) func(*scanQueryOpts) {
+func WithScanQueryFilter(clsName string, filterOpts ...ClosureOption) ScanQueryOption {
 	return func(opts *scanQueryOpts) {
 		cloOpts := closureOpts{
 			cls:      clsName,
@@ -853,7 +857,7 @@ func WithScanQueryFilter(clsName string, filterOpts ...func(cloOpts *closureOpts
 }
 
 // WithScanQueryPageSize sets cursor's page size.
-func WithScanQueryPageSize(sz int) func(queryOpts *scanQueryOpts) {
+func WithScanQueryPageSize(sz int) ScanQueryOption {
 	return func(queryOpts *scanQueryOpts) {
 		if sz > 0 {
 			queryOpts.pageSz = sz
@@ -862,14 +866,14 @@ func WithScanQueryPageSize(sz int) func(queryOpts *scanQueryOpts) {
 }
 
 // WithScanQueryLocal sets flag to perform query on local node (to which client is connected).
-func WithScanQueryLocal() func(queryOpts *scanQueryOpts) {
+func WithScanQueryLocal() ScanQueryOption {
 	return func(queryOpts *scanQueryOpts) {
 		queryOpts.isLocal = true
 	}
 }
 
 // WithScanQueryPartition sets partition to scan.
-func WithScanQueryPartition(part int) func(queryOpts *scanQueryOpts) {
+func WithScanQueryPartition(part int) ScanQueryOption {
 	return func(queryOpts *scanQueryOpts) {
 		if part > 0 {
 			queryOpts.partition = part
@@ -878,7 +882,7 @@ func WithScanQueryPartition(part int) func(queryOpts *scanQueryOpts) {
 }
 
 // Scan performs scan query over all entries of cache.
-func (cache *Cache) Scan(ctx context.Context, opts ...func(*scanQueryOpts)) (Cursor, error) {
+func (cache *Cache) Scan(ctx context.Context, opts ...ScanQueryOption) (Cursor, error) {
 	queryOpts := &scanQueryOpts{
 		keepBinary: false,
 		partition:  -1,

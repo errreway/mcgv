@@ -573,6 +573,9 @@ func readPrimitiveSliceFast[T primitives](br *binaryInputStreamImpl, elemSz int,
 }
 
 func readSlice[T any](reader BinaryInputStream, elemReader func(int, BinaryInputStream) (T, error)) ([]T, error) {
+	if err := ensureAvailable(reader, intBytes); err != nil {
+		return nil, err
+	}
 	sz := int(reader.ReadInt32())
 	coll := make([]T, sz)
 	err := readSequence(reader, sz, func(idx int, reader BinaryInputStream) error {
@@ -597,6 +600,18 @@ func readSequence(reader BinaryInputStream, length int, elemReader func(idx int,
 
 func writeSequence(writer BinaryOutputStream, length int, valueWriter func(output BinaryOutputStream, idx int) error) error {
 	writer.WriteInt32(int32(length))
+	for idx := 0; idx < length; idx++ {
+		err := valueWriter(writer, idx)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func writeSequenceWithKind(writer BinaryOutputStream, length int, kind int8, valueWriter func(output BinaryOutputStream, idx int) error) error {
+	writer.WriteInt32(int32(length))
+	writer.WriteInt8(kind)
 	for idx := 0; idx < length; idx++ {
 		err := valueWriter(writer, idx)
 		if err != nil {

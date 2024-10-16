@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"gitverse.ru/sbertech/ignite-go-client"
 	"go/ast"
 	"go/parser"
@@ -33,17 +34,32 @@ import (
 
 const (
 	structComment = "ignite:binarylizable"
+	enumComment   = "ignite:enum"
 )
 
 type Parser struct {
 	PkgName        string
 	BuildTags      string
 	Structs        []IgniteStruct
+	Enums          map[string]*IgniteEnum
 	Imports        []*ast.ImportSpec
 	Aliases        map[string]string
 	ReverseAliases map[string]string
 	FileName       string
 	IsDir          bool
+	Error          error
+}
+
+type IgniteEnum struct {
+	Name     string
+	TypeName string
+	Platform ignite.MarshallerPlatform
+	Values   map[string]EnumValue
+}
+
+type EnumValue struct {
+	Name   string
+	GoName string
 }
 
 type IgniteStruct struct {
@@ -69,6 +85,7 @@ type visitor struct {
 
 var typeNameRe = regexp.MustCompile(`typename="([^"]+)"`)
 var marshPlatformRe = regexp.MustCompile(`platform="([^"]+)"`)
+var enumNameRe = regexp.MustCompile(`name="([^"]+)"`)
 var wellKnownPackages = map[string]string{
 	"gitverse.ru/sbertech/ignite-go-client": "ignite",
 	"github.com/cockroachdb/apd/v3":         "apd",
@@ -78,13 +95,14 @@ var wellKnownPackages = map[string]string{
 	"fmt":                                   "fmt",
 }
 
-type structTypeInfo struct {
+type typeInfo struct {
 	typeName string
 	platform ignite.MarshallerPlatform
+	isEnum   bool
 }
 
-func (p *Parser) shouldSkip(comments *ast.CommentGroup) (shouldSkip bool, typeInfo structTypeInfo) {
-	typeInfo = structTypeInfo{
+func (p *Parser) shouldSkip(comments *ast.CommentGroup) (shouldSkip bool, tInfo typeInfo) {
+	tInfo = typeInfo{
 		typeName: "",
 		platform: ignite.JavaMarshaller,
 	}
@@ -106,19 +124,20 @@ func (p *Parser) shouldSkip(comments *ast.CommentGroup) (shouldSkip bool, typeIn
 		}
 		for _, comment := range strings.Split(comment, "\n") {
 			comment = strings.TrimSpace(comment)
-			if strings.HasPrefix(comment, structComment) {
+			if strings.HasPrefix(comment, structComment) || strings.HasPrefix(comment, enumComment) {
+				tInfo.isEnum = strings.HasPrefix(comment, enumComment)
 				shouldSkip = false
 				match := typeNameRe.FindStringSubmatch(comment)
 				if len(match) > 0 {
-					typeInfo.typeName = match[1]
+					tInfo.typeName = match[1]
 				}
 				match = marshPlatformRe.FindStringSubmatch(comment)
 				if len(match) > 0 {
 					switch strings.ToLower(match[1]) {
 					case "dotnet":
-						typeInfo.platform = ignite.DotNetMarshaller
+						tInfo.platform = ignite.DotNetMarshaller
 					case "java":
-						typeInfo.platform = ignite.JavaMarshaller
+						tInfo.platform = ignite.JavaMarshaller
 					}
 				}
 			}
@@ -128,6 +147,9 @@ func (p *Parser) shouldSkip(comments *ast.CommentGroup) (shouldSkip bool, typeIn
 }
 
 func (v *visitor) Visit(n ast.Node) (w ast.Visitor) {
+	if v.Error != nil {
+		return nil
+	}
 	switch n := n.(type) {
 	case *ast.Package:
 		return v
@@ -159,18 +181,31 @@ func (v *visitor) Visit(n ast.Node) (w ast.Visitor) {
 		}
 		return v
 	case *ast.TypeSpec:
-		shouldSkip, typeInfo := v.shouldSkip(n.Doc)
+		shouldSkip, tInfo := v.shouldSkip(n.Doc)
 		if shouldSkip {
-			return nil
+			break
 		}
 		v.name = n.Name.String()
-		typeName := typeInfo.typeName
+		typeName := tInfo.typeName
 		if len(typeName) > 0 {
 			v.typeName = typeName
 		} else {
 			v.typeName = v.name
 		}
-		v.platform = typeInfo.platform
+		v.platform = tInfo.platform
+		if tInfo.isEnum {
+			typeIdent, ok := n.Type.(*ast.Ident)
+			if ok && strings.Contains(typeIdent.Name, "int") {
+				v.Enums[v.name] = &IgniteEnum{
+					Name:     v.name,
+					TypeName: v.typeName,
+					Platform: v.platform,
+					Values:   make(map[string]EnumValue),
+				}
+			} else {
+				_, _ = fmt.Fprintf(os.Stderr, "skipped enum %s: invalid type %s\n", v.name, typeIdent.Name)
+			}
+		}
 		return v
 	case *ast.StructType:
 		strct := IgniteStruct{
@@ -181,18 +216,42 @@ func (v *visitor) Visit(n ast.Node) (w ast.Visitor) {
 		}
 		strct.Fields = v.parseFieldList(n.Fields)
 		v.Structs = append(v.Structs, strct)
-		return nil
+	case *ast.ValueSpec:
+		if typeIdent, ok := n.Type.(*ast.Ident); ok {
+			v.name = typeIdent.Name
+		}
+		enum := v.Enums[v.name]
+		if enum == nil {
+			break
+		}
+		for _, nameIdent := range n.Names {
+			name := nameIdent.Name
+			if name == "_" {
+				continue
+			}
+			enumName := name
+			if n.Comment != nil {
+				commentName := v.getEnumName(n.Comment.Text())
+				if len(commentName) > 0 {
+					enumName = commentName
+				}
+			}
+			enum.Values[name] = EnumValue{
+				GoName: name,
+				Name:   enumName,
+			}
+		}
 	}
 	return nil
 }
 
-func (p *Parser) parseFieldList(fl *ast.FieldList) []IgniteField {
+func (v *visitor) parseFieldList(fl *ast.FieldList) []IgniteField {
 	if fl == nil || fl.NumFields() == 0 {
 		return nil
 	}
 	out := make([]IgniteField, 0, fl.NumFields())
 	for _, field := range fl.List {
-		fds := p.getField(field)
+		fds := v.getField(field)
 		if len(fds) > 0 {
 			out = append(out, fds...)
 		}
@@ -200,7 +259,16 @@ func (p *Parser) parseFieldList(fl *ast.FieldList) []IgniteField {
 	return out
 }
 
-func (p *Parser) getField(f *ast.Field) []IgniteField {
+func (p *Parser) getEnumName(constComment string) string {
+	constComment = strings.TrimSpace(constComment)
+	match := enumNameRe.FindStringSubmatch(constComment)
+	if len(match) > 0 {
+		return match[1]
+	}
+	return ""
+}
+
+func (v *visitor) getField(f *ast.Field) []IgniteField {
 	sf := make([]IgniteField, 1)
 	// parse tag; otherwise field name is field tag
 	if f.Tag != nil {
@@ -223,8 +291,9 @@ func (p *Parser) getField(f *ast.Field) []IgniteField {
 		}
 	}
 
-	ignTyp, ok := p.parseType(f.Type)
+	ignTyp, ok := v.parseType(f.Type)
 	if !ok {
+		_, _ = fmt.Fprintf(os.Stderr, "skipped %s field of struct %s\n", f.Names[0].Name, v.name)
 		return nil
 	}
 	sf[0].Type = ignTyp
@@ -272,7 +341,7 @@ func (p *Parser) Parse() error {
 		}
 		ast.Walk(&visitor{Parser: p}, f)
 	}
-	return nil
+	return p.Error
 }
 
 func excludeTestFiles(fi os.FileInfo) bool {
@@ -556,8 +625,7 @@ func (m *MapType) OriginalGoType() string {
 	return m.GoType()
 }
 
-func (p *Parser) parseIgniteIdentType(t string) (fType IgniteType, ok bool) {
-	ok = true
+func (p *Parser) parseIgniteIdentType(t string) (fType IgniteType) {
 	switch t {
 	case "any":
 		fType = &InterfaceType{}
@@ -610,7 +678,6 @@ func (p *Parser) parseIgniteIdentType(t string) (fType IgniteType, ok bool) {
 		fType = &IdentType{ignite.MapType, t, t}
 	default:
 		fType = &IdentType{-2, t, t}
-		ok = false
 	}
 	return
 }
@@ -706,7 +773,7 @@ func isPrimitiveArray(t ignite.TypeDesc) bool {
 func (p *Parser) parseType(t ast.Expr) (IgniteType, bool) {
 	switch t := t.(type) {
 	case *ast.Ident:
-		return p.parseIgniteIdentType(t.Name)
+		return p.parseIgniteIdentType(t.Name), true
 	case *ast.MapType:
 		kElt, ok := p.parseType(t.Key)
 		if ok && kElt.IsScalar() && !kElt.IsPointer() {
@@ -747,6 +814,11 @@ func (p *Parser) parseType(t ast.Expr) (IgniteType, bool) {
 					igniteType: ignite.ObjectArrayType,
 					elType:     elt,
 				}, true
+			} else {
+				return &ArrayType{
+					igniteType: ignite.EnumArrayType,
+					elType:     elt,
+				}, true
 			}
 		}
 	case *ast.StarExpr:
@@ -764,10 +836,7 @@ func (p *Parser) parseType(t ast.Expr) (IgniteType, bool) {
 					pkgName = wellKnownPackages[pkgName]
 				}
 			}
-			elType, ok := p.parseIgniteIdentType(pkgName + "." + t.Sel.Name)
-			if ok {
-				return elType, true
-			}
+			return p.parseIgniteIdentType(pkgName + "." + t.Sel.Name), true
 		}
 	case *ast.InterfaceType:
 		return &InterfaceType{}, true

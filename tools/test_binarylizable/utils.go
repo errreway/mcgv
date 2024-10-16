@@ -12,6 +12,7 @@ import (
 	"log"
 	"math/rand"
 	"os"
+	"reflect"
 	"testing"
 )
 
@@ -85,6 +86,10 @@ func checkObjectArraysEqual[T any](t *testing.T, arr0, arr1 []T) {
 
 func checkElementsEqual(t *testing.T, el0, el1 interface{}) {
 	switch realEl0 := el0.(type) {
+	case ignite.Enum:
+		realEl1, ok := el1.(ignite.Enum)
+		require.True(t, ok)
+		checkEnumsEqual(t, realEl0, realEl1)
 	case ignite.BinaryObject:
 		realEl1, ok := el1.(ignite.BinaryObject)
 		require.True(t, ok)
@@ -134,15 +139,13 @@ func checkBinaryObjectArraysEqual(t *testing.T, arr0, arr1 []ignite.BinaryObject
 	}
 }
 
-func checkBinaryObjectsEqual(t *testing.T, obj0 ignite.BinaryObject, obj1 ignite.BinaryObject) {
-	require.Equal(t, obj0.HashCode(), obj1.HashCode())
-	require.Equal(t, obj0.Data(), obj1.Data())
+func checkBinaryObjectsEqual(t *testing.T, obj1 ignite.BinaryObject, obj2 ignite.BinaryObject) {
 	ctx := context.Background()
 
-	type1, err := obj0.Type(ctx)
+	type1, err := obj1.Type(ctx)
 	require.NoError(t, err)
 	require.NotNil(t, type1)
-	type2, err := obj1.Type(ctx)
+	type2, err := obj2.Type(ctx)
 	require.NoError(t, err)
 	require.NotNil(t, type2)
 
@@ -151,11 +154,19 @@ func checkBinaryObjectsEqual(t *testing.T, obj0 ignite.BinaryObject, obj1 ignite
 	require.Equal(t, type1.AffinityKeyName(), type2.AffinityKeyName())
 	require.Equal(t, type1.IsEnum(), type2.IsEnum())
 	require.Equal(t, type1.Fields(), type2.Fields())
+	require.Equal(t, type1.EnumNames(), type2.EnumNames())
+	require.Equal(t, type1.EnumName(obj1.EnumOrdinal()), type2.EnumName(obj1.EnumOrdinal()))
+
+	require.Equal(t, obj1.HashCode(), obj2.HashCode())
+	require.Equal(t, obj1.Data(), obj2.Data())
+	require.Equal(t, obj1.IsEnum(), obj2.IsEnum())
+	require.Equal(t, obj1.EnumOrdinal(), obj2.EnumOrdinal())
+	require.Equal(t, obj1.EnumName(), obj2.EnumName())
 
 	for _, fldName := range type1.Fields() {
-		fld1, err := obj0.Field(ctx, fldName)
+		fld1, err := obj1.Field(ctx, fldName)
 		require.NoError(t, err)
-		fld2, err := obj1.Field(ctx, fldName)
+		fld2, err := obj2.Field(ctx, fldName)
 		require.NoError(t, err)
 		checkElementsEqual(t, fld1, fld2)
 	}
@@ -169,6 +180,18 @@ func checkGoMapsEqual[K comparable, V any](t *testing.T, map0, map1 map[K]V) {
 			require.True(t, ok)
 			checkElementsEqual(t, v0, v1)
 		}
+	}
+}
+
+func checkEnumsEqual(t *testing.T, enum0, enum1 ignite.Enum) {
+	require.Equal(t, reflect.TypeOf(enum0), reflect.TypeOf(enum1))
+	require.Equal(t, enum0.Name(), enum1.Name())
+	require.Equal(t, enum0.Ordinal(), enum1.Ordinal())
+	require.Equal(t, enum0.Values(), enum1.Values())
+	for i, enum0Val := range enum0.Values() {
+		enum1Val := enum1.Values()[i]
+		require.Equal(t, enum0Val.Ordinal(), enum1Val.Ordinal())
+		require.Equal(t, enum0Val.Name(), enum1Val.Name())
 	}
 }
 

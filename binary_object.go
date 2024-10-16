@@ -3,6 +3,7 @@ package ignite
 import (
 	"context"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"gitverse.ru/sbertech/ignite-go-client/internal"
 	"reflect"
@@ -41,6 +42,12 @@ type BinaryObject interface {
 	Data() []byte
 	// HashCode returns hash code according to ApacheIgnite binary format specification.
 	HashCode() int32
+	// IsEnum returns true if this is a binary enum object, false otherwise.
+	IsEnum() bool
+	// EnumOrdinal returns enum ordinal of this instance if this is a binary enum object, 0 otherwise.
+	EnumOrdinal() int
+	// EnumName returns enum name of this instance if this is a binary enum object, empty string otherwise.
+	EnumName() string
 	// internal method
 	getTypeId() (int32, error)
 }
@@ -58,7 +65,7 @@ func (b BinaryBasicIdMapper) TypeId(typeName string) int32 {
 }
 
 func (b BinaryBasicIdMapper) FieldId(_ int32, fldName string) int32 {
-	return internal.HashCode(fldName)
+	return internal.HashCode(strings.ToLower(fldName))
 }
 
 type binaryObjectImpl struct {
@@ -158,6 +165,18 @@ func (b *binaryObjectImpl) Data() []byte {
 	return b.data
 }
 
+func (b *binaryObjectImpl) IsEnum() bool {
+	return false
+}
+
+func (b *binaryObjectImpl) EnumOrdinal() int {
+	return 0
+}
+
+func (b *binaryObjectImpl) EnumName() string {
+	return ""
+}
+
 func (b *binaryObjectImpl) getTypeId() (int32, error) {
 	if len(b.data) < headerLength {
 		return 0, fmt.Errorf("invalid binary object, data is corrupted")
@@ -236,6 +255,8 @@ type boField struct {
 }
 
 type binaryObjectOptions struct {
+	isEnum               bool
+	ord                  int32
 	typeName             string
 	affKeyName           string
 	fields               map[string]*boField
@@ -254,12 +275,15 @@ func newBinaryObject(ctx context.Context, marsh marshaller, opts *binaryObjectOp
 	}
 	if oldMeta != nil {
 		if opts.typeName != oldMeta.typeName {
-			return nil, fmt.Errorf("types have the same typeId %d: old %s vs %s", typeId, oldMeta.typeName,
+			return nil, fmt.Errorf("types have the same typeId %d: old %s vs new %s", typeId, oldMeta.typeName,
 				opts.typeName)
 		}
 		if opts.affKeyName != oldMeta.affKeyName {
-			return nil, fmt.Errorf("type %s with typeId %d has different affinity key field: %s vs %s",
+			return nil, fmt.Errorf("type %s with typeId %d has different affinity key field: old %s vs new %s",
 				opts.typeName, typeId, oldMeta.affKeyName, opts.affKeyName)
+		}
+		if oldMeta.isEnum {
+			return nil, fmt.Errorf("type %s with typeId %d has been already registered as enum", opts.typeName, typeId)
 		}
 	}
 	// For testing of class name registration
@@ -294,11 +318,9 @@ func newBinaryObject(ctx context.Context, marsh marshaller, opts *binaryObjectOp
 
 func marshalBinarylizable(ctx context.Context, marsh marshaller, outStream BinaryOutputStream, value Binarylizable) error {
 	bIdMapper := marsh.binaryIdMapper()
-	var typeName string
-	if typeNameAware, ok := value.(TypeNameAware); ok {
-		typeName = typeNameAware.TypeName()
-	} else {
-		typeName = reflect.ValueOf(value).Elem().Type().Name()
+	typeName, err := typeNameByReflection(value)
+	if err != nil {
+		return fmt.Errorf("invalid binarylizable %v: %w", value, err)
 	}
 	affKeyName := ""
 	if affKewAwareVal, ok := value.(AffinityKeyAware); ok {
@@ -312,12 +334,15 @@ func marshalBinarylizable(ctx context.Context, marsh marshaller, outStream Binar
 	}
 	if oldMeta != nil {
 		if typeName != oldMeta.typeName {
-			return fmt.Errorf("types have the same typeId %d: old %s vs %s", typeId, oldMeta.typeName,
+			return fmt.Errorf("types have the same typeId %d: old %s vs new %s", typeId, oldMeta.typeName,
 				typeName)
 		}
 		if affKeyName != oldMeta.affKeyName {
-			return fmt.Errorf("type %s with typeId %d has different affinity key field: %s vs %s",
+			return fmt.Errorf("type %s with typeId %d has different affinity key field: old %s vs new %s",
 				typeName, typeId, oldMeta.affKeyName, affKeyName)
+		}
+		if oldMeta.isEnum {
+			return fmt.Errorf("type %s with typeId %d has been already registered as enum", typeName, typeId)
 		}
 	}
 
@@ -478,7 +503,7 @@ func (bWriter *binaryWriterImpl) finalize(ctx context.Context) error {
 			cpy.typeId = marsh.binaryIdMapper().TypeId(meta.TypeName())
 		})
 	}
-	if err := marsh.putMetadata(ctx, meta.TypeId(), meta); err != nil {
+	if err := marsh.putMetadata(ctx, meta); err != nil {
 		return err
 	}
 	// Calculate and write hashcode
@@ -536,4 +561,37 @@ type TypeNameAware interface {
 type Binarylizable interface {
 	Write(ctx context.Context, writer BinaryWriter) error
 	Read(ctx context.Context, reader BinaryReader) error
+}
+
+type Enum interface {
+	Ordinal() int
+	Name() string
+	Values() []Enum
+}
+
+func typeNameByReflection(obj interface{}) (typeName string, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			switch err0 := r.(type) {
+			case string:
+				err = fmt.Errorf("failed to get type by reflection: %s", err0)
+			case error:
+				err = fmt.Errorf("failed to get type by reflection: %s", err0)
+			default:
+				err = errors.New("failed to get type by reflection")
+			}
+			typeName = ""
+		}
+	}()
+	if typeNameAware, ok := obj.(TypeNameAware); ok {
+		typeName = typeNameAware.TypeName()
+	} else {
+		value := reflect.ValueOf(obj)
+		if value.Kind() == reflect.Ptr || value.Kind() == reflect.Interface {
+			typeName = value.Elem().Type().String()
+		} else {
+			typeName = value.Type().String()
+		}
+	}
+	return
 }

@@ -57,6 +57,7 @@ func (suite *CacheTestSuite) TestCollections() {
 		{createTestBinaryObject(suite.T(), suite.client, 10), createTestBinaryObject(suite.T(), suite.client, 10)},
 		{createTestBinaryObject(suite.T(), suite.client, 10), createTestBinaryObject(suite.T(), suite.client, 20)},
 		{nil, "test", int32(10), createTestBinaryObject(suite.T(), suite.client, 20)},
+		{},
 	}
 
 	for _, factory := range factories {
@@ -78,6 +79,7 @@ func (suite *CacheTestSuite) TestCollections() {
 		{createTestBinaryObject(suite.T(), suite.client, 10), createTestBinaryObject(suite.T(), suite.client, 10)},
 		{createTestBinaryObject(suite.T(), suite.client, 10), createTestBinaryObject(suite.T(), suite.client, 20)},
 		{createTestBinaryObject(suite.T(), suite.client, 10), createTestBinaryObject(suite.T(), suite.client, 20), nil},
+		{},
 	}
 
 	for _, fixture := range boFixtures {
@@ -152,7 +154,14 @@ func (suite *CacheTestSuite) TestMaps() {
 		{"UserMap-fromMap", ToUserMap(map[string]int32{"test1": 1, "test2": 2})},
 		{"HashMap-fromMap", ToHashMap(map[string]int32{"test1": 1, "test2": 2})},
 		{"LinkedHashMap-fromMap", ToLinkedHashMap(map[string]int32{"test1": 1, "test2": 2})},
+		{"EmptyMap-HashMap-fromMap", ToHashMap(make(map[string]int32))},
+		{"EmptyMap-HashMap-fromKV", NewHashMap()},
+		{"EmptyMap-UserMap", ToUserMap(make(map[string]int32))},
+		{"EmptyMap-UserMap-fromKV", NewUserMap()},
+		{"EmptyMap-LinkedHashMap", ToLinkedHashMap(make(map[string]int32))},
+		{"EmptyMap-LinkedHashMap-fromKV", NewLinkedHashMap()},
 		{"GoMap", map[string]int32{"test1": 1, "test2": 2}},
+		{"GoMap-Empty", make(map[string]int32)},
 		{"GoMap-BinaryObject", map[string]BinaryObject{"test1": createTestBinaryObject(suite.T(), suite.client, 10), "test2": nil}},
 	}
 
@@ -253,6 +262,14 @@ func RequireIgniteTypesEqual(t *testing.T, expected, actual interface{}) {
 			actualBo, ok := actual.(BinaryObject)
 			require.True(t, ok)
 			RequireBinaryObjectsEqual(t, expected, actualBo)
+		}
+	case BinaryEnumArray:
+		{
+			actualArr, ok := actual.(BinaryEnumArray)
+			require.True(t, ok)
+			require.Equal(t, actualArr.elType.TypeId(), actualArr.elType.TypeId())
+			require.Equal(t, actualArr.elType.TypeName(), actualArr.elType.TypeName())
+			RequireIgniteTypesEqual(t, expected.data, actualArr.data)
 		}
 	default:
 		if reflect.ValueOf(expected).Kind() == reflect.Map {
@@ -355,8 +372,6 @@ func ElementEqual(expected, actual interface{}) bool {
 }
 
 func RequireBinaryObjectsEqual(t *testing.T, obj1 BinaryObject, obj2 BinaryObject) {
-	require.Equal(t, obj1.HashCode(), obj2.HashCode())
-	require.Equal(t, obj1.Data(), obj2.Data())
 	ctx := context.Background()
 
 	type1, err := obj1.Type(ctx)
@@ -371,6 +386,14 @@ func RequireBinaryObjectsEqual(t *testing.T, obj1 BinaryObject, obj2 BinaryObjec
 	require.Equal(t, type1.AffinityKeyName(), type2.AffinityKeyName())
 	require.Equal(t, type1.IsEnum(), type2.IsEnum())
 	require.Equal(t, type1.Fields(), type2.Fields())
+	require.Equal(t, type1.EnumNames(), type2.EnumNames())
+	require.Equal(t, type1.EnumName(obj1.EnumOrdinal()), type2.EnumName(obj1.EnumOrdinal()))
+
+	require.Equal(t, obj1.HashCode(), obj2.HashCode())
+	require.Equal(t, obj1.Data(), obj2.Data())
+	require.Equal(t, obj1.IsEnum(), obj2.IsEnum())
+	require.Equal(t, obj1.EnumOrdinal(), obj2.EnumOrdinal())
+	require.Equal(t, obj1.EnumName(), obj2.EnumName())
 
 	for _, fldName := range type1.Fields() {
 		fld1, err := obj1.Field(ctx, fldName)
@@ -384,6 +407,32 @@ func RequireBinaryObjectsEqual(t *testing.T, obj1 BinaryObject, obj2 BinaryObjec
 func createTestBinaryObject(t *testing.T, cli *Client, id int32) BinaryObject {
 	ret, err := cli.CreateBinaryObject(context.Background(), "TEST_VALUE",
 		WithField("id", id), WithField("name", fmt.Sprintf("name_%d", id)))
+	require.NoError(t, err)
+	return ret
+}
+
+func createTestEnum(t *testing.T, cli *Client) BinaryObject {
+	ctx := context.Background()
+	err := cli.RegisterEnumMetadata(ctx, "TEST_ENUM", map[string]int{"VAL1": 0, "VAL2": 1, "VAL3": 2})
+	require.NoError(t, err)
+	ord := rand.Int() % 3
+	enum, err := cli.CreateBinaryObject(ctx, "TEST_ENUM", WithEnumOrdinal(ord))
+	require.NoError(t, err)
+	return enum
+}
+
+func createTestEnumArray(t *testing.T, cli *Client) BinaryEnumArray {
+	var arr []BinaryObject
+	for i := 0; i < 10; i++ {
+		if i%2 == 0 {
+			arr = append(arr, createTestEnum(t, cli))
+		} else {
+			arr = append(arr, nil)
+		}
+	}
+	typ, err := arr[0].Type(context.Background())
+	require.NoError(t, err)
+	ret, err := NewEnumArray(typ, arr...)
 	require.NoError(t, err)
 	return ret
 }

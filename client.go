@@ -7,7 +7,9 @@ import (
 	"fmt"
 	"gitverse.ru/sbertech/ignite-go-client/internal"
 	"gitverse.ru/sbertech/ignite-go-client/logger"
+	"math"
 	"net"
+	"reflect"
 	"strconv"
 	"strings"
 	"time"
@@ -240,7 +242,7 @@ func (cli *Client) DestroyCache(ctx context.Context, name string) error {
 }
 
 // SqlQuery executes SQL query with the specified parameters on the Ignite server side and returns a Cursor for result obtaining.
-func (cli *Client) SqlQuery(ctx context.Context, sql string, opts ...func(queryOpts *sqlQueryOpts) error) (Cursor, error) {
+func (cli *Client) SqlQuery(ctx context.Context, sql string, opts ...SqlQueryOption) (Cursor, error) {
 	queryOpts := &sqlQueryOpts{
 		timeout:         -1,
 		pageSize:        1024,
@@ -311,8 +313,10 @@ func (cli *Client) newCache(name string) *Cache {
 	}
 }
 
+type BinaryObjectOption func(*binaryObjectOptions)
+
 // WithAffinityKeyName sets affinity key field for binary object.
-func WithAffinityKeyName(affKeyName string) func(opt *binaryObjectOptions) {
+func WithAffinityKeyName(affKeyName string) BinaryObjectOption {
 	return func(opt *binaryObjectOptions) {
 		affKeyName = strings.TrimSpace(affKeyName)
 		if len(affKeyName) == 0 {
@@ -323,11 +327,14 @@ func WithAffinityKeyName(affKeyName string) func(opt *binaryObjectOptions) {
 }
 
 // WithField sets field with specified name and value for binary object.
-func WithField(name string, value interface{}) func(opt *binaryObjectOptions) {
+func WithField(name string, value interface{}) BinaryObjectOption {
 	return func(opt *binaryObjectOptions) {
 		name = strings.TrimSpace(name)
 		if len(name) == 0 {
 			return
+		}
+		if len(opt.fields) == 0 {
+			opt.fields = make(map[string]*boField)
 		}
 		_, ok := opt.fields[name]
 		if !ok {
@@ -341,11 +348,14 @@ func WithField(name string, value interface{}) func(opt *binaryObjectOptions) {
 }
 
 // WithNullField sets field with specified name, type and nil value for binary object.
-func WithNullField(name string, typeId TypeDesc) func(opt *binaryObjectOptions) {
+func WithNullField(name string, typeId TypeDesc) BinaryObjectOption {
 	return func(opt *binaryObjectOptions) {
 		name = strings.TrimSpace(name)
 		if len(name) == 0 {
 			return
+		}
+		if len(opt.fields) == 0 {
+			opt.fields = make(map[string]*boField)
 		}
 		_, ok := opt.fields[name]
 		if !ok {
@@ -359,32 +369,77 @@ func WithNullField(name string, typeId TypeDesc) func(opt *binaryObjectOptions) 
 }
 
 // WithMarshallerPlatform sets specific platform when register binary type in cluster.
-func WithMarshallerPlatform(platform MarshallerPlatform) func(opt *binaryObjectOptions) {
+func WithMarshallerPlatform(platform MarshallerPlatform) BinaryObjectOption {
 	return func(opt *binaryObjectOptions) {
 		opt.platform = platform
 	}
 }
 
+// WithEnumOrdinal sets specific enum ordinal and flag that binary enum should be created. WARNING: Client.RegisterEnumMetadata
+// should be called before creating binary enum.
+func WithEnumOrdinal(ord int) BinaryObjectOption {
+	return func(opt *binaryObjectOptions) {
+		opt.isEnum = true
+		opt.ord = int32(ord)
+	}
+}
+
+var errTypeNameEmpty = errors.New("type name is empty")
+
 // CreateBinaryObject creates BinaryObject with specified type name and options.
-func (cli *Client) CreateBinaryObject(ctx context.Context, typeName string, opts ...func(*binaryObjectOptions)) (BinaryObject, error) {
+func (cli *Client) CreateBinaryObject(ctx context.Context, typeName string, opts ...BinaryObjectOption) (BinaryObject, error) {
 	typeName = strings.TrimSpace(typeName)
 	if len(typeName) == 0 {
-		return nil, fmt.Errorf("type name is empty")
+		return nil, errTypeNameEmpty
 	}
 	boOpts := &binaryObjectOptions{
-		typeName:    typeName,
-		fields:      make(map[string]*boField),
-		fieldsOrder: make([]string, 0),
-		platform:    JavaMarshaller,
+		typeName: typeName,
+		platform: JavaMarshaller,
+		ord:      math.MinInt32,
 	}
 	for _, opt := range opts {
 		opt(boOpts)
 	}
+	if boOpts.isEnum {
+		return newBinaryEnum(ctx, cli.marsh, boOpts)
+	}
 	return newBinaryObject(ctx, cli.marsh, boOpts)
 }
 
-func (cli *Client) RegisterBinarylizable(factory func() Binarylizable) {
-	cli.marsh.registerBinarylizable(factory)
+// RegisterEnumMetadata registers binary enum metadata with specified type name and names-to-ordinals mapping.
+// should be called before creating binary enum with CreateBinaryObject
+func (cli *Client) RegisterEnumMetadata(ctx context.Context, typeName string, nameToOrd map[string]int) error {
+	typeName = strings.TrimSpace(typeName)
+	if len(typeName) == 0 {
+		return errTypeNameEmpty
+	}
+	return registerEnumMeta(ctx, cli.marsh, typeName, nameToOrd)
+}
+
+func RegisterType[T Binarylizable](cli *Client) error {
+	var empty T
+	typ := reflect.TypeOf(empty)
+	if typ.Kind() != reflect.Ptr {
+		return fmt.Errorf("failed to register type %T: type must be a pointer", empty)
+	}
+	var elem = typ.Elem()
+	cli.marsh.registerBinarylizable(func() Binarylizable {
+		return reflect.New(elem).Interface().(Binarylizable)
+	})
+	return nil
+}
+
+func RegisterEnum[T Enum](cli *Client) error {
+	var empty T
+	typ := reflect.TypeOf(empty)
+	if !reflect.ValueOf(0).CanConvert(typ) {
+		return fmt.Errorf("failed to register type %T: type must be a convertable to int", empty)
+	}
+	cli.marsh.registerEnum(func(ord int) Enum {
+		ordVal := reflect.ValueOf(ord).Convert(typ)
+		return ordVal.Interface().(T)
+	})
+	return nil
 }
 
 // Version returns current connection protocol version.

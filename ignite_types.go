@@ -229,3 +229,12 @@ func newIgniteMap(kind MapKind, entries ...KeyValue) Map {
 		isNotNull: true,
 	}
 }
+
+type igniteType struct {
+	typeId   int32
+	typeName string
+}
+
+func (ignT *igniteType) String() string {
+	return fmt.Sprintf("class [typeId=%d, typeName=%s]", ignT.typeId, ignT.typeName)
+}

@@ -294,11 +294,12 @@ func (o *SpecialArrays) Read(ctx context.Context, reader ign.BinaryReader) error
 	return nil
 }
 
-func RegisterSpecialsIgniteTypes(cli *ign.Client) {
-	cli.RegisterBinarylizable(func() ign.Binarylizable {
-		return &Specials{}
-	})
-	cli.RegisterBinarylizable(func() ign.Binarylizable {
-		return &SpecialArrays{}
-	})
+func RegisterSpecialsIgniteTypes(cli *ign.Client) error {
+	if err := ign.RegisterType[*Specials](cli); err != nil {
+		return err
+	}
+	if err := ign.RegisterType[*SpecialArrays](cli); err != nil {
+		return err
+	}
+	return nil
 }

@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 	testing2 "gitverse.ru/sbertech/ignite-go-client/internal/testing"
+	"math"
 	"math/rand"
 	"reflect"
 	"runtime"
@@ -34,6 +35,8 @@ func (suite *BinaryObjectTestSuite) TestBasic() {
 		{testLargeBinaryObject, false},
 		{testDifferentFieldTypes, false},
 		{testUnregisteredTypes, false},
+		{testBinaryEnumsAsFields, false},
+		{testBinaryEnumsAsValues, false},
 	}...)
 }
 
@@ -222,9 +225,11 @@ func testDifferentFieldTypes(t *testing.T, cli *Client, cache *Cache) {
 		{"linkedHashMap", ToLinkedHashMap(map[string]int32{"test1": 1, "test2": 2})},
 		{"linkedHashMapMixed", NewLinkedHashMap([]KeyValue{{"test1", createTestBinaryObject(t, cli, 10)}, {int32(10), "test"}}...)},
 		{"hashMapGo", map[string]BinaryObject{"test1": createTestBinaryObject(t, cli, 10), "test2": createTestBinaryObject(t, cli, 20)}},
+		{"enum", createTestEnum(t, cli)},
+		{"enumArray", createTestEnumArray(t, cli)},
 	}
 	ctx := context.Background()
-	opts := make([]func(*binaryObjectOptions), 0)
+	opts := make([]BinaryObjectOption, 0)
 	for _, field := range fields {
 		opts = append(opts, WithField(field.name, field.value))
 	}
@@ -412,6 +417,267 @@ func testMergeMetadata(t *testing.T, cli *Client, _ *Cache, clearRegistry bool) 
 		}...)
 	})
 	runChecks(4, []string{"id", "name"}, checks)
+
+	// Check changing to enum fail
+	if clearRegistry {
+		cli.marsh.clearRegistry()
+	}
+
+	err = cli.RegisterEnumMetadata(ctx, "MERGED", map[string]int{"VAL1": 0})
+	require.ErrorContains(t, err, "has been already registered as non enum")
+
+	// Check first time creation of enum without supplying enum names
+	if clearRegistry {
+		cli.marsh.clearRegistry()
+	}
+	_, err = cli.CreateBinaryObject(ctx, "ENUM_MERGED", WithEnumOrdinal(0))
+	require.ErrorContains(t, err, "no previous binary metadata was registered for ENUM_MERGED")
+
+	// Check creating already registered enum without supplying enum ordinals
+	if clearRegistry {
+		cli.marsh.clearRegistry()
+	}
+	err = cli.RegisterEnumMetadata(ctx, "ENUM_MERGED", map[string]int{"VAL1": 0})
+	require.NoError(t, err)
+	enum0, err := cli.CreateBinaryObject(ctx, "ENUM_MERGED", WithEnumOrdinal(0))
+	require.NoError(t, err)
+	require.Equal(t, enum0.EnumOrdinal(), 0)
+	require.Equal(t, enum0.EnumName(), "VAL1")
+	if clearRegistry {
+		cli.marsh.clearRegistry()
+	}
+	enum1, err := cli.CreateBinaryObject(ctx, "ENUM_MERGED", WithEnumOrdinal(0))
+	require.NoError(t, err)
+	RequireBinaryObjectsEqual(t, enum0, enum1)
+
+	// Check invalid default ordinal
+	if clearRegistry {
+		cli.marsh.clearRegistry()
+	}
+	_, err = cli.CreateBinaryObject(ctx, "ENUM_MERGED", WithEnumOrdinal(math.MinInt32))
+	require.ErrorContains(t, err, fmt.Sprintf("invalid ordinal %d", math.MinInt32))
+
+	// Check merging with conflicting enum names.
+	if clearRegistry {
+		cli.marsh.clearRegistry()
+	}
+	err = cli.RegisterEnumMetadata(ctx, "ENUM_MERGED", map[string]int{"VAL0": 0})
+	require.ErrorContains(t, err, "conflicting enum names for ordinal 0: old VAL1 vs new VAL0")
+
+	// Check merging with conflicting enum ordinals.
+	if clearRegistry {
+		cli.marsh.clearRegistry()
+	}
+	err = cli.RegisterEnumMetadata(ctx, "ENUM_MERGED", map[string]int{"VAL1": 1})
+	require.ErrorContains(t, err, "conflicting enum ordinals for name VAL1: old 0 vs new 1")
+
+	// Check merging -- adding field
+	if clearRegistry {
+		cli.marsh.clearRegistry()
+	}
+	_, err = cli.CreateBinaryObject(ctx, "ENUM_MERGED", WithField("id", 10))
+	require.ErrorContains(t, err, "has been already registered as enum")
+
+	// OK merging
+	if clearRegistry {
+		cli.marsh.clearRegistry()
+	}
+	err = cli.RegisterEnumMetadata(ctx, "ENUM_MERGED", map[string]int{"VAL1": 0, "VAL2": 1})
+	require.NoError(t, err)
+	enum2, err := cli.CreateBinaryObject(ctx, "ENUM_MERGED", WithEnumOrdinal(0))
+	require.NoError(t, err)
+	RequireBinaryObjectsEqual(t, enum2, enum1)
+	RequireBinaryObjectsEqual(t, enum2, enum0)
+
+	enumT, err := enum0.Type(ctx)
+	require.NoError(t, err)
+	require.Equal(t, enumT.EnumNames(), map[string]int{"VAL1": 0, "VAL2": 1})
+
+	// OK merging -- only add new name to ordinal
+	if clearRegistry {
+		cli.marsh.clearRegistry()
+	}
+	err = cli.RegisterEnumMetadata(ctx, "ENUM_MERGED", map[string]int{"VAL3": 2})
+	require.NoError(t, err)
+	enum3, err := cli.CreateBinaryObject(ctx, "ENUM_MERGED", WithEnumOrdinal(0))
+	require.NoError(t, err)
+	RequireBinaryObjectsEqual(t, enum3, enum2)
+	RequireBinaryObjectsEqual(t, enum3, enum1)
+	RequireBinaryObjectsEqual(t, enum3, enum0)
+
+	enumT, err = enum0.Type(ctx)
+	require.NoError(t, err)
+	require.Equal(t, enumT.EnumNames(), map[string]int{"VAL1": 0, "VAL2": 1, "VAL3": 2})
+
+	for i := 0; i < 3; i++ {
+		enum, err := cli.CreateBinaryObject(ctx, "ENUM_MERGED", WithEnumOrdinal(i))
+		require.NoError(t, err)
+		require.Equal(t, enum.EnumOrdinal(), i)
+		require.Equal(t, enum.EnumName(), enumT.EnumName(i))
+	}
+}
+
+func testBinaryEnumsAsFields(t *testing.T, cli *Client, cache *Cache) {
+	ctx := context.Background()
+	err := cli.RegisterEnumMetadata(ctx, "ru.gitverse.sbertech.client.filters.TestEnum$Enum",
+		map[string]int{"VAL1": 0, "VAL2": 1, "VAL3": 2})
+	require.NoError(t, err)
+	enumFactory := func(ord int) BinaryObject {
+		enum, err := cli.CreateBinaryObject(ctx, "ru.gitverse.sbertech.client.filters.TestEnum$Enum",
+			WithEnumOrdinal(ord))
+		require.NoError(t, err)
+		return enum
+	}
+	enumType, err := enumFactory(0).Type(ctx)
+	require.NoError(t, err)
+	binaryObjectFactory := func(id int, ord int, arr []int) BinaryObject {
+		opts := []BinaryObjectOption{WithField("id", id)}
+		opts = append(opts, WithField("enumField", enumFactory(ord)))
+		if len(arr) == 0 {
+			opts = append(opts, WithNullField("enumArrayField", EnumArrayType))
+		} else {
+			enums := make([]BinaryObject, len(arr))
+			for i, ord := range arr {
+				enums[i] = enumFactory(ord)
+			}
+			enumArray, err := NewEnumArray(enumType, enums...)
+			require.NoError(t, err)
+			opts = append(opts, WithField("enumArrayField", enumArray))
+		}
+
+		ret, err := cli.CreateBinaryObject(ctx, "ru.gitverse.sbertech.client.filters.TestEnum", opts...)
+		require.NoError(t, err)
+		return ret
+	}
+	for i := 0; i < 6; i++ {
+		var ords []int
+		if i%2 == 0 {
+			ords = []int{0, 1}
+		}
+		val := binaryObjectFactory(i, i%3, ords)
+		err = cache.Put(ctx, i, val)
+		require.NoError(t, err)
+	}
+
+	scanOpts := [][]ScanQueryOption{
+		{
+			WithScanQueryKeepBinary(),
+			WithScanQueryFilter("ru.gitverse.sbertech.client.filters.TestEnumBinaryObjectFilter", WithClosureField("val", enumFactory(0))),
+		},
+		{
+			WithScanQueryFilter("ru.gitverse.sbertech.client.filters.TestEnumFilter", WithClosureField("val", enumFactory(0))),
+		},
+	}
+	for _, opts := range scanOpts {
+		cur, err := cache.Scan(ctx, opts...)
+		require.NoError(t, err)
+
+		cnt := 0
+		for cur.Next() {
+			var id int64
+			var bo BinaryObject
+			err = cur.Scan(&id, &bo)
+			require.NoError(t, err)
+
+			val, err := cache.Get(ctx, id)
+			require.NoError(t, err)
+			realBo := val.(BinaryObject)
+			RequireIgniteTypesEqual(t, bo, realBo)
+			cnt++
+		}
+		require.NoError(t, cur.Err())
+		require.GreaterOrEqual(t, cnt, 1)
+	}
+}
+
+func testBinaryEnumsAsValues(t *testing.T, cli *Client, cache *Cache) {
+	ctx := context.Background()
+	err := cli.RegisterEnumMetadata(ctx, "ru.gitverse.sbertech.client.filters.TestEnum$Enum",
+		map[string]int{"VAL1": 0, "VAL2": 1, "VAL3": 2})
+	require.NoError(t, err)
+	enumFactory := func(ord int) BinaryObject {
+		enum, err := cli.CreateBinaryObject(ctx, "ru.gitverse.sbertech.client.filters.TestEnum$Enum", WithEnumOrdinal(ord))
+		require.NoError(t, err)
+		return enum
+	}
+	enumType, err := enumFactory(0).Type(ctx)
+	require.NoError(t, err)
+	enumArrayFactory := func(arr []int) BinaryEnumArray {
+		enums := make([]BinaryObject, len(arr))
+		for i, ord := range arr {
+			enums[i] = enumFactory(ord)
+		}
+		enumArray, err := NewEnumArray(enumType, enums...)
+		require.NoError(t, err)
+		return enumArray
+	}
+
+	for _, isArray := range []bool{false, true} {
+		testName := t.Name()
+		if isArray {
+			testName += "-enumArray"
+		} else {
+			testName += "-enum"
+		}
+		t.Run(testName, func(t *testing.T) {
+			for i := 0; i < 6; i++ {
+				var val interface{}
+				if isArray {
+					var ords []int
+					if i%2 == 0 {
+						ords = []int{i % 3, 0}
+					}
+					val = enumArrayFactory(ords)
+				} else {
+					val = enumFactory(i % 3)
+				}
+				err = cache.Put(ctx, i, val)
+				require.NoError(t, err)
+			}
+
+			var scanOpts [][]ScanQueryOption
+			if isArray {
+				scanOpts = [][]ScanQueryOption{
+					{
+						WithScanQueryKeepBinary(),
+						WithScanQueryFilter("ru.gitverse.sbertech.client.filters.EnumArrayBinaryObjectFilter", WithClosureField("val", enumFactory(0))),
+					},
+					{
+						WithScanQueryFilter("ru.gitverse.sbertech.client.filters.EnumArrayFilter", WithClosureField("val", enumFactory(0))),
+					},
+				}
+			} else {
+				scanOpts = [][]ScanQueryOption{
+					{
+						WithScanQueryKeepBinary(),
+						WithScanQueryFilter("ru.gitverse.sbertech.client.filters.EnumBinaryObjectFilter", WithClosureField("val", enumFactory(0))),
+					},
+					{
+						WithScanQueryFilter("ru.gitverse.sbertech.client.filters.EnumFilter", WithClosureField("val", enumFactory(0))),
+					},
+				}
+			}
+			for _, opts := range scanOpts {
+				cur, err := cache.Scan(ctx, opts...)
+				require.NoError(t, err)
+
+				cnt := 0
+				for cur.Next() {
+					var id int64
+					var val interface{}
+					err = cur.Scan(&id, &val)
+					require.NoError(t, err)
+
+					realVal, err := cache.Get(ctx, id)
+					require.NoError(t, err)
+					RequireIgniteTypesEqual(t, val, realVal)
+					cnt++
+				}
+				require.NoError(t, cur.Err())
+				require.GreaterOrEqual(t, cnt, 1)
+			}
+		})
+	}
 }
 
 func (suite *BinaryObjectTestSuite) createIndexedCache() *Cache {

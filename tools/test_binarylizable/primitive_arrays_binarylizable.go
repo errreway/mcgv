@@ -165,8 +165,9 @@ func (o *PrimitiveArrays) Read(ctx context.Context, reader ignite.BinaryReader) 
 	return nil
 }
 
-func RegisterPrimitiveArrays(cli *ignite.Client) {
-	cli.RegisterBinarylizable(func() ignite.Binarylizable {
-		return &PrimitiveArrays{}
-	})
+func RegisterPrimitiveArrays(cli *ignite.Client) error {
+	if err := ignite.RegisterType[*PrimitiveArrays](cli); err != nil {
+		return err
+	}
+	return nil
 }

@@ -34,8 +34,10 @@ func (cursor *sqlQueryCursor) Columns() []string {
 	return cursor.columns
 }
 
+type SqlQueryOption func(*sqlQueryOpts) error
+
 // WithSqlQueryArguments Sets query arguments.
-func WithSqlQueryArguments(args ...interface{}) func(queryOpts *sqlQueryOpts) error {
+func WithSqlQueryArguments(args ...interface{}) SqlQueryOption {
 	return func(queryOpts *sqlQueryOpts) error {
 		queryOpts.args = args
 		return nil
@@ -43,7 +45,7 @@ func WithSqlQueryArguments(args ...interface{}) func(queryOpts *sqlQueryOpts) er
 }
 
 // WithSqlQueryTimeout Sets query execution timeout.
-func WithSqlQueryTimeout(timeout time.Duration) func(queryOpts *sqlQueryOpts) error {
+func WithSqlQueryTimeout(timeout time.Duration) SqlQueryOption {
 	return func(queryOpts *sqlQueryOpts) error {
 		queryOpts.timeout = timeout
 		return nil
@@ -51,7 +53,7 @@ func WithSqlQueryTimeout(timeout time.Duration) func(queryOpts *sqlQueryOpts) er
 }
 
 // WithSqlQueryLocal Sets flag indicating that query must be executed only on the node to which current client is connected.
-func WithSqlQueryLocal() func(queryOpts *sqlQueryOpts) error {
+func WithSqlQueryLocal() SqlQueryOption {
 	return func(queryOpts *sqlQueryOpts) error {
 		queryOpts.isLocal = true
 		return nil
@@ -59,7 +61,7 @@ func WithSqlQueryLocal() func(queryOpts *sqlQueryOpts) error {
 }
 
 // WithSqlQueryColocated Sets hint flag indicating that the elements of query selection are colocated together on the same node.
-func WithSqlQueryColocated() func(queryOpts *sqlQueryOpts) error {
+func WithSqlQueryColocated() SqlQueryOption {
 	return func(queryOpts *sqlQueryOpts) error {
 		queryOpts.isColocated = true
 		return nil
@@ -67,7 +69,7 @@ func WithSqlQueryColocated() func(queryOpts *sqlQueryOpts) error {
 }
 
 // WithSqlQueryJoinOrderEnforced Sets a flag indicating that the query optimizer is not allowed to reorder table joins.
-func WithSqlQueryJoinOrderEnforced() func(queryOpts *sqlQueryOpts) error {
+func WithSqlQueryJoinOrderEnforced() SqlQueryOption {
 	return func(queryOpts *sqlQueryOpts) error {
 		queryOpts.isJoinOrderEnforced = true
 		return nil
@@ -75,7 +77,7 @@ func WithSqlQueryJoinOrderEnforced() func(queryOpts *sqlQueryOpts) error {
 }
 
 // WithSqlQueryDistributedJoins Sets a flag indicating that distributed joins are allowed.
-func WithSqlQueryDistributedJoins() func(queryOpts *sqlQueryOpts) error {
+func WithSqlQueryDistributedJoins() SqlQueryOption {
 	return func(queryOpts *sqlQueryOpts) error {
 		queryOpts.isDistributedJoins = true
 		return nil
@@ -83,7 +85,7 @@ func WithSqlQueryDistributedJoins() func(queryOpts *sqlQueryOpts) error {
 }
 
 // WithSqlQueryPageSize Sets query result page size.
-func WithSqlQueryPageSize(pageSize int) func(queryOpts *sqlQueryOpts) error {
+func WithSqlQueryPageSize(pageSize int) SqlQueryOption {
 	return func(queryOpts *sqlQueryOpts) error {
 		if pageSize <= 0 {
 			return errors.New("page size must be greater than zero")
@@ -94,7 +96,7 @@ func WithSqlQueryPageSize(pageSize int) func(queryOpts *sqlQueryOpts) error {
 }
 
 // WithSqlQueryPartitions Sets list of partitions. The query will be executed only on nodes which are primary for specified partitions.
-func WithSqlQueryPartitions(partitions ...int) func(queryOpts *sqlQueryOpts) error {
+func WithSqlQueryPartitions(partitions ...int) SqlQueryOption {
 	return func(queryOpts *sqlQueryOpts) error {
 		queryOpts.partitions = partitions
 		return nil
@@ -102,7 +104,7 @@ func WithSqlQueryPartitions(partitions ...int) func(queryOpts *sqlQueryOpts) err
 }
 
 // WithSqlQuerySchema Sets SQL Schema name.
-func WithSqlQuerySchema(schema string) func(queryOpts *sqlQueryOpts) error {
+func WithSqlQuerySchema(schema string) SqlQueryOption {
 	return func(queryOpts *sqlQueryOpts) error {
 		schema = strings.TrimSpace(schema)
 		if len(schema) == 0 {
@@ -114,7 +116,7 @@ func WithSqlQuerySchema(schema string) func(queryOpts *sqlQueryOpts) error {
 }
 
 // WithSqlQueryUpdateBatchSize Sets update internal batch size.
-func WithSqlQueryUpdateBatchSize(updateBatchSize int) func(queryOpts *sqlQueryOpts) error {
+func WithSqlQueryUpdateBatchSize(updateBatchSize int) SqlQueryOption {
 	return func(queryOpts *sqlQueryOpts) error {
 		if updateBatchSize < 1 {
 			return errors.New("update batch size must be greater than one")

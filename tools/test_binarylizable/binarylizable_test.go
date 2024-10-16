@@ -40,6 +40,9 @@ func (suite *BinarylizableTestSuite) TestBinarylizable() {
 		testBinarylizableObjectArrays,
 		testBinarylizableCollections,
 		testDotNetStruct,
+		testEnumsBasic,
+		testEnumsAsValues,
+		testEnumsAsFields,
 	)
 }
 
@@ -72,7 +75,8 @@ func (suite *BinarylizableTestSuite) TestAffinityKey() {
 	suite.runTests(
 		cacheFactory,
 		func(t *testing.T, cli *ignite.Client, cache *ignite.Cache) {
-			RegisterCollectionsIgniteTypes(cli)
+			err := RegisterCollectionsIgniteTypes(cli)
+			require.NoError(t, err)
 
 			key := &ComplexKey{
 				id:    rand.Int(),
@@ -156,11 +160,12 @@ func (suite *BinarylizableTestSuite) runTests(cacheFactory func(*ignite.Client) 
 }
 
 func testBinarylizablePrimitives(t *testing.T, cli *ignite.Client, cache *ignite.Cache) {
-	RegisterPrimitives(cli)
+	err := RegisterPrimitives(cli)
+	require.NoError(t, err)
 	ctx := context.Background()
 
 	empty := &Primitives{}
-	err := cache.Put(ctx, 1, empty)
+	err = cache.Put(ctx, 1, empty)
 	require.NoError(t, err)
 
 	val, err := cache.Get(ctx, 1)
@@ -176,11 +181,12 @@ func testBinarylizablePrimitives(t *testing.T, cli *ignite.Client, cache *ignite
 }
 
 func testBinarylizablePrimitiveArrays(t *testing.T, cli *ignite.Client, cache *ignite.Cache) {
-	RegisterPrimitiveArrays(cli)
+	err := RegisterPrimitiveArrays(cli)
+	require.NoError(t, err)
 	ctx := context.Background()
 
 	empty := &PrimitiveArrays{}
-	err := cache.Put(ctx, 1, empty)
+	err = cache.Put(ctx, 1, empty)
 	require.NoError(t, err)
 
 	val, err := cache.Get(ctx, 1)
@@ -196,13 +202,14 @@ func testBinarylizablePrimitiveArrays(t *testing.T, cli *ignite.Client, cache *i
 }
 
 func testBinarylizableSpecials(t *testing.T, cli *ignite.Client, cache *ignite.Cache) {
-	RegisterSpecialsIgniteTypes(cli)
+	err := RegisterSpecialsIgniteTypes(cli)
+	require.NoError(t, err)
 	ctx := context.Background()
 
 	empty := &Specials{
 		fTimestamp: time.Now().Truncate(0), // remove monotonic part
 	}
-	err := cache.Put(ctx, 1, empty)
+	err = cache.Put(ctx, 1, empty)
 	require.NoError(t, err)
 
 	val, err := cache.Get(ctx, 1)
@@ -218,11 +225,12 @@ func testBinarylizableSpecials(t *testing.T, cli *ignite.Client, cache *ignite.C
 }
 
 func testBinarylizableSpecialArrays(t *testing.T, cli *ignite.Client, cache *ignite.Cache) {
-	RegisterSpecialsIgniteTypes(cli)
+	err := RegisterSpecialsIgniteTypes(cli)
+	require.NoError(t, err)
 	ctx := context.Background()
 
 	empty := &SpecialArrays{}
-	err := cache.Put(ctx, 1, empty)
+	err = cache.Put(ctx, 1, empty)
 	require.NoError(t, err)
 
 	val, err := cache.Get(ctx, 1)
@@ -238,11 +246,12 @@ func testBinarylizableSpecialArrays(t *testing.T, cli *ignite.Client, cache *ign
 }
 
 func testBinarylizableObjectArrays(t *testing.T, cli *ignite.Client, cache *ignite.Cache) {
-	RegisterCollectionsIgniteTypes(cli)
+	err := RegisterCollectionsIgniteTypes(cli)
+	require.NoError(t, err)
 	ctx := context.Background()
 
 	empty := &ObjectArrays{}
-	err := cache.Put(ctx, 1, empty)
+	err = cache.Put(ctx, 1, empty)
 	require.NoError(t, err)
 
 	val, err := cache.Get(ctx, 1)
@@ -261,7 +270,8 @@ func testBinarylizableObjectArrays(t *testing.T, cli *ignite.Client, cache *igni
 }
 
 func testBinarylizableCollections(t *testing.T, cli *ignite.Client, cache *ignite.Cache) {
-	RegisterCollectionsIgniteTypes(cli)
+	err := RegisterCollectionsIgniteTypes(cli)
+	require.NoError(t, err)
 	boFactory := func() ignite.BinaryObject {
 		return createBinaryObject(t, cli)
 	}
@@ -269,7 +279,7 @@ func testBinarylizableCollections(t *testing.T, cli *ignite.Client, cache *ignit
 	ctx := context.Background()
 
 	empty := &Collections{}
-	err := cache.Put(ctx, 1, empty)
+	err = cache.Put(ctx, 1, empty)
 	require.NoError(t, err)
 
 	val, err := cache.Get(ctx, 1)
@@ -363,7 +373,8 @@ func testBinarylizableCollections(t *testing.T, cli *ignite.Client, cache *ignit
 }
 
 func testDotNetStruct(t *testing.T, cli *ignite.Client, cache *ignite.Cache) {
-	RegisterCollectionsIgniteTypes(cli)
+	err := RegisterCollectionsIgniteTypes(cli)
+	require.NoError(t, err)
 	ctx := context.Background()
 
 	expVal := &DotNetStruct{name: "test"}
@@ -379,6 +390,180 @@ func testDotNetStruct(t *testing.T, cli *ignite.Client, cache *ignite.Cache) {
 	realVal, err := cache.Get(ctx, "test")
 	require.NoError(t, err)
 	require.Equal(t, expVal, realVal)
+}
+
+func testEnumsBasic(t *testing.T, cli *ignite.Client, cache *ignite.Cache) {
+	err := RegisterEnumsIgniteTypes(cli)
+	require.NoError(t, err)
+
+	ctx := context.Background()
+	err = cache.Put(ctx, "test", SimpleEnumVal2)
+	require.NoError(t, err)
+
+	realVal, err := cache.Get(ctx, "test")
+	require.NoError(t, err)
+	checkElementsEqual(t, SimpleEnumVal2, realVal)
+
+	enumArr := []ignite.Enum{SimpleEnumVal2, SimpleEnumVal1, SimpleEnumVal4, nil}
+	err = cache.Put(ctx, "test", enumArr)
+	require.NoError(t, err)
+	realVal, err = cache.Get(ctx, "test")
+	require.NoError(t, err)
+	realArr, ok := realVal.([]interface{})
+	require.True(t, ok)
+	for i, v := range realArr {
+		checkElementsEqual(t, enumArr[i], v)
+	}
+}
+
+func testEnumsAsValues(t *testing.T, cli *ignite.Client, cache *ignite.Cache) {
+	ctx := context.Background()
+	for _, isArray := range []bool{false, true} {
+		testName := t.Name()
+		if isArray {
+			testName += "-enumArray"
+		} else {
+			testName += "-enum"
+		}
+		t.Run(testName, func(t *testing.T) {
+			for i := 0; i < 6; i++ {
+				var val interface{}
+				if isArray {
+					var ords []Enum
+					if i%2 == 0 {
+						ords = []Enum{Enum(i % 3), EnumVal1}
+					} else {
+						ords = []Enum{EnumVal3}
+					}
+					val = ords
+				} else {
+					val = Enum(i % 3)
+				}
+				err := cache.Put(ctx, i, val)
+				require.NoError(t, err)
+
+				realVal, err := cache.Get(ctx, i)
+				require.NoError(t, err)
+				if isArray {
+					arr, ok := val.([]Enum)
+					require.True(t, ok)
+					realArr, ok := realVal.([]interface{})
+					require.True(t, ok)
+					require.Equal(t, len(arr), len(realArr))
+					for i, v := range arr {
+						checkElementsEqual(t, v, realArr[i])
+					}
+				} else {
+					checkElementsEqual(t, val, realVal)
+				}
+				require.NoError(t, err)
+			}
+
+			var scanOpts [][]ignite.ScanQueryOption
+			if isArray {
+				scanOpts = [][]ignite.ScanQueryOption{
+					{
+						ignite.WithScanQueryKeepBinary(),
+						ignite.WithScanQueryFilter("ru.gitverse.sbertech.client.filters.EnumArrayBinaryObjectFilter",
+							ignite.WithClosureField("val", EnumVal1)),
+					},
+					{
+						ignite.WithScanQueryFilter("ru.gitverse.sbertech.client.filters.EnumArrayFilter",
+							ignite.WithClosureField("val", EnumVal1)),
+					},
+				}
+			} else {
+				scanOpts = [][]ignite.ScanQueryOption{
+					{
+						ignite.WithScanQueryKeepBinary(),
+						ignite.WithScanQueryFilter("ru.gitverse.sbertech.client.filters.EnumBinaryObjectFilter",
+							ignite.WithClosureField("val", EnumVal1)),
+					},
+					{
+						ignite.WithScanQueryFilter("ru.gitverse.sbertech.client.filters.EnumFilter",
+							ignite.WithClosureField("val", EnumVal1)),
+					},
+				}
+			}
+			for _, opts := range scanOpts {
+				cur, err := cache.Scan(ctx, opts...)
+				require.NoError(t, err)
+
+				cnt := 0
+				for cur.Next() {
+					var id int64
+					var val interface{}
+					err = cur.Scan(&id, &val)
+					require.NoError(t, err)
+
+					realVal, err := cache.Get(ctx, id)
+					require.NoError(t, err)
+					checkElementsEqual(t, val, realVal)
+					cnt++
+				}
+				require.NoError(t, cur.Err())
+				require.GreaterOrEqual(t, cnt, 1)
+			}
+		})
+	}
+}
+
+func testEnumsAsFields(t *testing.T, cli *ignite.Client, cache *ignite.Cache) {
+	err := RegisterEnumsIgniteTypes(cli)
+	require.NoError(t, err)
+	err = RegisterTestEnumsIgniteTypes(cli)
+	require.NoError(t, err)
+
+	ctx := context.Background()
+
+	for i := 0; i < 6; i++ {
+		var enumArray []Enum
+		if i%2 == 0 {
+			enumArray = []Enum{EnumVal1, EnumVal2}
+		}
+		val := &TestEnum{
+			id:             i,
+			enumField:      Enum(i % 3),
+			enumArrayField: enumArray,
+		}
+		err = cache.Put(ctx, i, val)
+		require.NoError(t, err)
+
+		realVal, err := cache.Get(ctx, i)
+		require.NoError(t, err)
+		checkElementsEqual(t, val, realVal)
+	}
+
+	scanOpts := [][]ignite.ScanQueryOption{
+		{
+			ignite.WithScanQueryKeepBinary(),
+			ignite.WithScanQueryFilter("ru.gitverse.sbertech.client.filters.TestEnumBinaryObjectFilter",
+				ignite.WithClosureField("val", EnumVal1)),
+		},
+		{
+			ignite.WithScanQueryFilter("ru.gitverse.sbertech.client.filters.TestEnumFilter",
+				ignite.WithClosureField("val", EnumVal1)),
+		},
+	}
+	for _, opts := range scanOpts {
+		cur, err := cache.Scan(ctx, opts...)
+		require.NoError(t, err)
+
+		cnt := 0
+		for cur.Next() {
+			var id int64
+			var val *TestEnum
+			err = cur.Scan(&id, &val)
+			require.NoError(t, err)
+
+			realVal, err := cache.Get(ctx, id)
+			require.NoError(t, err)
+			checkElementsEqual(t, val, realVal)
+			cnt++
+		}
+		require.NoError(t, cur.Err())
+		require.GreaterOrEqual(t, cnt, 1)
+	}
 }
 
 func genFullPrimitives() *Primitives {

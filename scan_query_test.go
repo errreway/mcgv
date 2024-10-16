@@ -67,7 +67,7 @@ type scanQueryFixture struct {
 	name             string
 	keyFactory       func(i int) interface{}
 	valueFactory     func(i int) interface{}
-	queryOptsFactory func() []func(*scanQueryOpts)
+	queryOptsFactory func() []ScanQueryOption
 	scanChecker      func(cursor Cursor)
 	rowsCountChecker func(int)
 }
@@ -89,8 +89,8 @@ func (suite *ScanQueryTestSuite) TestScanWithDifferentCursorSize() {
 			scanChecker: func(cursor Cursor) {
 				scanChecker[int32, BinaryObject](suite, cursor)
 			},
-			queryOptsFactory: func() []func(*scanQueryOpts) {
-				return []func(opts *scanQueryOpts){WithScanQueryPageSize(pageSize)}
+			queryOptsFactory: func() []ScanQueryOption {
+				return []ScanQueryOption{WithScanQueryPageSize(pageSize)}
 			},
 			rowsCountChecker: func(actualCount int) {
 				require.Equal(suite.T(), recordsCount, actualCount)
@@ -107,7 +107,7 @@ func (suite *ScanQueryTestSuite) TestScanWithDifferentCursorSize() {
 func (suite *ScanQueryTestSuite) TestScanWithPartitions() {
 	recordsCount := 2048
 	ctx := context.Background()
-	fixtureFactory := func(name string, rowsCount int, qOpts ...func(*scanQueryOpts)) scanQueryFixture {
+	fixtureFactory := func(name string, rowsCount int, qOpts ...ScanQueryOption) scanQueryFixture {
 		return scanQueryFixture{
 			name: name,
 			keyFactory: func(i int) interface{} {
@@ -121,7 +121,7 @@ func (suite *ScanQueryTestSuite) TestScanWithPartitions() {
 			scanChecker: func(cursor Cursor) {
 				scanChecker[int32, BinaryObject](suite, cursor)
 			},
-			queryOptsFactory: func() []func(*scanQueryOpts) {
+			queryOptsFactory: func() []ScanQueryOption {
 				return append(qOpts, WithScanQueryPageSize(10))
 			},
 			rowsCountChecker: func(actualCount int) {
@@ -163,9 +163,9 @@ func (suite *ScanQueryTestSuite) TestScanFilter() {
 					require.NoError(suite.T(), err)
 					return val
 				},
-				queryOptsFactory: func() []func(*scanQueryOpts) {
-					ret := make([]func(*scanQueryOpts), 0)
-					filterOpts := []func(opts *closureOpts){WithClosureField("name", fmt.Sprintf("name-%d", 10))}
+				queryOptsFactory: func() []ScanQueryOption {
+					ret := make([]ScanQueryOption, 0)
+					filterOpts := []ClosureOption{WithClosureField("name", fmt.Sprintf("name-%d", 10))}
 					if setCloPlatform {
 						filterOpts = append(filterOpts, WithServerClosurePlatform(JavaServerClosure))
 					}

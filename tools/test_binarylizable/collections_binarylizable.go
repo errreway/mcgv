@@ -400,26 +400,27 @@ func (o *DotNetStruct) Read(ctx context.Context, reader ign.BinaryReader) error 
 	return nil
 }
 
-func RegisterCollectionsIgniteTypes(cli *ign.Client) {
-	cli.RegisterBinarylizable(func() ign.Binarylizable {
-		return &ObjectArrays{}
-	})
-	cli.RegisterBinarylizable(func() ign.Binarylizable {
-		return &Collections{}
-	})
-	cli.RegisterBinarylizable(func() ign.Binarylizable {
-		return &SimpleKey{}
-	})
-	cli.RegisterBinarylizable(func() ign.Binarylizable {
-		return &SimpleStruct{}
-	})
-	cli.RegisterBinarylizable(func() ign.Binarylizable {
-		return &ComplexKey{}
-	})
-	cli.RegisterBinarylizable(func() ign.Binarylizable {
-		return &ComplexStruct{}
-	})
-	cli.RegisterBinarylizable(func() ign.Binarylizable {
-		return &DotNetStruct{}
-	})
+func RegisterCollectionsIgniteTypes(cli *ign.Client) error {
+	if err := ign.RegisterType[*ObjectArrays](cli); err != nil {
+		return err
+	}
+	if err := ign.RegisterType[*Collections](cli); err != nil {
+		return err
+	}
+	if err := ign.RegisterType[*SimpleKey](cli); err != nil {
+		return err
+	}
+	if err := ign.RegisterType[*SimpleStruct](cli); err != nil {
+		return err
+	}
+	if err := ign.RegisterType[*ComplexKey](cli); err != nil {
+		return err
+	}
+	if err := ign.RegisterType[*ComplexStruct](cli); err != nil {
+		return err
+	}
+	if err := ign.RegisterType[*DotNetStruct](cli); err != nil {
+		return err
+	}
+	return nil
 }

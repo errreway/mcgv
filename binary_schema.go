@@ -2,6 +2,7 @@ package ignite
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 )
@@ -29,6 +30,10 @@ type BinaryType interface {
 	IsEnum() bool
 	// Fields returns fields of the binary object.
 	Fields() []string
+	// EnumNames returns mapping of enum names to ordinals.
+	EnumNames() map[string]int
+	// EnumName returns corresponding value to ordinal.
+	EnumName(ord int) string
 }
 
 type binaryMetadata struct {
@@ -39,6 +44,8 @@ type binaryMetadata struct {
 	fields      map[string]binaryFieldMeta
 	fieldsOrder []string
 	schemas     map[int32]*binarySchema
+	ordToName   map[int32]string
+	nameToOrd   map[string]int32
 }
 
 func newBinaryMetadata(typeId int32, typeName string, affKeyName string) *binaryMetadata {
@@ -53,6 +60,21 @@ func newBinaryMetadata(typeId int32, typeName string, affKeyName string) *binary
 	}
 }
 
+func newEnumMetadata(typeId int32, typeName string, nameToOrd map[string]int32) *binaryMetadata {
+	ret := &binaryMetadata{
+		typeId:    typeId,
+		typeName:  typeName,
+		isEnum:    true,
+		ordToName: make(map[int32]string),
+		nameToOrd: make(map[string]int32),
+	}
+	for name, ord := range nameToOrd {
+		ret.ordToName[ord] = name
+		ret.nameToOrd[name] = ord
+	}
+	return ret
+}
+
 func (meta *binaryMetadata) addField(name string, typeId int32, fieldId int32) {
 	meta.fields[name] = binaryFieldMeta{typeId: typeId, fieldId: fieldId}
 	meta.fieldsOrder = append(meta.fieldsOrder, name)
@@ -65,21 +87,32 @@ func (meta *binaryMetadata) addSchema(schema binarySchema) {
 
 func (meta *binaryMetadata) copy(opts ...func(metadata *binaryMetadata)) *binaryMetadata {
 	cpy := binaryMetadata{
-		typeId:      meta.typeId,
-		typeName:    meta.typeName,
-		affKeyName:  meta.affKeyName,
-		isEnum:      meta.isEnum,
-		fields:      make(map[string]binaryFieldMeta),
-		fieldsOrder: make([]string, len(meta.fieldsOrder)),
-		schemas:     make(map[int32]*binarySchema),
+		typeId:     meta.typeId,
+		typeName:   meta.typeName,
+		affKeyName: meta.affKeyName,
+		isEnum:     meta.isEnum,
 	}
-	copy(cpy.fieldsOrder, meta.fieldsOrder)
-	for k, v := range meta.fields {
-		cpy.fields[k] = v
-	}
-	for k, v := range meta.schemas {
-		scCpy := v.copy()
-		cpy.schemas[k] = &scCpy
+	if cpy.isEnum {
+		cpy.ordToName = make(map[int32]string)
+		cpy.nameToOrd = make(map[string]int32)
+
+		for ord, name := range meta.ordToName {
+			cpy.ordToName[ord] = name
+			cpy.nameToOrd[name] = ord
+		}
+	} else {
+		cpy.fields = make(map[string]binaryFieldMeta)
+		cpy.fieldsOrder = make([]string, len(meta.fieldsOrder))
+		cpy.schemas = make(map[int32]*binarySchema)
+
+		copy(cpy.fieldsOrder, meta.fieldsOrder)
+		for k, v := range meta.fields {
+			cpy.fields[k] = v
+		}
+		for k, v := range meta.schemas {
+			scCpy := v.copy()
+			cpy.schemas[k] = &scCpy
+		}
 	}
 	for _, opt := range opts {
 		opt(&cpy)
@@ -107,6 +140,24 @@ func (meta *binaryMetadata) Fields() []string {
 	ret := make([]string, len(meta.fieldsOrder))
 	copy(ret, meta.fieldsOrder)
 	return ret
+}
+
+func (meta *binaryMetadata) EnumNames() map[string]int {
+	if !meta.isEnum {
+		return nil
+	}
+	ret := make(map[string]int, len(meta.nameToOrd))
+	for val, ord := range meta.nameToOrd {
+		ret[val] = int(ord)
+	}
+	return ret
+}
+
+func (meta *binaryMetadata) EnumName(ord int) string {
+	if !meta.isEnum {
+		return ""
+	}
+	return meta.ordToName[int32(ord)]
 }
 
 type binarySchema struct {
@@ -206,7 +257,7 @@ type binaryFieldMeta struct {
 type binaryMetadataRegistry interface {
 	getMetadata(ctx context.Context, typeId int32) (*binaryMetadata, error)
 	getSchema(ctx context.Context, typeId int32, schemaId int32) (*binarySchema, error)
-	putMetadata(ctx context.Context, typeId int32, meta *binaryMetadata) error
+	putMetadata(ctx context.Context, meta *binaryMetadata) error
 	getClassName(ctx context.Context, platform MarshallerPlatform, typeId int32) (string, error)
 	registerClassName(ctx context.Context, platform MarshallerPlatform, typeId int32, clsName string) error
 	clearRegistry()
@@ -216,6 +267,8 @@ type binaryMetadataRegistryImpl struct {
 	cache binaryMetadataRegistry
 	cli   *Client
 }
+
+var errNilMetadata = errors.New("nil metadata")
 
 func newBinaryMetadataRegistry(cli *Client) binaryMetadataRegistry {
 	return &binaryMetadataRegistryImpl{
@@ -248,8 +301,11 @@ func (r *binaryMetadataRegistryImpl) getSchema(ctx context.Context, typeId int32
 	return schema, nil
 }
 
-func (r *binaryMetadataRegistryImpl) putMetadata(ctx context.Context, typeId int32, meta *binaryMetadata) error {
-	old, _ := r.cache.getMetadata(ctx, typeId) // Cache cannot return error
+func (r *binaryMetadataRegistryImpl) putMetadata(ctx context.Context, meta *binaryMetadata) error {
+	if meta == nil {
+		return errNilMetadata
+	}
+	old, _ := r.cache.getMetadata(ctx, meta.TypeId()) // Cache cannot return error
 	shouldSent, err := mergeMetadata(old, meta)
 	if err != nil {
 		return err
@@ -259,7 +315,7 @@ func (r *binaryMetadataRegistryImpl) putMetadata(ctx context.Context, typeId int
 			return err
 		}
 	}
-	return r.cache.putMetadata(ctx, typeId, meta)
+	return r.cache.putMetadata(ctx, meta)
 }
 
 func (r *binaryMetadataRegistryImpl) getClassName(ctx context.Context, platform MarshallerPlatform, typeId int32) (string, error) {
@@ -351,9 +407,10 @@ func (r *binaryMetadataRegistryImpl) requestAndCacheBinaryMeta(ctx context.Conte
 		}
 	})
 	if binaryMeta != nil {
-		_ = r.cache.putMetadata(ctx, typeId, binaryMeta) // Cache cannot return error
+		_ = r.cache.putMetadata(ctx, binaryMeta) // Cache cannot return error
+		return binaryMeta.copy(), err
 	}
-	return binaryMeta, err
+	return nil, err
 }
 
 func (r *binaryMetadataRegistryImpl) sendBinaryMeta(ctx context.Context, meta *binaryMetadata) error {
@@ -361,9 +418,6 @@ func (r *binaryMetadataRegistryImpl) sendBinaryMeta(ctx context.Context, meta *b
 		return nil
 	}
 	var err error = nil
-	if meta.isEnum {
-		panic("enums are not supported")
-	}
 	r.cli.ch.send(ctx, opPutBinaryType, func(_ channel, output BinaryOutputStream) error {
 		output.WriteInt32(meta.typeId)
 		marshalString(output, meta.TypeName())
@@ -380,7 +434,17 @@ func (r *binaryMetadataRegistryImpl) sendBinaryMeta(ctx context.Context, meta *b
 		if err0 != nil {
 			return err0
 		}
-		output.WriteBool(meta.isEnum) // should be always false
+		output.WriteBool(meta.isEnum)
+		if meta.isEnum {
+			err0 = writeMap(output, meta.nameToOrd, func(_ BinaryOutputStream, name string, ord int32) error {
+				marshalString(output, name)
+				output.WriteInt32(ord)
+				return nil
+			})
+			if err0 != nil {
+				return err0
+			}
+		}
 		err0 = writeMap(output, meta.schemas, func(_ BinaryOutputStream, _ int32, schema *binarySchema) error {
 			output.WriteInt32(schema.schemaId)
 			return writeSequence(output, len(schema.fieldIds), func(_ BinaryOutputStream, idx int) error {
@@ -401,7 +465,6 @@ func (r *binaryMetadataRegistryImpl) sendBinaryMeta(ctx context.Context, meta *b
 func unmarshalBinaryMeta(reader BinaryInputStream) (*binaryMetadata, error) {
 	bMeta := &binaryMetadata{
 		typeId: reader.ReadInt32(),
-		isEnum: false, // Enums are not supported.
 	}
 	var err error
 	if bMeta.typeName, err = unmarshalString(reader); err != nil {
@@ -425,8 +488,21 @@ func unmarshalBinaryMeta(reader BinaryInputStream) (*binaryMetadata, error) {
 	if err != nil {
 		return nil, err
 	}
-	if reader.ReadBool() {
-		return nil, fmt.Errorf("enum types are not supported: typeId=%d, typeName=%s", bMeta.typeId, bMeta.typeName)
+	bMeta.isEnum = reader.ReadBool()
+	if bMeta.isEnum {
+		bMeta.ordToName = make(map[int32]string)
+		bMeta.nameToOrd, err = readMap[string, int32](reader, func(stream BinaryInputStream) (name string, ord int32, err0 error) {
+			name, err0 = unmarshalString(stream)
+			if err0 != nil {
+				return
+			}
+			ord = reader.ReadInt32()
+			bMeta.ordToName[ord] = name
+			return
+		})
+		if err != nil {
+			return nil, err
+		}
 	}
 	bMeta.schemas, err = readMap[int32, *binarySchema](reader, func(BinaryInputStream) (int32, *binarySchema, error) {
 		key := reader.ReadInt32()
@@ -483,15 +559,18 @@ func (r *binaryMetadataCache) getSchema(_ context.Context, typeId int32, schemaI
 	return &scCpy, nil
 }
 
-func (r *binaryMetadataCache) putMetadata(_ context.Context, typeId int32, meta *binaryMetadata) error {
+func (r *binaryMetadataCache) putMetadata(_ context.Context, meta *binaryMetadata) error {
+	if meta == nil {
+		return errNilMetadata
+	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	changed, err := mergeMetadata(r.metaData[typeId], meta)
+	changed, err := mergeMetadata(r.metaData[meta.TypeId()], meta)
 	if err != nil {
 		return err
 	}
 	if changed {
-		r.metaData[typeId] = meta
+		r.metaData[meta.TypeId()] = meta
 	}
 	return nil
 }
@@ -531,60 +610,99 @@ func mergeMetadata(oldMeta *binaryMetadata, meta *binaryMetadata) (bool, error) 
 		return true, nil
 	}
 	if oldMeta.typeId != meta.typeId {
-		return false, fmt.Errorf("type ids do not match: %d vs %d", oldMeta.typeId, meta.typeId)
+		return false, fmt.Errorf("type ids do not match: old %d vs new %d", oldMeta.typeId, meta.typeId)
 	}
 	if oldMeta.typeName != meta.typeName {
-		return false, fmt.Errorf("types have the same typeId %d: %s vs %s", meta.typeId, oldMeta.typeName, meta.typeName)
+		return false, fmt.Errorf("types have the same typeId %d: old %s vs new %s", meta.typeId, oldMeta.typeName, meta.typeName)
+	}
+	if oldMeta.isEnum != meta.isEnum {
+		return false, fmt.Errorf("both types must be either enums, or not: old %t vs new %t", oldMeta.isEnum, meta.isEnum)
 	}
 	if oldMeta.affKeyName != meta.affKeyName {
-		return false, fmt.Errorf("different affinity key fields: %s vs %s", oldMeta.affKeyName, meta.affKeyName)
+		return false, fmt.Errorf("different affinity key fields: old %s vs new %s", oldMeta.affKeyName, meta.affKeyName)
 	}
-	schemaChanged := false
-	// Copy fields from old schema to merged one's.
-	mergedFields := make(map[string]binaryFieldMeta, len(oldMeta.fields))
-	mergedFieldsOrder := make([]string, 0, len(oldMeta.fieldsOrder))
-	for _, field := range oldMeta.fieldsOrder {
-		mergedFieldsOrder = append(mergedFieldsOrder, field)
-		mergedFields[field] = oldMeta.fields[field]
-	}
-	// Check new schema, add new fields if found to merged one's.
-	for _, field := range meta.fieldsOrder {
-		fieldMeta := meta.fields[field]
-		oldFieldMeta, hasOldField := oldMeta.fields[field]
-		if hasOldField && oldFieldMeta.typeId != fieldMeta.typeId {
-			return false, fmt.Errorf("type %s with typeId %d has different type for field %s: %d vs %d",
-				meta.typeName, meta.typeId, field, oldFieldMeta.typeId, fieldMeta.typeId)
+	if meta.isEnum {
+		if len(meta.nameToOrd) == 0 {
+			return false, nil
 		}
-		if !hasOldField {
-			schemaChanged = true
-			mergedFields[field] = fieldMeta
+
+		mergedNameToOrd := make(map[string]int32, len(meta.nameToOrd)+len(oldMeta.nameToOrd))
+		mergedOrdToName := make(map[int32]string, len(mergedNameToOrd))
+		for name, ord := range oldMeta.nameToOrd {
+			mergedOrdToName[ord] = name
+			mergedNameToOrd[name] = ord
+		}
+
+		for name, ord := range meta.nameToOrd {
+			if prevName, ok := mergedOrdToName[ord]; ok && prevName != name {
+				return false, fmt.Errorf("conflicting enum names for ordinal %d: old %s vs new %s", ord, prevName, name)
+			}
+			if prevOrd, ok := mergedNameToOrd[name]; ok && prevOrd != ord {
+				return false, fmt.Errorf("conflicting enum ordinals for name %s: old %d vs new %d", name, prevOrd, ord)
+			}
+			mergedNameToOrd[name] = ord
+			mergedOrdToName[ord] = name
+		}
+
+		if len(mergedNameToOrd) > len(oldMeta.nameToOrd) {
+			*meta = binaryMetadata{
+				typeId:    meta.typeId,
+				typeName:  meta.typeName,
+				ordToName: mergedOrdToName,
+				nameToOrd: mergedNameToOrd,
+				isEnum:    true,
+			}
+			return true, nil
+		}
+		return false, nil
+	} else {
+		schemaChanged := false
+		// Copy fields from old schema to merged one's.
+		mergedFields := make(map[string]binaryFieldMeta, len(oldMeta.fields))
+		mergedFieldsOrder := make([]string, 0, len(oldMeta.fieldsOrder))
+		for _, field := range oldMeta.fieldsOrder {
 			mergedFieldsOrder = append(mergedFieldsOrder, field)
+			mergedFields[field] = oldMeta.fields[field]
 		}
-	}
-	// Copy old schemas' ids to ids of merged one's.
-	mergedSchemas := make(map[int32]*binarySchema, len(oldMeta.schemas))
-	for id, schema := range oldMeta.schemas {
-		scCpy := schema.copy()
-		mergedSchemas[id] = &scCpy
-	}
-	// Add new schemas' ids to merged one's.
-	for id, schema := range meta.schemas {
-		_, hasSchema := oldMeta.schemas[id]
-		if !hasSchema {
-			schemaChanged = true
+		// Check new schema, add new fields if found to merged one's.
+		for _, field := range meta.fieldsOrder {
+			fieldMeta := meta.fields[field]
+			oldFieldMeta, hasOldField := oldMeta.fields[field]
+			if hasOldField && oldFieldMeta.typeId != fieldMeta.typeId {
+				return false, fmt.Errorf("type %s with typeId %d has different type for field %s: old %d vs new %d",
+					meta.typeName, meta.typeId, field, oldFieldMeta.typeId, fieldMeta.typeId)
+			}
+			if !hasOldField {
+				schemaChanged = true
+				mergedFields[field] = fieldMeta
+				mergedFieldsOrder = append(mergedFieldsOrder, field)
+			}
+		}
+		// Copy old schemas' ids to ids of merged one's.
+		mergedSchemas := make(map[int32]*binarySchema, len(oldMeta.schemas))
+		for id, schema := range oldMeta.schemas {
 			scCpy := schema.copy()
 			mergedSchemas[id] = &scCpy
 		}
-	}
-	if schemaChanged {
-		*meta = binaryMetadata{
-			typeId:      meta.typeId,
-			typeName:    meta.typeName,
-			affKeyName:  meta.affKeyName,
-			fields:      mergedFields,
-			fieldsOrder: mergedFieldsOrder,
-			schemas:     mergedSchemas,
+		// Add new schemas' ids to merged one's.
+		for id, schema := range meta.schemas {
+			_, hasSchema := oldMeta.schemas[id]
+			if !hasSchema {
+				schemaChanged = true
+				scCpy := schema.copy()
+				mergedSchemas[id] = &scCpy
+			}
 		}
+		if schemaChanged {
+			*meta = binaryMetadata{
+				typeId:      meta.typeId,
+				typeName:    meta.typeName,
+				affKeyName:  meta.affKeyName,
+				fields:      mergedFields,
+				fieldsOrder: mergedFieldsOrder,
+				schemas:     mergedSchemas,
+			}
+		}
+		return schemaChanged, nil
 	}
-	return schemaChanged, nil
 }
