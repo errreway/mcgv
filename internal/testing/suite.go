@@ -4,7 +4,10 @@ package testing
 
 import (
 	"fmt"
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
+	"regexp"
+	"time"
 )
 
 type IgniteTestSuite struct {
@@ -54,4 +57,27 @@ func (suite *IgniteTestSuite) KillIgnite(idx int) error {
 	}()
 	err := ign.Kill()
 	return err
+}
+
+func (suite *IgniteTestSuite) WaitForTopologyVersion(topVer int, timeout time.Duration) bool {
+	if len(suite.grids) == 0 {
+		return false
+	}
+	reg, err := regexp.Compile(fmt.Sprintf("^Topology snapshot \\[ver=%d.*", topVer))
+	require.NoError(suite.T(), err)
+	return WaitForCondition(func() bool {
+		for _, grid := range suite.grids {
+			logFiles, err := GetLogFiles(grid.(*igniteInstanceImpl).params.InstanceIdx)
+			require.NoError(suite.T(), err)
+			res := false
+			for _, logFile := range logFiles {
+				res, err = MatchLog(reg, logFile)
+				require.NoError(suite.T(), err)
+				if !res {
+					return false
+				}
+			}
+		}
+		return true
+	}, timeout)
 }

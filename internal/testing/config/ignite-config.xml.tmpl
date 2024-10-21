@@ -10,6 +10,10 @@
         http://www.springframework.org/schema/util/spring-util.xsd">
 
     <bean id="grid.cfg" class="org.apache.ignite.configuration.IgniteConfiguration">
+        {{ if .ClientMode }}
+       <property name="clientMode" value="true"/>
+        {{ end }}
+
         <property name="binaryConfiguration">
             <bean class="org.apache.ignite.configuration.BinaryConfiguration">
                 {{ if .CompactFooter }}
@@ -70,12 +74,13 @@
             </bean>
         </property>
 
+        <property name="igniteInstanceName" value="srv_{{  .InstanceIdx  }}"/>
         <property name="consistentId" value="srv_{{  .InstanceIdx  }}"/>
 
         <property name="localHost" value="127.0.0.1"/>
 
         <property name="discoverySpi">
-            <bean class="org.apache.ignite.spi.discovery.tcp.TcpDiscoverySpi">
+            <bean class="{{ .TcpDiscoverySpiClass }}">
                 <property name="localAddress" value="127.0.0.1"/>
                 <property name="localPort" value="48500"/>
                 <property name="ipFinder">

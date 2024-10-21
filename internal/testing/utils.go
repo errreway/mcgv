@@ -29,12 +29,14 @@ import (
 const IgniteStartTimeout = "IGNITE_START_TIMEOUT"
 
 type IgniteParams struct {
-	InstanceIdx    int
-	ClientPort     uint16
-	UseAuth        bool
-	UseSsl         bool
-	UsePersistence bool
-	CompactFooter  bool
+	InstanceIdx          int
+	ClientPort           uint16
+	UseAuth              bool
+	UseSsl               bool
+	UsePersistence       bool
+	CompactFooter        bool
+	ClientMode           bool
+	TcpDiscoverySpiClass string
 }
 
 type IgniteInstance interface {
@@ -145,6 +147,18 @@ func WithInstanceIndex(idx int) func(params *IgniteParams) {
 	}
 }
 
+func WithClientMode() func(params *IgniteParams) {
+	return func(params *IgniteParams) {
+		params.ClientMode = true
+	}
+}
+
+func WithTcpDiscoverySpi(class string) func(params *IgniteParams) {
+	return func(params *IgniteParams) {
+		params.TcpDiscoverySpiClass = class
+	}
+}
+
 func WithClientPort(port uint16) func(params *IgniteParams) {
 	return func(params *IgniteParams) {
 		params.ClientPort = port
@@ -177,8 +191,9 @@ func WithCompactFooter(compactFooter bool) func(params *IgniteParams) {
 
 func StartIgnite(opts ...func(params *IgniteParams)) (IgniteInstance, error) {
 	params := &IgniteParams{
-		InstanceIdx:   0,
-		CompactFooter: true,
+		InstanceIdx:          0,
+		CompactFooter:        true,
+		TcpDiscoverySpiClass: "org.apache.ignite.spi.discovery.tcp.TcpDiscoverySpi",
 	}
 	if len(opts) > 0 {
 		for _, opt := range opts {

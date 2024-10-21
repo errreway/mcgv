@@ -37,7 +37,8 @@ const (
 type TypeDesc int8
 
 const (
-	objectType TypeDesc = iota - 1
+	optimizedMarshallerObjectType TypeDesc = iota - 2
+	objectType
 	unregisteredType
 	ByteType
 	ShortType
@@ -72,7 +73,7 @@ const (
 	ClassType          TypeDesc = 32
 	TimestampType      TypeDesc = 33
 	TimestampArrayType TypeDesc = 34
-	ProxyType          TypeDesc = 35
+	proxyType          TypeDesc = 35
 	TimeType           TypeDesc = 36
 	TimeArrayType      TypeDesc = 37
 	BinaryEnumType     TypeDesc = 38
@@ -572,6 +573,13 @@ func (m *marshallerImpl) marshal(ctx context.Context, writer BinaryOutputStream,
 		if err := marshalEnum(ctx, m, writer, val); err != nil {
 			return err
 		}
+	case OptimizedMarshallerObject:
+		{
+			payload := val.Payload()
+			writer.WriteType(optimizedMarshallerObjectType)
+			writer.WriteInt32(int32(len(payload)))
+			writer.WriteBytes(payload)
+		}
 	default:
 		t := reflect.TypeOf(val)
 		switch t.Kind() {
@@ -752,6 +760,10 @@ func getTypeId(val interface{}) (TypeDesc, error) {
 	case Collection:
 		{
 			return CollectionType, nil
+		}
+	case OptimizedMarshallerObject:
+		{
+			return optimizedMarshallerObjectType, nil
 		}
 	default:
 		{
@@ -1027,7 +1039,17 @@ func (m *marshallerImpl) unmarshal(ctx context.Context, reader BinaryInputStream
 			return m.tryConvertToBinarylizable(ctx, bo)
 		}
 	case ClassType:
-		return readClass(reader)
+		{
+			return readClass(reader)
+		}
+	case optimizedMarshallerObjectType:
+		{
+			return m.readIgniteOptimizedMarshallerObject(reader)
+		}
+	case proxyType:
+		{
+			return m.readIgniteProxy(ctx, reader)
+		}
 	default:
 		return nil, fmt.Errorf("type %d is not supported", payloadType)
 	}
@@ -1263,6 +1285,28 @@ func (m *marshallerImpl) readIgniteMap(ctx context.Context, reader BinaryInputSt
 	if err == nil {
 		coll.isNotNull = true
 	}
+	return
+}
+
+func (m *marshallerImpl) readIgniteOptimizedMarshallerObject(reader BinaryInputStream) (res OptimizedMarshallerObject, err error) {
+	res = OptimizedMarshallerObject{}
+	res.payload, err = readByteArray(reader)
+	return
+}
+
+func (m *marshallerImpl) readIgniteProxy(ctx context.Context, reader BinaryInputStream) (res igniteProxy, err error) {
+	res = igniteProxy{}
+	res.interfaces, err = readSlice(reader, func(_ int, in BinaryInputStream) (*igniteType, error) {
+		cls, err := readClass(in)
+		if err != nil {
+			return nil, err
+		}
+		return &cls, nil
+	})
+	if err != nil {
+		return
+	}
+	_, err = m.unmarshal(ctx, reader)
 	return
 }
 

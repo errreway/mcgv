@@ -238,3 +238,19 @@ type igniteType struct {
 func (ignT *igniteType) String() string {
 	return fmt.Sprintf("class [typeId=%d, typeName=%s]", ignT.typeId, ignT.typeName)
 }
+
+type igniteProxy struct {
+	interfaces []*igniteType
+}
+
+func (p *igniteProxy) String() string {
+	return fmt.Sprintf("proxy interfaces %v", p.interfaces)
+}
+
+type OptimizedMarshallerObject struct {
+	payload []byte
+}
+
+func (o *OptimizedMarshallerObject) Payload() []byte {
+	return o.payload
+}

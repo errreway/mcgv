@@ -305,6 +305,118 @@ func (cli *Client) SqlQuery(ctx context.Context, sql string, opts ...SqlQueryOpt
 	return cursor, err
 }
 
+// GetClusterState returns current Ignite cluster state.
+func (cli *Client) GetClusterState(ctx context.Context) (state ClusterState, err error) {
+	cli.ch.send(ctx, opClusterGetState,
+		func(ch channel, output BinaryOutputStream) error {
+			return checkClusterApiSupportedByServer(ch.protocolContext())
+		}, func(_ channel, output BinaryInputStream, err0 error) {
+			if err0 != nil {
+				err = err0
+				return
+			}
+			state = ClusterState(output.ReadInt8())
+		},
+	)
+	return
+}
+
+// ChangeClusterState changes Ignite cluster state to the specified one.
+func (cli *Client) ChangeClusterState(ctx context.Context, state ClusterState) (err error) {
+	cli.ch.send(ctx, opClusterChangeState,
+		func(ch channel, output BinaryOutputStream) error {
+			if err := checkClusterApiSupportedByServer(ch.protocolContext()); err != nil {
+				return err
+			}
+			if state > 1 && !ch.protocolContext().SupportsAttributeFeature(ClusterStatesFeature) {
+				return fmt.Errorf("%v cluster state is not supported by the server", state)
+			}
+			output.WriteInt8(int8(state))
+			return nil
+		},
+		func(_ channel, output BinaryInputStream, err0 error) {
+			if err0 != nil {
+				err = err0
+			}
+		},
+	)
+	return
+}
+
+// IsWalEnabled returns true if WAL is enabled for the cache with the specified name, false otherwise.
+func (cli *Client) IsWalEnabled(ctx context.Context, cacheName string) (isWalEnabled bool, err error) {
+	cli.ch.send(ctx, opClusterGetWalState,
+		func(ch channel, output BinaryOutputStream) error {
+			if err := checkClusterApiSupportedByServer(ch.protocolContext()); err != nil {
+				return err
+			}
+			marshalString(output, cacheName)
+			return nil
+		},
+		func(_ channel, output BinaryInputStream, err0 error) {
+			if err0 != nil {
+				err = err0
+				return
+			}
+			isWalEnabled = output.ReadBool()
+		},
+	)
+	return
+}
+
+// EnableWal tries to enable WAL for cache with the specified name.
+// Returns true if the WAL state was actually changed, false otherwise.
+func (cli *Client) EnableWal(ctx context.Context, cacheName string) (bool, error) {
+	return cli.changeWalState(ctx, cacheName, true)
+}
+
+// DisableWal tries to disable WAL for the cache with the specified name
+// Returns true if the WAL state was actually changed, false otherwise.
+func (cli *Client) DisableWal(ctx context.Context, cacheName string) (bool, error) {
+	return cli.changeWalState(ctx, cacheName, false)
+}
+
+func (cli *Client) changeWalState(ctx context.Context, cacheName string, isEnabled bool) (isStateChanged bool, err error) {
+	cli.ch.send(ctx, opClusterChangeWalState,
+		func(ch channel, output BinaryOutputStream) error {
+			if err := checkClusterApiSupportedByServer(ch.protocolContext()); err != nil {
+				return err
+			}
+			marshalString(output, cacheName)
+			output.WriteBool(isEnabled)
+			return nil
+		},
+		func(_ channel, output BinaryInputStream, err0 error) {
+			if err0 != nil {
+				err = err0
+				return
+			}
+			isStateChanged = output.ReadBool()
+		},
+	)
+	return
+}
+
+// GetClusterGroup returns ClusterGroup with specified filters. See ForServers, ForNodeIds etc. for more details.
+// Note that the filters are applied in the order in which they were passed to the function.
+func (cli *Client) GetClusterGroup(opts ...func(group *ClusterGroup) error) (*ClusterGroup, error) {
+	projection := &projection{
+		filters: make([]clusterNodeFilter, 0),
+	}
+	clusterGroup := &ClusterGroup{
+		channel:    cli.ch,
+		projection: projection,
+		marshaller: cli.marsh,
+	}
+	for _, opt := range opts {
+		err := opt(clusterGroup)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return clusterGroup, nil
+}
+
 func (cli *Client) newCache(name string) *Cache {
 	return &Cache{
 		cli:  cli,
@@ -657,6 +769,8 @@ func Start(ctx context.Context, opts ...ClientConfigurationOption) (*Client, err
 			BinaryConfigurationFeature,
 			DefaultQueryTimeoutFeature,
 			QueryPartitionsBatchSizeFeature,
+			ClusterStatesFeature,
+			ClusterGroupsFeature,
 		),
 		compactFooter:          true,
 		enableAutoBinaryConfig: true,

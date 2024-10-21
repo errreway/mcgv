@@ -8,6 +8,7 @@ func _() {
 	// An "invalid array index" compiler error signifies that the constant values have changed.
 	// Re-run the stringer command to generate them again.
 	var x [1]struct{}
+	_ = x[optimizedMarshallerObjectType - -2]
 	_ = x[objectType - -1]
 	_ = x[unregisteredType-0]
 	_ = x[ByteType-1]
@@ -43,7 +44,7 @@ func _() {
 	_ = x[ClassType-32]
 	_ = x[TimestampType-33]
 	_ = x[TimestampArrayType-34]
-	_ = x[ProxyType-35]
+	_ = x[proxyType-35]
 	_ = x[TimeType-36]
 	_ = x[TimeArrayType-37]
 	_ = x[BinaryEnumType-38]
@@ -53,21 +54,21 @@ func _() {
 }
 
 const (
-	_TypeDesc_name_0 = "objectTypeunregisteredTypeByteTypeShortTypeIntTypeLongTypeFloatTypeDoubleTypeCharTypeBoolTypeStringTypeUuidTypeDateTypeByteArrayTypeShortArrayTypeIntArrayTypeLongArrayTypeFloatArrayTypeDoubleArrayTypeCharArrayTypeBoolArrayTypeStringArrayTypeUuidArrayTypeDateArrayTypeObjectArrayTypeCollectionTypeMapType"
-	_TypeDesc_name_1 = "wrappedObjectTypeEnumTypeEnumArrayTypeDecimalTypeDecimalArrayTypeClassTypeTimestampTypeTimestampArrayTypeProxyTypeTimeTypeTimeArrayTypeBinaryEnumType"
+	_TypeDesc_name_0 = "optimizedMarshallerObjectTypeobjectTypeunregisteredTypeByteTypeShortTypeIntTypeLongTypeFloatTypeDoubleTypeCharTypeBoolTypeStringTypeUuidTypeDateTypeByteArrayTypeShortArrayTypeIntArrayTypeLongArrayTypeFloatArrayTypeDoubleArrayTypeCharArrayTypeBoolArrayTypeStringArrayTypeUuidArrayTypeDateArrayTypeObjectArrayTypeCollectionTypeMapType"
+	_TypeDesc_name_1 = "wrappedObjectTypeEnumTypeEnumArrayTypeDecimalTypeDecimalArrayTypeClassTypeTimestampTypeTimestampArrayTypeproxyTypeTimeTypeTimeArrayTypeBinaryEnumType"
 	_TypeDesc_name_2 = "NullTypehandleTypeBinaryObjectType"
 )
 
 var (
-	_TypeDesc_index_0 = [...]uint16{0, 10, 26, 34, 43, 50, 58, 67, 77, 85, 93, 103, 111, 119, 132, 146, 158, 171, 185, 200, 213, 226, 241, 254, 267, 282, 296, 303}
+	_TypeDesc_index_0 = [...]uint16{0, 29, 39, 55, 63, 72, 79, 87, 96, 106, 114, 122, 132, 140, 148, 161, 175, 187, 200, 214, 229, 242, 255, 270, 283, 296, 311, 325, 332}
 	_TypeDesc_index_1 = [...]uint8{0, 17, 25, 38, 49, 65, 74, 87, 105, 114, 122, 135, 149}
 	_TypeDesc_index_2 = [...]uint8{0, 8, 18, 34}
 )
 
 func (i TypeDesc) String() string {
 	switch {
-	case -1 <= i && i <= 25:
-		i -= -1
+	case -2 <= i && i <= 25:
+		i -= -2
 		return _TypeDesc_name_0[_TypeDesc_index_0[i]:_TypeDesc_index_0[i+1]]
 	case 27 <= i && i <= 38:
 		i -= 27

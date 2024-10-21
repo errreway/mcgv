@@ -34,3 +34,31 @@ func SliceHashCode(data []byte) int32 {
 	}
 	return hash
 }
+
+func ToSet[T comparable](slice []T) map[T]interface{} {
+	res := make(map[T]interface{}, len(slice))
+	for _, val := range slice {
+		res[val] = nil
+	}
+	return res
+}
+
+func ToSetWithTransformer[T any, R comparable](slice []T, transformer func(val T) (R, error)) (map[R]interface{}, error) {
+	res := make(map[R]interface{}, len(slice))
+	for _, val := range slice {
+		transformedVal, err := transformer(val)
+		if err != nil {
+			return nil, err
+		}
+		res[transformedVal] = nil
+	}
+	return res, nil
+}
+
+func MapKeys[K comparable, V any](m map[K]V) []K {
+	res := make([]K, 0, len(m))
+	for key := range m {
+		res = append(res, key)
+	}
+	return res
+}
