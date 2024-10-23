@@ -16,8 +16,8 @@ public class TestEnumBinaryObjectFilter implements IgniteBiPredicate<Long, Binar
 
     @Override
     public boolean apply(Long aLong, BinaryObject binaryObject) {
-        var enumObj = binaryObject.<BinaryObject>field("enumField");
-        var enumArray = binaryObject.<BinaryObject[]>field("enumArrayField");
+        BinaryObject enumObj = binaryObject.<BinaryObject>field("enumField");
+        BinaryObject[] enumArray = binaryObject.<BinaryObject[]>field("enumArrayField");
         if (enumObj != null && this.val != null && enumArray != null && enumArray.length > 0) {
             return enumObj.enumOrdinal() == this.val.ordinal() && enumArray[0].enumOrdinal() == this.val.ordinal();
         }

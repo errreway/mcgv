@@ -19,12 +19,12 @@ func main() {
 	if err != nil {
 		panic(fmt.Errorf("failed to start client: %w", err))
 	}
-
 	defer func() {
 		_ = cli.Close(context.Background())
 	}()
+	examples.ActivateIgniteCluster(cli)
 
-	cache, err := cli.GetOrCreateCache(context.Background(), "example-cache")
+	cache, err := cli.GetOrCreateCache(context.Background(), "scan-example-cache")
 
 	if err != nil {
 		panic(fmt.Errorf("failed to get cache: %w", err))

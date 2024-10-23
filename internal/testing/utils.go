@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"io"
 	"math/rand"
@@ -436,8 +437,22 @@ func FromPSlice[T any](pSlice []*T) []T {
 	return ret
 }
 
+func TestExampleWithRegularExpression(t *testing.T, igniteStartOptions []func(params *IgniteParams), example func(), expOutPattern string) {
+	testExample(t, igniteStartOptions, example, func(out string) {
+		ok, err := regexp.MatchString(expOutPattern, out)
+		require.NoError(t, err)
+		require.True(t, ok, "expectedPattern=%s, actualOut=%s", expOutPattern, out)
+	})
+}
+
 func TestExample(t *testing.T, example func(), expOut string) {
-	ignite, err := StartIgnite()
+	testExample(t, nil, example, func(out string) {
+		require.Equal(t, expOut, out)
+	})
+}
+
+func testExample(t *testing.T, igniteStartOptions []func(params *IgniteParams), example func(), outChecker func(out string)) {
+	ignite, err := StartIgnite(igniteStartOptions...)
 	require.NoError(t, err)
 
 	defer func() {
@@ -447,10 +462,10 @@ func TestExample(t *testing.T, example func(), expOut string) {
 	r, w, err := os.Pipe()
 	require.NoError(t, err)
 
-	var curOut strings.Builder
+	var outBuilder strings.Builder
 	copyDone := make(chan error, 1)
 	go func() {
-		_, err = io.Copy(&curOut, r)
+		_, err = io.Copy(&outBuilder, r)
 		copyDone <- err
 	}()
 
@@ -467,5 +482,8 @@ func TestExample(t *testing.T, example func(), expOut string) {
 
 	require.NoError(t, w.Close())
 	require.NoError(t, <-copyDone)
-	require.Equal(t, expOut, curOut.String())
+	out := outBuilder.String()
+	assert.True(t, len(out) > 0)
+	outChecker(out)
+	assert.True(t, out[len(out)-1] == '\n')
 }

@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"gitverse.ru/sbertech/ignite-go-client"
+	"gitverse.ru/sbertech/ignite-go-client/examples"
 	"time"
 )
 
@@ -16,12 +17,12 @@ func main() {
 	if err != nil {
 		panic(fmt.Errorf("failed to start client: %w", err))
 	}
-
 	defer func() {
 		_ = cli.Close(context.Background())
 	}()
+	examples.ActivateIgniteCluster(cli)
 
-	cache, err := cli.GetOrCreateCache(context.Background(), "example-cache")
+	cache, err := cli.GetOrCreateCache(context.Background(), "expiry-example-cache")
 	if err != nil {
 		panic(fmt.Errorf("failed to get cache: %w", err))
 	}
@@ -34,9 +35,9 @@ func main() {
 	if err != nil {
 		panic(fmt.Errorf("failed to write entry to the cache: %w", err))
 	}
-	fmt.Println(">>> Entry [key=`key`, val=`val`] was written to cache `example-cache` with TTL [type=creation, duration=1s]")
+	fmt.Printf(">>> Entry [key=`key`, val=`val`] was written to cache `%s` with TTL [type=creation, duration=1s]\n", cache.Name())
 
-	fmt.Println(">>> Requesting value for key == `key` from cache `example-cache`")
+	fmt.Printf(">>> Requesting value for key == `key` from cache `%s`\n", cache.Name())
 	val, err := cache.Get(context.Background(), "key")
 	if err != nil {
 		panic(fmt.Errorf("failed to get value from the cache: %w", err))
@@ -47,11 +48,11 @@ func main() {
 	<-time.After(2 * time.Second)
 
 	// Cache entry that we stored previously with TTL=1s should have expired by now.
-	fmt.Println(">>> Checking whether the key == `key` is in the cache `example-cache`")
+	fmt.Printf(">>> Checking whether the key == `key` is in the cache `%s`\n", cache.Name())
 	isPresent, err := cache.ContainsKey(context.Background(), "key")
 	if err != nil {
 		panic(fmt.Errorf("failed to check for key presence: %w", err))
 	}
 
-	fmt.Printf(">>> Result == %t", isPresent)
+	fmt.Printf(">>> Result == %t\n", isPresent)
 }

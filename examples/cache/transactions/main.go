@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"gitverse.ru/sbertech/ignite-go-client"
+	"gitverse.ru/sbertech/ignite-go-client/examples"
 	"time"
 )
 
@@ -15,15 +16,15 @@ func main() {
 	if err != nil {
 		panic(fmt.Errorf("failed to start client: %w", err))
 	}
-
 	defer func() {
 		_ = cli.Close(context.Background())
 	}()
+	examples.ActivateIgniteCluster(cli)
 
 	// Note, transactions are only supported by caches with Transactional Atomicity mode.
 	cache, err := cli.GetOrCreateCacheWithConfiguration(
 		context.Background(),
-		ignite.CreateCacheConfiguration("example-cache", ignite.WithCacheAtomicityMode(ignite.TransactionalAtomicityMode)))
+		ignite.CreateCacheConfiguration("transactions-example-cache", ignite.WithCacheAtomicityMode(ignite.TransactionalAtomicityMode)))
 	if err != nil {
 		panic(fmt.Errorf("failed to get cache: %w", err))
 	}
@@ -41,9 +42,9 @@ func main() {
 			if txErr != nil {
 				return fmt.Errorf("failed to write entry to cache: %w", err)
 			}
-			fmt.Println(">>> Entry [key=`key`, val=`val`] was written to cache `example-cache`")
+			fmt.Printf(">>> Entry [key=`key`, val=`val`] was written to cache `%s`\n", cache.Name())
 
-			fmt.Println(">>> Requesting value for key == 'key' from cache `example-cache`")
+			fmt.Printf(">>> Requesting value for key == 'key' from cache `%s`\n", cache.Name())
 			val, txErr := cache.Get(txCtx, "key")
 			if txErr != nil {
 				return fmt.Errorf("failed to get value from the cache: %w", err)
@@ -71,9 +72,9 @@ func main() {
 			if txErr != nil {
 				return fmt.Errorf("failed to write entry to cache: %w", err)
 			}
-			fmt.Println(">>> Entry [key=`key`, val=`updated-value`] was written to cache `example-cache`")
+			fmt.Printf(">>> Entry [key=`key`, val=`updated-value`] was written to cache `%s`\n", cache.Name())
 
-			fmt.Println(">>> Requesting value for key == 'key' from cache `example-cache`")
+			fmt.Printf(">>> Requesting value for key == 'key' from cache `%s`\n", cache.Name())
 			val, txErr := cache.Get(txCtx, "key")
 			if txErr != nil {
 				return fmt.Errorf("failed to get value from the cache: %w", err)
@@ -91,7 +92,7 @@ func main() {
 }
 
 func requestCacheValue(cache *ignite.Cache, key interface{}) {
-	fmt.Println(">>> Requesting value for key == 'key' from cache `example-cache`")
+	fmt.Printf(">>> Requesting value for key == 'key' from cache `%s`\n", cache.Name())
 	val, err := cache.Get(context.Background(), key)
 	if err != nil {
 		panic(fmt.Errorf("failed to get value from the cache: %w", err))

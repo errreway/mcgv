@@ -16,7 +16,7 @@ public class TestEnumFilter implements IgniteBiPredicate<Long, TestEnum> {
     @Override
     public boolean apply(Long aLong, TestEnum testEnum) {
         if (testEnum != null && testEnum.getEnumField() == val) {
-            var arr = testEnum.getEnumArrayField();
+            TestEnum.Enum[] arr = testEnum.getEnumArrayField();
             if (arr != null && arr.length > 0) {
                 return arr[0] == val;
             }

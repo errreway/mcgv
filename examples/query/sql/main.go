@@ -10,6 +10,29 @@ import (
 	"strings"
 )
 
+// For more details about Binarylizable objects see the `cache/binary_object` example.
+//go:generate go run gitverse.ru/sbertech/ignite-go-client/tools/generator -build_tags=testing -output_filename=binarylizable.go -with_register_func
+
+// ignite:binarylizable,typename="SQL_PERSON_KEY"
+type PersonKey struct {
+	id      int64
+	company string
+}
+
+func (k *PersonKey) String() string {
+	return fmt.Sprintf("PersonKey [id=`%d`, company=`%s`]", k.id, k.company)
+}
+
+// ignite:binarylizable,typename="SQL_PERSON"
+type Person struct {
+	name string
+	age  int32
+}
+
+func (p *Person) String() string {
+	return fmt.Sprintf("Person [name=`%s`, age=`%d`]", p.name, p.age)
+}
+
 func main() {
 	cli, err := ignite.Start(context.Background(), ignite.WithAddresses("localhost"))
 	if err != nil {
@@ -18,12 +41,18 @@ func main() {
 	defer func() {
 		_ = cli.Close(context.Background())
 	}()
+	examples.ActivateIgniteCluster(cli)
+
+	err = RegisterMainIgniteTypes(cli)
+	if err != nil {
+		panic(fmt.Errorf("failed to register Binarylizable types: %w", err))
+	}
 
 	// Creates cache and tells Ignite that cache key and cache value fields should be accessible through SQL queries.
 	cache, err := cli.GetOrCreateCacheWithConfiguration(context.Background(), ignite.CreateCacheConfiguration(
 		"person-cache",
 		ignite.WithSqlSchema("EXAMPLE"), // SQL Schema name.
-		ignite.WithQueryEntity("PERSON_KEY", "PERSON", // KeyType and ValueType is used to construct cache entry and write it in the cache during DML SQL queries.
+		ignite.WithQueryEntity("SQL_PERSON_KEY", "SQL_PERSON", // KeyType and ValueType is used to construct cache entry and write it in the cache during DML SQL queries.
 			ignite.WithTableName("PERSON"),                                  // The table name to use in SQL queries.
 			ignite.WithQueryField("id", "java.lang.Long", ignite.WithKey()), // WithKey indicates that field is part of composite key.
 			ignite.WithQueryField("company", "java.lang.String", ignite.WithKey()),
@@ -40,20 +69,14 @@ func main() {
 	}
 	fmt.Println(">>> Created table `PERSON_TABLE` [columns=[`ID` LONG, `COMPANY` VARCHAR, `NAME` VARCHAR, `AGE` INT], cacheName=`person-cache`, cacheKeyType=`PERSON_KEY`, cacheValueType=`PERSON`]")
 
-	firstKeyBinObj, err := cli.CreateBinaryObject(context.Background(), "PERSON_KEY", ignite.WithField("id", int64(0)), ignite.WithField("company", "RCM"))
-	if err != nil {
-		panic(fmt.Errorf("failed to create binary object: %w", err))
-	}
-	valueBinObj, err := cli.CreateBinaryObject(context.Background(), "PERSON", ignite.WithField("name", "Cuno"), ignite.WithField("age", int32(12)))
-	if err != nil {
-		panic(fmt.Errorf("failed to create binary object: %w", err))
-	}
+	key := &PersonKey{id: 0, company: "RCM"}
+	val := &Person{name: "Cuno", age: 12}
 
-	err = cache.Put(context.Background(), firstKeyBinObj, valueBinObj)
+	err = cache.Put(context.Background(), key, val)
 	if err != nil {
 		panic(fmt.Errorf("failed to write entry to the cache: %w", err))
 	}
-	fmt.Printf(">>> Entry [key=%s, val=%s] was written to cache `%s`\n", examples.ToString(firstKeyBinObj), examples.ToString(valueBinObj), cache.Name())
+	fmt.Printf(">>> Entry [key=%v, val=%v] was written to cache `%s`\n", key, val, cache.Name())
 
 	// We've just written a record to the cache. Now it's time to access it via SQL.
 	fmt.Println(">>> Executing SQL Query [sql=`SELECT * FROM PERSON`, schema=`EXAMPLE`]")
@@ -91,17 +114,13 @@ func main() {
 		_ = insertCursor.Close()
 	}()
 
-	secondKeyBinObj, err := cli.CreateBinaryObject(context.Background(), "PERSON_KEY", ignite.WithField("id", int64(1)), ignite.WithField("company", "RCM"))
-	if err != nil {
-		panic(fmt.Errorf("failed to create binary object: %w", err))
-	}
-
 	// The same as before, but now we are accessing cache entry that was created after INSERT SQL query.
-	fmt.Printf(">>> Requesting value for key == %v from cache `%s`\n", examples.ToString(secondKeyBinObj), cache.Name())
-	val, err := cache.Get(context.Background(), secondKeyBinObj)
+	key = &PersonKey{id: 1, company: "RCM"}
+	fmt.Printf(">>> Requesting value for key == %v from cache `%s`\n", key, cache.Name())
+	obj, err := cache.Get(context.Background(), key)
 	if err != nil {
 		panic(fmt.Errorf("failed to get value from the cache: %w", err))
 	}
 
-	fmt.Printf(">>> Value == %s\n", examples.ToString(val.(ignite.BinaryObject)))
+	fmt.Printf(">>> Value == %v\n", obj.(*Person))
 }

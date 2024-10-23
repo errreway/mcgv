@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"gitverse.ru/sbertech/ignite-go-client"
+	"gitverse.ru/sbertech/ignite-go-client/examples"
 )
 
 func main() {
@@ -13,14 +14,14 @@ func main() {
 	if err != nil {
 		panic(fmt.Errorf("failed to start client: %w", err))
 	}
-
 	defer func() {
 		_ = cli.Close(context.Background())
 	}()
+	examples.ActivateIgniteCluster(cli)
 
 	cache, err := cli.GetOrCreateCacheWithConfiguration(
 		context.Background(),
-		ignite.CreateCacheConfiguration("example-cache",
+		ignite.CreateCacheConfiguration("put-get-example-cache",
 			ignite.WithCacheAtomicityMode(ignite.AtomicAtomicityMode),
 			ignite.WithCacheMode(ignite.ReplicatedCacheMode)))
 

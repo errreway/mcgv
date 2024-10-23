@@ -17,7 +17,7 @@ public class PersonByNameBinaryObjectFilter implements IgniteBiPredicate<Long, B
     @Override
     public boolean apply(Long aLong, BinaryObject binaryObject) {
         if (binaryObject != null) {
-            var fName = binaryObject.field("name");
+            String fName = binaryObject.<String>field("name");
             return fName != null && fName.equals(name);
         }
         return false;
