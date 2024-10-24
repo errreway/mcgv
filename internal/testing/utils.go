@@ -7,7 +7,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"io"
 	"math/rand"
@@ -483,7 +482,7 @@ func testExample(t *testing.T, igniteStartOptions []func(params *IgniteParams), 
 	require.NoError(t, w.Close())
 	require.NoError(t, <-copyDone)
 	out := outBuilder.String()
-	assert.True(t, len(out) > 0)
+	require.True(t, len(out) > 0)
 	outChecker(out)
-	assert.True(t, out[len(out)-1] == '\n')
+	require.True(t, out[len(out)-1] == '\n')
 }

@@ -10,7 +10,7 @@ import (
 )
 
 // Automatically generates Binarylizable interface method implementations for all structs marked as `ignite:binarylizable`
-// and writes generated code to `ranks_binarylizable.go` file.
+// and writes generated code to `binarylizable.go` file.
 // Tags can be used on struct fields to pass to generator Binary Object specific field options.
 //`with_register_func` flag tells the generator to create a utility method that helps to registers all generated types by one call.
 //go:generate go run gitverse.ru/sbertech/ignite-go-client/tools/generator -build_tags=testing -output_filename=binarylizable.go -with_register_func
