@@ -27,7 +27,7 @@ jobs:
       - name: Install jdk
         uses: actions/setup-java@v3
         with:
-          distribution: 'temurin'
+          distribution: 'adopt'
           java-version: '17'
       - name: Set up Maven
         uses: stCarolas/setup-maven@v4.2
