@@ -12,12 +12,12 @@ Basic usage of the apache ignite go driver starts with creating ``Client`` using
 ```go
 ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 defer cancel()
-client, err := ignite.Start(ctx, ignite.WithAddresses("127.0.0.1:10800", "127.0.0.1:10801")
+client, err := ignite.Start(ctx, ignite.WithAddresses("127.0.0.1:10800", "127.0.0.1:10801"))
 if err != nil {
 	return err
 }
 defer func() {
-	_ = client.close(context.Background())
+	_ = client.Close(context.Background())
 }()
 ```
 This will create a new ignite client to the ignite cluster on localhost. It is possible
