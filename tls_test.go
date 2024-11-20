@@ -3,9 +3,6 @@ package ignite
 import (
 	"context"
 	"crypto"
-	"crypto/ecdsa"
-	"crypto/ed25519"
-	"crypto/rsa"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/pem"
@@ -138,20 +135,18 @@ func createTlsSupplier(certPath string, password string) func() (*tls.Config, er
 }
 
 func parsePrivateKey(der []byte) (crypto.PrivateKey, error) {
-	if key, err := x509.ParsePKCS1PrivateKey(der); err == nil {
-		return key, nil
-	}
-	if key, err := x509.ParsePKCS8PrivateKey(der); err == nil {
-		switch key := key.(type) {
-		case *rsa.PrivateKey, *ecdsa.PrivateKey, ed25519.PrivateKey:
-			return key, nil
-		default:
-			return nil, errors.New("tls: found unknown private key type in PKCS#8 wrapping")
-		}
-	}
-	if key, err := x509.ParseECPrivateKey(der); err == nil {
-		return key, nil
+	key, err := x509.ParsePKCS8PrivateKey(der)
+	if err != nil {
+		return nil, err
 	}
 
-	return nil, errors.New("tls: failed to parse private key")
+	type privateKey interface {
+		Public() crypto.PublicKey
+		Equal(x crypto.PrivateKey) bool
+	}
+
+	if _, ok := key.(privateKey); !ok {
+		return nil, errors.New("tls: key does not implement private key interface")
+	}
+	return key, nil
 }
