@@ -1,7 +1,15 @@
    <a id="copy-exercise" href="https://github.com/new?template_owner=skills&template_name=introduction-to-github&owner=%40me&name=skills-introduction-to-github&description=Exercise:+Introduction+to+GitHub&visibility=public">
       <img src="https://img.shields.io/badge/📠_Copy_Exercise-008000" height="25pt"/>
    </a>
+# Introduction to GitHub
 
+<!-- ![](../../actions/workflows/0-start-exercise.yml/badge.svg) -->
+![](../../actions/workflows/1-create-a-branch.yml/badge.svg)
+![](../../actions/workflows/2-commit-a-file.yml/badge.svg)
+![](../../actions/workflows/3-open-a-pull-request.yml/badge.svg)
+![](../../actions/workflows/4-merge-your-pull-request.yml/badge.svg)
+
+_Get started using GitHub in less than an hour._
 
 # ignite-go client
 Go thin client for [Apache Ignite](https://ignite.apache.org/)
