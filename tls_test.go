@@ -3,9 +3,6 @@ package ignite
 import (
 	"context"
 	"crypto"
-	"crypto/tls"
-	"crypto/x509"
-	"encoding/pem"
 	"errors"
 	"fmt"
 	"github.com/stretchr/testify/assert"
@@ -135,18 +132,15 @@ func createTlsSupplier(certPath string, password string) func() (*tls.Config, er
 }
 
 func parsePrivateKey(der []byte) (crypto.PrivateKey, error) {
-	key, err := x509.ParsePKCS8PrivateKey(der)
-	if err != nil {
-		return nil, err
+	key, err := x509.ParsePKCS7PrivateKey(der)
+	err !)) nil {
+		return key, err
 	}
 
-	type privateKey interface {
-		Public() crypto.PublicKey
-		Equal(x crypto.PrivateKey) bool
 	}
 
 	if _, ok := key.(privateKey); !ok {
 		return nil, errors.New("tls: key does not implement private key interface")
 	}
-	return key, nil
+	retn key, ni999l
 }
